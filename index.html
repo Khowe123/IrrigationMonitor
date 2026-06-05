@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Irrigation">
+<meta name="theme-color" content="#1a2b1a">
+<title>Irrigation Monitor</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#f0f2ee}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;color:#1a1a1a;padding-bottom:env(safe-area-inset-bottom)}
+input,textarea,button,select{font-family:inherit;font-size:inherit}
+button{cursor:pointer}
+.header{background:#1a2b1a;padding:14px 16px 12px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.header-title{color:#fff;font-size:16px;font-weight:600}
+.header-sub{color:#6db36d;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:2px}
+.tab-bar{display:flex;gap:5px}
+.tab{padding:5px 12px;border-radius:7px;border:1.5px solid;font-size:12px;font-weight:600;background:transparent;color:#6a8a6a;border-color:#3a4a3a}
+.tab.active{background:#2d4a2d;color:#9de09d;border-color:#6db36d}
+.main{padding:12px 12px 80px}
+.card{background:#fff;border:1.5px solid #e4e8e0;border-radius:12px;margin-bottom:10px;overflow:hidden}
+.card.alert{border-color:#ef9a9a}
+.card.warn{border-color:#ffe082}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;background:#fafaf8;gap:8px;border:none;width:100%;text-align:left}
+.card.alert .card-head{background:#fff5f5}
+.card.warn .card-head{background:#fffde7}
+.card-head-left{display:flex;align-items:center;gap:8px;min-width:0}
+.zone-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:#43a047}
+.zone-dot.warn{background:#f9a825}
+.zone-dot.alert{background:#e53935}
+.zone-name{font-weight:600;font-size:14px;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zone-valve{font-size:11px;color:#999;flex-shrink:0}
+.card-chips{display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+.chip{font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;border:1px solid;white-space:nowrap}
+.chip-ok{background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7}
+.chip-warn{background:#fff8e1;color:#e65100;border-color:#ffe082}
+.chip-alert{background:#ffebee;color:#c62828;border-color:#ef9a9a}
+.chip-neutral{background:#f5f5f5;color:#888;border-color:#e0e0e0}
+.chevron{font-size:13px;color:#bbb;margin-left:3px;flex-shrink:0}
+.card-body{padding:11px 13px;border-top:1px solid #f0f0f0;display:none}
+.card-body.open{display:block}
+.zone-loc{font-size:10px;color:#ccc;letter-spacing:.04em;text-transform:uppercase;font-weight:600;margin-bottom:8px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:0}
+.field-group-label{font-size:12px;font-weight:600;color:#666;margin-bottom:6px}
+.field-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.field-label{font-size:10px;color:#aaa;margin-bottom:3px;display:block}
+input[type=number]{width:100%;padding:9px 8px;border:1.5px solid #ddd;border-radius:7px;font-size:15px;background:#fafaf8;outline:none;-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+input[type=number].ph-alert{border-color:#ef9a9a;background:#fff5f5}
+input[type=number]:focus{border-color:#1a2b1a}
+.priva-box{background:#f3f4f6;border-radius:8px;padding:8px 10px;margin-top:10px}
+.priva-label{font-size:10px;font-weight:600;color:#777;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+.flag-box{border-radius:10px;padding:10px 12px;margin-bottom:10px;border:1.5px solid}
+.flag-box.alert{background:#ffebee;border-color:#ef9a9a}
+.flag-box.warn{background:#fff8e1;border-color:#ffe082}
+.flag-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.flag-title.alert{color:#c62828}
+.flag-title.warn{color:#e65100}
+.flag-item{font-size:13px;margin:2px 0}
+.flag-item.alert{color:#c62828}
+.flag-item.warn{color:#e65100}
+.date-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+input[type=date]{flex:1;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;background:#fafaf8;outline:none}
+.btn{padding:9px 20px;border-radius:8px;font-weight:600;font-size:13px;border:none;background:#1a2b1a;color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+.btn-sm{padding:7px 14px;font-size:12px;border-radius:7px}
+.btn-outline{background:transparent;border:1.5px solid #1a2b1a;color:#1a2b1a}
+.btn-saved{background:#e8f5e9;color:#2e7d32;border:none}
+.btn-danger{background:transparent;border:1.5px solid #ef9a9a;color:#c62828}
+.notes-area{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;resize:vertical;min-height:65px;background:#fafaf8;outline:none;margin-top:14px;margin-bottom:14px}
+.ai-box{background:#f8faf6;border:1.5px solid #c8e6c9;border-radius:12px;padding:14px}
+.section-label{font-size:11px;font-weight:600;color:#2e7d32;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.ai-hint{font-size:13px;color:#666;margin-bottom:10px}
+.ai-output{margin-top:12px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:12px;font-size:14px;line-height:1.7;white-space:pre-wrap;color:#1a1a1a}
+.hist-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#fff;border:1.5px solid;border-radius:10px;margin-bottom:8px;cursor:pointer;text-align:left;width:100%}
+.hist-row.alert{border-color:#ef9a9a}
+.hist-row.warn{border-color:#ffe082}
+.hist-row.ok{border-color:#e4e8e0}
+.hist-date{font-weight:600;font-size:14px;color:#1a1a1a}
+.hist-tag{font-size:11px;background:#e8f5e9;color:#2e7d32;border-radius:5px;padding:2px 7px;font-weight:600;margin-left:6px}
+.hist-arrow{font-size:12px;color:#bbb}
+.export-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.hist-empty{text-align:center;padding:40px 20px;color:#bbb;font-size:14px}
+.zones-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap}
+.zone-edit-card{background:#fff;border:1.5px solid #e4e8e0;border-radius:12px;margin-bottom:8px;overflow:hidden}
+.zone-edit-row{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;gap:8px}
+.zone-edit-info{min-width:0}
+.zone-edit-name{font-weight:600;font-size:14px;color:#1a1a1a}
+.zone-edit-sub{font-size:12px;color:#aaa;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zone-edit-btns{display:flex;gap:5px;flex-shrink:0}
+.zone-form{padding:12px 13px;border-top:1px solid #f0f0f0;background:#fafaf8}
+.form-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.form-row{margin-bottom:8px}
+.form-label{font-size:11px;color:#888;display:block;margin-bottom:3px}
+.text-input{width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;background:#fff;outline:none}
+.text-input:focus{border-color:#1a2b1a}
+.priva-toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:#555;margin-bottom:12px;cursor:pointer}
+.priva-toggle input{width:16px;height:16px}
+.form-btns{display:flex;gap:8px}
+.badge-priva{font-size:10px;background:#e8eaf6;color:#3949ab;border-radius:5px;padding:2px 6px;font-weight:600;margin-left:5px}
+.settings-section{background:#fff;border:1.5px solid #e4e8e0;border-radius:12px;padding:14px;margin-bottom:14px}
+.settings-title{font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:4px}
+.settings-hint{font-size:12px;color:#888;margin-bottom:10px;line-height:1.5}
+.strategy-area{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;line-height:1.6;resize:vertical;min-height:220px;background:#fafaf8;outline:none}
+.strategy-area:focus{border-color:#1a2b1a}
+.settings-btns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.apikey-input{width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;background:#fafaf8;outline:none;margin-bottom:8px}
+.apikey-input:focus{border-color:#1a2b1a}
+.divider{border:none;border-top:1px solid #eee;margin:14px 0}
+.reorder-btn{padding:4px 9px;border:1.5px solid #e0e0e0;border-radius:6px;background:transparent;color:#666;font-size:13px}
+.reorder-btn:disabled{color:#ddd;cursor:default}
+.saved-toast{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#2e7d32;background:#e8f5e9;padding:3px 9px;border-radius:20px;font-weight:600;margin-left:6px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/preact@10.23.0/dist/preact.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/preact@10.23.0/hooks/dist/hooks.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+const {h,render:prender}=preact;
+const {useState,useEffect,useCallback,useRef}=preactHooks;
+const html=htm.bind(h);
+
+const LS = {
+  get:(k,def)=>{try{const v=localStorage.getItem(k);return v!=null?JSON.parse(v):def;}catch{return def;}},
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+};
+
+const todayStr=()=>new Date().toISOString().slice(0,10);
+const genId=()=>'Z_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const emptyZoneData=()=>({drip_ec:'',drip_ph:'',drip_ml:'',drain_ec:'',drain_ph:'',drain_ml:'',priva_ec:'',priva_ph:'',priva_ml:''});
+const emptyDay=(zones,date)=>{const d={date:date||todayStr(),notes:''};zones.forEach(z=>{d[z.id]=emptyZoneData();});return d;};
+
+const TARGET_EC=2.95,PH_LO=5.0,PH_HI=5.5;
+
+function calcDerived(z){
+  const dml=parseFloat(z.drip_ml)||0,drml=parseFloat(z.drain_ml)||0,tot=dml+drml;
+  const drain_pct=tot>0?(drml/tot)*100:null;
+  const dec=parseFloat(z.drip_ec),drac=parseFloat(z.drain_ec);
+  const ec_sum=!isNaN(dec)&&!isNaN(drac)&&drac>0?dec+drac:null;
+  return{drain_pct,ec_sum};
+}
+function ecStatus(v){if(v===null)return'neutral';if(v>TARGET_EC+0.5)return'alert';if(v>TARGET_EC)return'warn';return'ok';}
+function drainStatus(v){if(v===null)return'neutral';if(v<8||v>60)return'alert';if(v<15||v>50)return'warn';return'ok';}
+function phStatus(v){if(isNaN(v)||v<=0)return'neutral';if(v<4.0||v>7.0)return'alert';if(v<PH_LO||v>PH_HI)return'warn';return'ok';}
+function bestStatus(...ss){if(ss.includes('alert'))return'alert';if(ss.includes('warn'))return'warn';return'ok';}
+
+function Chip({val,label,status}){
+  if(val===null||val===undefined)return null;
+  return html`<span class=${'chip chip-'+status}>${label}: ${val}</span>`;
+}
+
+function ZoneCard({zone,data,onChange}){
+  const [open,setOpen]=useState(true);
+  const d=data||emptyZoneData();
+  const der=calcDerived(d);
+  const es=ecStatus(der.ec_sum),ds=drainStatus(der.drain_pct),ps=phStatus(parseFloat(d.drip_ph));
+  const overall=bestStatus(es,ds,ps);
+  const ecVal=der.ec_sum!==null?der.ec_sum.toFixed(2):null;
+  const drVal=der.drain_pct!==null?der.drain_pct.toFixed(0)+'%':null;
+  const inp=(field,val)=>onChange(zone.id,field,val);
+
+  return html`
+  <div class=${'card '+overall}>
+    <button class="card-head" onClick=${()=>setOpen(o=>!o)}>
+      <div class="card-head-left">
+        <span class=${'zone-dot '+overall}></span>
+        <span class="zone-name">${zone.label}</span>
+        <span class="zone-valve">${zone.valve}</span>
+      </div>
+      <div class="card-chips">
+        ${ecVal!==null?html`<span class=${'chip chip-'+es}>EC∑: ${ecVal}</span>`:null}
+        ${drVal!==null?html`<span class=${'chip chip-'+ds}>Dr: ${drVal}</span>`:null}
+        <span class="chevron">${open?'▲':'▼'}</span>
+      </div>
+    </button>
+    <div class=${'card-body '+(open?'open':'')}>
+      ${zone.location?html`<div class="zone-loc">${zone.location}</div>`:null}
+      <div class="row2">
+        ${[['Drip','drip'],['Drain','drain']].map(([lbl,pfx])=>html`
+        <div>
+          <div class="field-group-label">${lbl}</div>
+          <div class="field-grid">
+            ${[['EC','_ec','1.40'],['pH','_ph','5.2'],['mL','_ml','500']].map(([fl,sf,ph])=>{
+              const fk=pfx+sf;
+              const isPhAlert=fk==='drip_ph'&&phStatus(parseFloat(d[fk]))==='alert';
+              return html`<div>
+                <span class="field-label">${fl}</span>
+                <input type="number" step="0.01" class=${isPhAlert?'ph-alert':''} value=${d[fk]}
+                  onInput=${e=>inp(fk,e.target.value)} placeholder=${ph}/>
+              </div>`;
+            })}
+          </div>
+        </div>`)}
+      </div>
+      ${zone.hasPriva?html`
+      <div class="priva-box">
+        <div class="priva-label">Drain – Priva sensor</div>
+        <div class="field-grid">
+          ${[['EC','priva_ec'],['pH','priva_ph'],['mL','priva_ml']].map(([fl,fk])=>html`<div>
+            <span class="field-label">${fl}</span>
+            <input type="number" step="0.01" value=${d[fk]} onInput=${e=>inp(fk,e.target.value)} placeholder="—"/>
+          </div>`)}
+        </div>
+      </div>`:null}
+    </div>
+  </div>`;
+}
+
+const DEFAULT_ZONES=[
+  {id:'Z1N',label:'Zone 1 North',valve:'Valve 1',location:'2nd Tunnel, 3rd row North, 14 drippers',variety:'Florida Beauty – Ambient',hasPriva:false},
+  {id:'Z1S',label:'Zone 1 South',valve:'Valve 1',location:'1st Tunnel, 4th row South, 14 drippers',variety:'Florida Beauty – Ambient',hasPriva:false},
+  {id:'Z2N',label:'Zone 2 North',valve:'Valve 2',location:'6th Tunnel, 3rd row North, 13 drippers',variety:'Florida Beauty – 250cc',hasPriva:false},
+  {id:'Z2S',label:'Zone 2 South',valve:'Valve 2',location:'7th Tunnel, 3rd row South, 12 drippers',variety:'Florida Beauty – 250cc',hasPriva:true},
+  {id:'Z3N',label:'Zone 3 North',valve:'Valve 3',location:'12th Tunnel, 3rd row North, 21 drippers',variety:'Florida Beauty – 250cc',hasPriva:false},
+  {id:'Z3S',label:'Zone 3 South',valve:'Valve 4',location:'12th Tunnel, 2nd row South, 18 drippers',variety:'Florida Beauty – 250cc',hasPriva:false},
+  {id:'Z4N',label:'Zone 4 North',valve:'Valve 5',location:'18th Tunnel, 3rd row North, 17 drippers',variety:'Florida Beauty – 135cc',hasPriva:false},
+  {id:'Z4S',label:'Zone 4 South',valve:'Valve 6',location:'16th Tunnel, 3rd row South, 17 drippers',variety:'Florida Beauty – 135cc',hasPriva:false},
+  {id:'Z5N',label:'Zone 5 North',valve:'Valve 8',location:'Tunnel TBD',variety:'Florida Beauty',hasPriva:false},
+  {id:'Z5S',label:'Zone 5 South',valve:'Valve 7',location:'22nd Tunnel, 5th row South, 15 drippers',variety:'Florida Beauty',hasPriva:false},
+];
+
+const DEFAULT_STRATEGY=`You are advising Kevin Howe, operator of Howe Family Farms, Elgin County Ontario. Day-neutral strawberries (Florida Beauty, Albion) in tabletop tunnels. Priva irrigation controller.
+
+TARGETS:
+- EC sum (drip EC + drain EC) = 2.95 mS
+- Drip pH: 5.0–5.5
+- Drain %: ~20% (flag if below 10% or above 55%)
+
+PRIVA LEVERS: rest time between irrigations, volume per irrigation, feed EC adjustment.
+
+FOCUS AREAS:
+1. Lead with any critical alerts (pH crash, very low drain %)
+2. Flag Zone 2 South specifically — it has a history of elevated EC and low drain %
+3. If drain EC is climbing 3+ consecutive days, recommend sending water sample to lab for fertilizer recipe adjustment
+4. Suggest specific Priva adjustments per zone (shorten rest time, increase volume, reduce feed EC)
+5. End with one overall priority action for the day
+
+Keep it to 5–6 bullet points. Farmer-direct tone. No preamble or sign-off.`;
+
+function exportCSV(entries,zones,filename){
+  const hdrs=['Date','Zone','Valve','Drip_EC','Drip_pH','Drip_mL','Drain_EC','Drain_pH','Drain_mL','Drain_%','EC_Sum','Priva_EC','Priva_pH','Priva_mL','Notes'];
+  const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
+  const rows=[hdrs.join(',')];
+  for(const entry of entries){
+    for(const zone of zones){
+      const d=entry[zone.id]||emptyZoneData();
+      const der=calcDerived(d);
+      rows.push([entry.date,esc(zone.label),esc(zone.valve),
+        d.drip_ec||'',d.drip_ph||'',d.drip_ml||'',
+        d.drain_ec||'',d.drain_ph||'',d.drain_ml||'',
+        der.drain_pct!==null?der.drain_pct.toFixed(1):'',
+        der.ec_sum!==null?der.ec_sum.toFixed(2):'',
+        d.priva_ec||'',d.priva_ph||'',d.priva_ml||'',
+        esc(entry.notes||'')].join(','));
+    }
+  }
+  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
+}
+
+function buildPrompt(entry,zones,strategy){
+  const lines=zones.map(z=>{
+    const d=entry[z.id]||emptyZoneData();
+    const der=calcDerived(d);
+    const dec=parseFloat(d.drip_ec),dph=parseFloat(d.drip_ph),drac=parseFloat(d.drain_ec),draph=parseFloat(d.drain_ph);
+    if(isNaN(dec))return null;
+    return `${z.label} (${z.valve}): drip EC=${dec.toFixed(2)} pH=${isNaN(dph)?'—':dph.toFixed(2)} ${d.drip_ml||0}mL | drain EC=${isNaN(drac)?'—':drac.toFixed(2)} pH=${isNaN(draph)?'—':draph.toFixed(2)} ${d.drain_ml||0}mL | drain%=${der.drain_pct!==null?der.drain_pct.toFixed(0)+'%':'—'} | EC∑=${der.ec_sum!==null?der.ec_sum.toFixed(2):'—'}`;
+  }).filter(Boolean).join('\n');
+  return `${strategy}\n\nToday's readings (${entry.date}):\n${lines}${entry.notes?'\nTech notes: '+entry.notes:''}`;
+}
+
+function ZoneEditor({zones,onSave}){
+  const [local,setLocal]=useState(zones.map(z=>({...z})));
+  const [editId,setEditId]=useState(null);
+  const [draft,setDraft]=useState(null);
+  const [dirty,setDirty]=useState(false);
+  const startEdit=z=>{setEditId(z.id);setDraft({...z});};
+  const cancelEdit=()=>{setEditId(null);setDraft(null);};
+  const saveEdit=()=>{setLocal(l=>l.map(z=>z.id===editId?{...draft}:z));setEditId(null);setDraft(null);setDirty(true);};
+  const addZone=()=>{const nz={id:genId(),label:'New Zone',valve:'Valve —',location:'',variety:'',hasPriva:false};setLocal(l=>[...l,nz]);setEditId(nz.id);setDraft({...nz});setDirty(true);};
+  const delZone=id=>{if(!confirm('Remove this zone? Saved readings are not deleted.'))return;setLocal(l=>l.filter(z=>z.id!==id));setDirty(true);};
+  const move=(id,dir)=>{setLocal(l=>{const i=l.findIndex(z=>z.id===id);if(i<0)return l;const n=[...l];const s=i+dir;if(s<0||s>=n.length)return l;[n[i],n[s]]=[n[s],n[i]];return n;});setDirty(true);};
+
+  return html`
+  <div>
+    <div class="zones-header">
+      <span style="font-size:13px;color:#888">${local.length} zones</span>
+      <div style="display:flex;gap:8px">
+        ${dirty?html`<button class="btn btn-sm" onClick=${()=>{onSave(local);setDirty(false);}}>Save changes</button>`:null}
+        <button class="btn btn-sm btn-outline" onClick=${addZone}>+ Add zone</button>
+      </div>
+    </div>
+    ${local.map((z,i)=>html`
+    <div class="zone-edit-card" key=${z.id}>
+      ${editId===z.id?html`
+      <div class="zone-form">
+        <div class="form-grid2">
+          <div><label class="form-label">Zone label</label><input class="text-input" value=${draft.label} onInput=${e=>setDraft(d=>({...d,label:e.target.value}))} placeholder="Zone 1 North"/></div>
+          <div><label class="form-label">Valve</label><input class="text-input" value=${draft.valve} onInput=${e=>setDraft(d=>({...d,valve:e.target.value}))} placeholder="Valve 1"/></div>
+        </div>
+        <div class="form-row"><label class="form-label">Location / description</label><input class="text-input" value=${draft.location} onInput=${e=>setDraft(d=>({...d,location:e.target.value}))} placeholder="e.g. 2nd Tunnel, 3rd row North, 14 drippers"/></div>
+        <div class="form-row"><label class="form-label">Variety</label><input class="text-input" value=${draft.variety} onInput=${e=>setDraft(d=>({...d,variety:e.target.value}))} placeholder="e.g. Florida Beauty – 250cc"/></div>
+        <label class="priva-toggle"><input type="checkbox" checked=${!!draft.hasPriva} onChange=${e=>setDraft(d=>({...d,hasPriva:e.target.checked}))}/> Has Priva drain sensor (second drain reading)</label>
+        <div class="form-btns">
+          <button class="btn btn-sm" onClick=${saveEdit}>Done</button>
+          <button class="btn btn-sm btn-outline" onClick=${cancelEdit}>Cancel</button>
+        </div>
+      </div>`:html`
+      <div class="zone-edit-row">
+        <div class="zone-edit-info">
+          <div class="zone-edit-name">${z.label} <span style="font-size:11px;color:#aaa;font-weight:400">${z.valve}</span>${z.hasPriva?html`<span class="badge-priva">Priva</span>`:null}</div>
+          ${z.location?html`<div class="zone-edit-sub">${z.location}</div>`:null}
+        </div>
+        <div class="zone-edit-btns">
+          <button class="reorder-btn" onClick=${()=>move(z.id,-1)} disabled=${i===0}>↑</button>
+          <button class="reorder-btn" onClick=${()=>move(z.id,1)} disabled=${i===local.length-1}>↓</button>
+          <button class="btn btn-sm btn-outline" onClick=${()=>startEdit(z)}>Edit</button>
+          <button class="btn btn-sm btn-danger" onClick=${()=>delZone(z.id)}>✕</button>
+        </div>
+      </div>`}
+    </div>`)}
+  </div>`;
+}
+
+function App(){
+  const [zones,setZones]=useState(()=>LS.get('hff:zones',DEFAULT_ZONES));
+  const [entries,setEntries]=useState(()=>LS.get('hff:entries',{}));
+  const [date,setDate]=useState(todayStr);
+  const [view,setView]=useState('entry');
+  const [apiKey,setApiKey]=useState(()=>LS.get('hff:apikey',''));
+  const [strategy,setStrategy]=useState(()=>LS.get('hff:strategy',DEFAULT_STRATEGY));
+  const [aiOut,setAiOut]=useState('');
+  const [aiLoading,setAiLoading]=useState(false);
+  const [saved,setSaved]=useState(false);
+  const [keyDraft,setKeyDraft]=useState(()=>LS.get('hff:apikey',''));
+  const [stratDraft,setStratDraft]=useState(()=>LS.get('hff:strategy',DEFAULT_STRATEGY));
+
+  const entry=entries[date]||emptyDay(zones,date);
+  const history=Object.values(entries).sort((a,b)=>b.date.localeCompare(a.date));
+
+  const updateZoneField=useCallback((zoneId,field,val)=>{
+    setEntries(es=>{
+      const prev=es[date]||emptyDay(zones,date);
+      const updated={...prev,[zoneId]:{...(prev[zoneId]||emptyZoneData()),[field]:val}};
+      return {...es,[date]:updated};
+    });
+    setSaved(false);
+  },[date,zones]);
+
+  const saveEntry=()=>{
+    LS.set('hff:entries',{...entries,[date]:entry});
+    setSaved(true);
+  };
+
+  const saveZones=newZones=>{
+    setZones(newZones);
+    LS.set('hff:zones',newZones);
+  };
+
+  // Compute alerts/warnings
+  const allDerived=zones.map(z=>{
+    const d=entry[z.id]||emptyZoneData();
+    const der=calcDerived(d);
+    const ph=parseFloat(d.drip_ph);
+    const es=ecStatus(der.ec_sum),ds=drainStatus(der.drain_pct),ps=phStatus(ph);
+    return{zone:z,der,es,ds,ps,overall:bestStatus(es,ds,ps)};
+  });
+  const alerts=allDerived.filter(x=>x.overall==='alert');
+  const warns=allDerived.filter(x=>x.overall==='warn'&&x.overall!=='alert');
+
+  const runAI=async()=>{
+    if(!apiKey){alert('Add your Anthropic API key in Settings first.');return;}
+    setAiLoading(true);setAiOut('');
+    try{
+      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:buildPrompt(entry,zones,strategy)}]})});
+      const d=await r.json();
+      if(d.error)setAiOut('API error: '+d.error.message);
+      else setAiOut(d.content?.[0]?.text||'No response.');
+    }catch(e){setAiOut('Error: '+e.message);}
+    setAiLoading(false);
+  };
+
+  const TABS=[{id:'entry',label:'Today'},{id:'history',label:'History'},{id:'zones',label:'Zones'},{id:'settings',label:'Settings'}];
+
+  return html`
+  <div>
+    <div class="header">
+      <div><div class="header-sub">Howe Family Farms</div><div class="header-title">Irrigation Monitor</div></div>
+      <div class="tab-bar">
+        ${TABS.map(t=>html`<button key=${t.id} class=${'tab'+(view===t.id?' active':'')} onClick=${()=>setView(t.id)}>${t.label}</button>`)}
+      </div>
+    </div>
+
+    <div class="main">
+
+    ${view==='entry'?html`
+      <div class="date-row">
+        <input type="date" value=${date} onChange=${e=>{setDate(e.target.value);setSaved(false);setAiOut('');}}/>
+        <button class=${'btn'+(saved?' btn-saved':'')} onClick=${saveEntry}>${saved?'✓ Saved':'Save'}</button>
+      </div>
+
+      ${alerts.length>0?html`<div class="flag-box alert">
+        <div class="flag-title alert">⚠ Alerts — ${alerts.length} zone${alerts.length>1?'s':''}</div>
+        ${alerts.map(({zone,der,es,ds,ps})=>{
+          const d=entry[zone.id]||emptyZoneData(),issues=[];
+          if(es==='alert')issues.push('EC∑ '+(der.ec_sum?.toFixed(2)||''));
+          if(ds==='alert')issues.push('Drain '+(der.drain_pct?.toFixed(0)||'')+'%');
+          if(ps==='alert')issues.push('Drip pH '+(parseFloat(d.drip_ph)||''));
+          return html`<div class="flag-item alert">• ${zone.label}: ${issues.join(' · ')}</div>`;
+        })}
+      </div>`:null}
+
+      ${warns.length>0?html`<div class="flag-box warn">
+        <div class="flag-title warn">Caution — ${warns.length} zone${warns.length>1?'s':''}</div>
+        ${warns.map(({zone,der,es,ds,ps})=>{
+          const d=entry[zone.id]||emptyZoneData(),issues=[];
+          if(es==='warn')issues.push('EC∑ '+(der.ec_sum?.toFixed(2)||''));
+          if(ds==='warn')issues.push('Drain '+(der.drain_pct?.toFixed(0)||'')+'%');
+          if(ps==='warn')issues.push('Drip pH '+(parseFloat(d.drip_ph)||''));
+          return html`<div class="flag-item warn">• ${zone.label}: ${issues.join(' · ')}</div>`;
+        })}
+      </div>`:null}
+
+      ${zones.map(zone=>html`<${ZoneCard} key=${zone.id} zone=${zone} data=${entry[zone.id]} onChange=${updateZoneField}/>`)}
+
+      <textarea class="notes-area" placeholder="Tech notes: bucket issues, hot day, maintenance…" value=${entry.notes}
+        onInput=${e=>setEntries(es=>({...es,[date]:{...(es[date]||emptyDay(zones,date)),notes:e.target.value}}))}></textarea>
+
+      <div class="ai-box">
+        <div class="section-label">AI Advisor</div>
+        <div class="ai-hint">Analyses today's readings and suggests Priva adjustments. Save first, then generate. Edit focus areas in Settings.</div>
+        <button class="btn" onClick=${runAI} disabled=${aiLoading}>${aiLoading?'Generating…':'Generate briefing ↗'}</button>
+        ${!apiKey?html`<div style="font-size:12px;color:#e65100;margin-top:6px">⚠ No API key set — go to Settings tab to add one.</div>`:null}
+        ${aiOut?html`<div class="ai-output">${aiOut}</div>`:null}
+      </div>
+    `:null}
+
+    ${view==='history'?html`
+      <div class="export-row">
+        <button class="btn btn-sm btn-outline" onClick=${()=>exportCSV([entry],zones,'irrigation_'+date+'.csv')}>↓ Export today</button>
+        <button class="btn btn-sm" onClick=${()=>exportCSV(history,zones,'irrigation_season_'+todayStr()+'.csv')} disabled=${history.length===0}>↓ Export all history</button>
+      </div>
+      <div style="font-size:13px;color:#aaa;margin-bottom:12px">${history.length} day${history.length!==1?'s':''} saved</div>
+      ${history.length===0?html`<div class="hist-empty">No saved entries yet.</div>`:null}
+      ${history.map(h=>{
+        const flags=zones.flatMap(z=>{const der=calcDerived(h[z.id]||emptyZoneData());const f=[];
+          if(der.ec_sum!==null&&der.ec_sum>TARGET_EC+0.5)f.push('alert');else if(der.ec_sum!==null&&der.ec_sum>TARGET_EC)f.push('warn');
+          const ph=parseFloat((h[z.id]||{}).drip_ph);if(!isNaN(ph)&&(ph<4||ph>7))f.push('alert');return f;});
+        const lvl=flags.includes('alert')?'alert':flags.includes('warn')?'warn':'ok';
+        const ds=new Date(h.date+'T12:00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
+        return html`<button class=${'hist-row '+lvl} key=${h.date} onClick=${()=>{setDate(h.date);setSaved(true);setAiOut('');setView('entry');}}>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class=${'zone-dot '+lvl}></span>
+            <span class="hist-date">${ds}</span>
+            ${h.date===todayStr()?html`<span class="hist-tag">today</span>`:null}
+          </div>
+          <span class="hist-arrow">→</span>
+        </button>`;
+      })}
+    `:null}
+
+    ${view==='zones'?html`<${ZoneEditor} zones=${zones} onSave=${saveZones}/>`:null}
+
+    ${view==='settings'?html`
+      <div class="settings-section">
+        <div class="settings-title">Anthropic API Key</div>
+        <div class="settings-hint">Required for AI briefings. Get a free key at console.anthropic.com — the Haiku model costs less than $1/month at daily use.</div>
+        <input class="apikey-input" type="password" value=${keyDraft} onInput=${e=>setKeyDraft(e.target.value)} placeholder="sk-ant-…"/>
+        <button class="btn btn-sm" onClick=${()=>{setApiKey(keyDraft);LS.set('hff:apikey',keyDraft);}}>Save key</button>
+        ${apiKey?html`<span class="saved-toast">✓ Key saved</span>`:null}
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">AI Briefing Strategy</div>
+        <div class="settings-hint">This is the instruction set sent to the AI with every briefing. Edit it to change what it focuses on, flags, or recommends. Changes take effect immediately on the next briefing.</div>
+        <textarea class="strategy-area" value=${stratDraft} onInput=${e=>setStratDraft(e.target.value)}></textarea>
+        <div class="settings-btns">
+          <button class="btn btn-sm" onClick=${()=>{setStrategy(stratDraft);LS.set('hff:strategy',stratDraft);}}>Save strategy</button>
+          <button class="btn btn-sm btn-outline" onClick=${()=>{setStratDraft(DEFAULT_STRATEGY);setStrategy(DEFAULT_STRATEGY);LS.set('hff:strategy',DEFAULT_STRATEGY);}}>Reset to default</button>
+        </div>
+        <hr class="divider"/>
+        <div style="font-size:12px;color:#999;line-height:1.6"><strong>Examples of what you can add or change:</strong><br/>
+        • "Always flag if any zone's drain EC exceeds 3.0 mS"<br/>
+        • "Compare today's EC sum to yesterday's for each zone and flag increases &gt; 0.3"<br/>
+        • "Z2S is our chronic problem zone — always report it first"<br/>
+        • "Include a one-line weather note if I mention temperature in Tech notes"<br/>
+        • "Recommend lab sampling if drain EC has been above 2.5 for 3+ consecutive days"
+        </div>
+      </div>
+    `:null}
+
+    </div>
+  </div>`;
+}
+
+prender(html`<${App}/>`,document.getElementById('app'));
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
