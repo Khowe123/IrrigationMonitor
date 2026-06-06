@@ -128,6 +128,16 @@ textarea{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px
 .stage-ref-val{font-size:12px;font-weight:600;color:#1a2b1a}
 .storage-note{font-size:11px;color:#bbb;margin-top:6px}
 hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
+.sync-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:12px;white-space:nowrap}
+.sync-idle{background:rgba(255,255,255,.08);color:rgba(255,255,255,.4)}
+.sync-ing{background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);animation:spin .8s linear infinite}
+.sync-ok{background:rgba(100,220,130,.18);color:#9de09d}
+.sync-err{background:rgba(255,120,100,.18);color:#ffb3a7}
+.sync-off{background:rgba(255,255,255,.06);color:rgba(255,255,255,.25)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.test-result{font-size:12px;margin-top:6px;padding:5px 9px;border-radius:6px;font-weight:600}
+.test-ok{background:#e8f5e9;color:#2e7d32}
+.test-err{background:#ffebee;color:#c62828}
 </style>
 </head>
 <body>
@@ -323,6 +333,61 @@ function exportCSV(entries,zones,filename){
   const blob=new Blob([rows.join('\n')],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
 }
 
+// ── CLOUD SYNC (SUPABASE REST) ───────────────────────────────────────────────
+// No SDK needed — Supabase exposes a standard REST + PostgREST API
+async function sbReq(method,path,body,url,key){
+  const h={'apikey':key,'Authorization':'Bearer '+key,'Content-Type':'application/json'};
+  if(method==='POST')h['Prefer']='resolution=merge-duplicates';
+  return fetch(url+'/rest/v1/'+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+}
+
+async function sbPush(entry,cropId){
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  if(!url||!key)return{ok:false,reason:'not-configured'};
+  // Image binaries stay local; only sync metadata so payload stays small
+  const safe={...entry,attachments:(entry.attachments||[]).map(({id,caption,timestamp,name})=>({id,caption,timestamp,name}))};
+  const row={id:team+':'+cropId+':'+entry.date,team_id:team,crop:cropId,date:entry.date,entry_data:safe,updated_at:new Date().toISOString()};
+  try{const r=await sbReq('POST','irrigation_entries',row,url,key);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||'HTTP '+r.status};}
+    return{ok:true};}
+  catch(e){return{ok:false,reason:e.message};}
+}
+
+async function sbPull(cropId){
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  if(!url||!key)return null;
+  try{const path='irrigation_entries?team_id=eq.'+encodeURIComponent(team)+'&crop=eq.'+cropId+'&select=date,entry_data,updated_at&order=date.desc&limit=300';
+    const r=await sbReq('GET',path,null,url,key);
+    if(!r.ok)return null;
+    return await r.json();}
+  catch(e){return null;}
+}
+
+async function sbTest(){
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
+  if(!url||!key)return{ok:false,msg:'Enter URL and anon key first'};
+  try{const r=await sbReq('GET','irrigation_entries?limit=1',null,url,key);
+    if(r.status===401)return{ok:false,msg:'Invalid API key'};
+    if(r.status===404||r.status===400){const e=await r.json().catch(()=>({}));return{ok:false,msg:'Table not found — run the setup SQL in Supabase first. '+( e?.message||'')};}
+    if(!r.ok)return{ok:false,msg:'HTTP '+r.status};
+    return{ok:true,msg:'Connected ✓'};}
+  catch(e){return{ok:false,msg:e.message};}
+}
+
+// Merge a remote rows array into a local entries map (last-write-wins by updated_at vs _savedAt)
+function mergeRemote(localMap,rows){
+  const updated={...localMap};
+  (rows||[]).forEach(row=>{
+    const remote=row.entry_data;
+    if(!remote?.date)return;
+    const local=updated[remote.date];
+    const remoteTs=row.updated_at||'1970-01-01T00:00:00Z';
+    const localTs=local?._savedAt||'1970-01-01T00:00:00Z';
+    if(!local||remoteTs>localTs)updated[remote.date]=remote;
+  });
+  return updated;
+}
+
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
 function NInput({value,onChange,placeholder,flagged}){
   return html`<input type="number" step="0.01" value=${value} onInput=${e=>onChange(e.target.value)} placeholder=${placeholder} class=${flagged?'ph-alert':''}/>`;
@@ -420,6 +485,7 @@ function ZoneRow({zone,data,onChange}){
 
 function ImageSection({cropId,date,attachments,onUpdate,entry,zones,stageKey,cropLabel}){
   const[imgs,setImgs]=useState({});
+  const[missingImgs,setMissingImgs]=useState({});
   const[lb,setLb]=useState(null);
   const[analyzing,setAnalyzing]=useState(null);
   const[analyses,setAnalyses]=useState({});
@@ -427,9 +493,13 @@ function ImageSection({cropId,date,attachments,onUpdate,entry,zones,stageKey,cro
   const atts=attachments||[];
 
   useEffect(()=>{
-    const loaded={};
-    atts.forEach(att=>{const b=LS.get('hff:'+cropId+':imgdata:'+att.id,null);if(b)loaded[att.id]=b;});
+    const loaded={};const missing={};
+    atts.forEach(att=>{
+      const b=LS.get('hff:'+cropId+':imgdata:'+att.id,null);
+      if(b)loaded[att.id]=b;else missing[att.id]=true;
+    });
     setImgs(loaded);
+    setMissingImgs(missing);
     setAnalyses({});
   },[date,cropId]);
 
@@ -482,6 +552,11 @@ function ImageSection({cropId,date,attachments,onUpdate,entry,zones,stageKey,cro
         <div style=${{position:'relative'}}>
           <img class="img-thumb" src=${imgs[att.id]} onClick=${()=>setLb(att.id)} alt=${att.caption||att.name||''}/>
           <button onClick=${()=>delAtt(att.id)} style=${{position:'absolute',top:5,right:5,width:22,height:22,borderRadius:'50%',background:'rgba(0,0,0,.6)',color:'#fff',border:'none',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0}}>✕</button>
+        </div>`:missingImgs[att.id]?html`
+        <div class="img-ph" style=${{flexDirection:'column',gap:3,padding:'8px'}}>
+          <span>📸</span>
+          <span style=${{fontSize:10,textAlign:'center',color:'#bbb'}}>Saved on another device</span>
+          <button onClick=${()=>delAtt(att.id)} style=${{fontSize:10,color:'#e65100',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}}>Remove</button>
         </div>`:html`<div class="img-ph">Loading…</div>`}
         <div class="img-inner">
           <input class="img-cap" type="text" value=${att.caption} onInput=${e=>onUpdate(atts.map(a=>a.id===att.id?{...a,caption:e.target.value}:a))} placeholder="Zone, issue, date…"/>
@@ -586,15 +661,50 @@ function ZoneEditor({zones,onSave}){
   </div>`;
 }
 
-function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isStraw}){
+function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isStraw,syncSt,lastSync,onSyncNow}){
   const[apiDraft,setApiDraft]=useState(()=>LS.get('hff:apikey',''));
   const[stratDraft,setStratDraft]=useState(strat);
   const[apiSaved,setApiSaved]=useState(false);
   const[stratSaved,setStratSaved]=useState(false);
+  const[sbUrl,setSbUrl]=useState(()=>LS.get('hff:sb_url',''));
+  const[sbKey,setSbKey]=useState(()=>LS.get('hff:sb_key',''));
+  const[sbTeam,setSbTeam]=useState(()=>LS.get('hff:sb_team','howe-farms'));
+  const[sbSaved,setSbSaved]=useState(false);
+  const[testResult,setTestResult]=useState(null);
   const sg=GROWTH_STAGES[defaultStage];
   const kb=LS.kbUsed();
+  const lastSyncStr=lastSync?lastSync.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):null;
+
+  function saveSbConfig(){LS.set('hff:sb_url',sbUrl);LS.set('hff:sb_key',sbKey);LS.set('hff:sb_team',sbTeam);setSbSaved(true);setTimeout(()=>setSbSaved(false),2500);}
+  async function doTest(){setTestResult({testing:true});const r=await sbTest();setTestResult(r);}
+
   return html`
   <div>
+    <div class="sbox">
+      <div class="sbox-title">☁ Cloud Sync — Supabase</div>
+      <div class="sbox-hint">Enter your Supabase project URL, anon key, and a Farm ID (any short string both devices share). Binod saves on his phone; you pull the latest on yours. <strong>See the README.md in the zip for 5-minute setup instructions.</strong></div>
+      <label class="fl" style=${{fontSize:11,marginTop:2}}>Supabase Project URL</label>
+      <input class="apikey-in" type="url" value=${sbUrl} onInput=${e=>setSbUrl(e.target.value)} placeholder="https://xxxxxxxxxxxx.supabase.co"/>
+      <label class="fl" style=${{fontSize:11}}>Anon / Public Key</label>
+      <input class="apikey-in" type="password" value=${sbKey} onInput=${e=>setSbKey(e.target.value)} placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"/>
+      <label class="fl" style=${{fontSize:11}}>Farm ID (same on all devices)</label>
+      <input class="apikey-in" type="text" value=${sbTeam} onInput=${e=>setSbTeam(e.target.value)} placeholder="howe-farms-2026"/>
+      <div style=${{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+        <button class="btn btn-sm" onClick=${saveSbConfig}>${sbSaved?'✓ Saved':'Save sync config'}</button>
+        <button class="btn btn-sm btn-out" onClick=${doTest}>Test connection</button>
+        ${onSyncNow?html`<button class="btn btn-sm btn-out" onClick=${onSyncNow} disabled=${syncSt==='syncing'}>↓ Pull latest now</button>`:null}
+      </div>
+      ${testResult&&!testResult.testing?html`<div class=${'test-result '+(testResult.ok?'test-ok':'test-err')}>${testResult.ok?'✓ '+testResult.msg:'✗ '+testResult.msg}</div>`:null}
+      ${testResult?.testing?html`<div class="test-result" style=${{background:'#f5f5f5',color:'#888'}}>Testing…</div>`:null}
+      ${lastSyncStr?html`<p style=${{fontSize:11,color:'#aaa',marginTop:6}}>Last sync: ${lastSyncStr}</p>`:null}
+      <hr class="divider"/>
+      <p style=${{fontSize:12,color:'#999',fontWeight:600,marginBottom:4}}>How it works</p>
+      <p style=${{fontSize:12,color:'#bbb',lineHeight:1.6}}>
+        Readings, notes and attachment metadata sync. Image files stay on each device (too large to sync).<br/>
+        Last-write-wins: if two people edit the same day, the most recently saved version is kept.<br/>
+        Works offline — saves locally and syncs when back online.
+      </p>
+    </div>
     <div class="sbox">
       <div class="sbox-title">Anthropic API Key</div>
       <div class="sbox-hint">Required for AI briefings and chart analysis. Get one free at console.anthropic.com — costs under $1/month at daily use.</div>
@@ -658,6 +768,9 @@ function App(){
   const[aiOut,setAiOut]=useState('');
   const[aiLoading,setAiLoading]=useState(false);
   const[saved,setSaved]=useState(false);
+  const[syncSt,setSyncSt]=useState('idle'); // idle|syncing|ok|err
+  const[lastSync,setLastSync]=useState(null);
+  const sbOn=()=>!!(LS.get('hff:sb_url','')&&LS.get('hff:sb_key',''));
 
   const crop=CROPS[cropId];
   const isStraw=cropId==='str';
@@ -669,6 +782,18 @@ function App(){
     const map={};LS.keys('hff:'+cropId+':d:').forEach(k=>{const e=LS.get(k,null);if(e&&e.date)map[e.date]=e;});setEntries(map);
     setStrat(LS.get('hff:'+cropId+':strat',crop.strat));
     setDefaultStage(LS.get('hff:'+cropId+':defstage','first_crop'));
+    // Pull from Supabase and merge with local (async, non-blocking)
+    if(sbOn()){
+      setSyncSt('syncing');
+      sbPull(cropId).then(rows=>{
+        if(rows){
+          const mapRef={};LS.keys('hff:'+cropId+':d:').forEach(k=>{const e=LS.get(k,null);if(e?.date)mapRef[e.date]=e;});
+          const merged=mergeRemote(mapRef,rows);
+          Object.values(merged).forEach(e=>{LS.set('hff:'+cropId+':d:'+e.date,e);});
+          setEntries(merged);setSyncSt('ok');setLastSync(new Date());
+        }else{setSyncSt('err');}
+      });
+    }
   },[cropId]);
 
   const entry=entries[date]||emptyDay(zones,date);
@@ -684,8 +809,27 @@ function App(){
   },[date,zones,cropId]);
 
   function saveEntry(){
-    LS.set('hff:'+cropId+':d:'+date,entry);
-    setEntries(es=>({...es,[date]:entry}));setSaved(true);
+    const ts=new Date().toISOString();
+    const stamped={...entry,_savedAt:ts};
+    LS.set('hff:'+cropId+':d:'+date,stamped);
+    setEntries(es=>({...es,[date]:stamped}));setSaved(true);
+    if(sbOn()){
+      setSyncSt('syncing');
+      sbPush(stamped,cropId).then(r=>{
+        if(r.ok){setSyncSt('ok');setLastSync(new Date());}
+        else setSyncSt('err');
+      });
+    }
+  }
+
+  async function syncNow(){
+    setSyncSt('syncing');
+    const rows=await sbPull(cropId);
+    if(rows){
+      const merged=mergeRemote({...entries},rows);
+      Object.values(merged).forEach(e=>{LS.set('hff:'+cropId+':d:'+e.date,e);});
+      setEntries(merged);setSyncSt('ok');setLastSync(new Date());
+    }else setSyncSt('err');
   }
 
   function saveZones(nz){setZones(nz);LS.set('hff:'+cropId+':zones',nz);}
@@ -743,11 +887,16 @@ function App(){
           <div class="hdr-sub" style=${{color:acc}}>Howe Family Farms</div>
           <div class="hdr-title">Irrigation Monitor</div>
         </div>
-        <div class="crop-tabs">
-          ${Object.values(CROPS).map(c=>html`
-          <button key=${c.id} class=${'ctab'+(cropId===c.id?' active':'')} style=${{borderColor:cropId===c.id?acc:'#444'}} onClick=${()=>setCropId(c.id)}>
-            ${c.emoji} ${c.label}
-          </button>`)}
+        <div style=${{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
+          <div class="crop-tabs">
+            ${Object.values(CROPS).map(c=>html`
+            <button key=${c.id} class=${'ctab'+(cropId===c.id?' active':'')} style=${{borderColor:cropId===c.id?acc:'#444'}} onClick=${()=>setCropId(c.id)}>
+              ${c.emoji} ${c.label}
+            </button>`)}
+          </div>
+          ${sbOn()?html`<span class=${'sync-pill '+(syncSt==='syncing'?'sync-ing':syncSt==='ok'?'sync-ok':syncSt==='err'?'sync-err':'sync-idle')}>
+            ${syncSt==='syncing'?'⟳':syncSt==='ok'?'☁ synced':syncSt==='err'?'⚠ sync error':'☁'}
+          </span>`:null}
         </div>
       </div>
       <div class="vtabs">
@@ -808,7 +957,8 @@ function App(){
 
       ${view==='settings'?html`
       <${SettingsView} strat=${strat} defaultStage=${defaultStage} onSaveStrat=${saveStrat}
-        onSaveStage=${saveDefStage} cropLabel=${crop.label} isStraw=${isStraw}/>`:null}
+        onSaveStage=${saveDefStage} cropLabel=${crop.label} isStraw=${isStraw}
+        syncSt=${syncSt} lastSync=${lastSync} onSyncNow=${syncNow}/>`:null}
     </div>
   </div>`;
 }
