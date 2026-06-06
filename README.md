@@ -1,63 +1,85 @@
-# Irrigation Monitor – Howe Family Farms
-## How to install on iPhone and Android
+# Irrigation Monitor — Howe Family Farms
+## Cloud Sync Setup (5 minutes, one-time)
 
-This is a Progressive Web App (PWA). It runs in any mobile browser and can be installed to your home screen like a native app. It works offline after the first load.
+### Step 1 — Create a free Supabase project
 
----
-
-## Step 1: Host the files (one-time setup, ~5 minutes)
-
-The app needs to live at an HTTPS web address. **GitHub Pages is free and takes 5 minutes.**
-
-1. Go to [github.com](https://github.com) and create a free account if you don't have one
-2. Click **New repository** → name it `irrigation-monitor` → set to **Public** → click **Create repository**
-3. Click **uploading an existing file** and drag in all four files:
-   - `index.html`
-   - `manifest.json`
-   - `sw.js`
-   - `icon.svg`
-4. Click **Commit changes**
-5. Go to **Settings → Pages → Source** → select `main` branch → click **Save**
-6. After ~60 seconds your app is live at: `https://YOUR-USERNAME.github.io/irrigation-monitor`
+1. Go to **supabase.com** and sign up with your email (free)
+2. Click **New Project** → choose any name (e.g. "hff-irrigation")
+3. Set a database password (save it somewhere — you won't need it again)
+4. Wait ~1 minute for the project to spin up
 
 ---
 
-## Step 2: Install on iPhone (Safari)
+### Step 2 — Create the database table
 
-1. Open Safari and go to your GitHub Pages URL
-2. Tap the **Share** button (box with arrow pointing up)
-3. Scroll down and tap **Add to Home Screen**
-4. Tap **Add** — the app icon appears on your home screen
-5. Open it — it runs full-screen like a native app
-
----
-
-## Step 3: Install on Android (Chrome)
-
-1. Open Chrome and go to your GitHub Pages URL
-2. Tap the three-dot menu (⋮) → **Add to Home screen** (or Chrome may show an install banner automatically)
-3. Tap **Install** or **Add**
-4. The app icon appears on your home screen
+1. In your Supabase project, click **SQL Editor** in the left sidebar
+2. Click **New query**
+3. Paste the entire contents of **setup.sql** (included in this zip)
+4. Click **Run** — you should see "Success. No rows returned"
 
 ---
 
-## Step 4: Set up the AI Advisor
+### Step 3 — Get your credentials
 
-The AI briefing feature requires an Anthropic API key.
-
-1. Go to [console.anthropic.com](https://console.anthropic.com) → sign up for free
-2. Click **API Keys** → **Create Key** → copy it
-3. Open the app → go to **Settings** tab → paste the key → tap **Save key**
-4. Done. At daily farm use the cost is under $1/month.
+1. Click **Project Settings** (gear icon, bottom left) → **API**
+2. Copy:
+   - **Project URL** — looks like `https://xxxxxxxxxxxx.supabase.co`
+   - **Anon / public key** — a long JWT string starting with `eyJ...`
 
 ---
 
-## Updating the app
+### Step 4 — Configure the app on each device
 
-If you receive a new `index.html` file with improvements, just upload it to the same GitHub repository (drag and drop over the existing file). The app updates automatically within a few minutes.
+On **every phone** that will use the app (Kevin's and Binod's):
+
+1. Open the app and tap **Settings**
+2. Scroll to **Cloud Sync — Supabase**
+3. Enter:
+   - **Supabase Project URL** — paste from Step 3
+   - **Anon / Public Key** — paste from Step 3
+   - **Farm ID** — type a short shared name, e.g. `howe-farms-2026`
+     *(must be identical on all devices — this is what links them together)*
+4. Tap **Save sync config**
+5. Tap **Test connection** — should say "Connected ✓"
 
 ---
 
-## Data & privacy
+### How sync works day-to-day
 
-All farm data is stored locally on the device using browser localStorage. Nothing is sent anywhere except the Anthropic API when you tap "Generate briefing" — and only the day's readings are sent, no farm identifiers.
+- **Binod** enters readings on Android → taps **Save** → data saves locally AND pushes to Supabase instantly
+- **Kevin** opens the app → it automatically pulls Binod's latest entries when the app loads
+- The **☁ synced** indicator (top right of header) turns green when sync is up to date
+- If there's no internet, data saves locally and syncs when connection returns
+- Tap **Settings → Pull latest now** to force a manual sync at any time
+
+---
+
+### What syncs and what doesn't
+
+| Syncs ✓ | Stays local ✗ |
+|---------|--------------|
+| All EC, pH, mL readings | Soilsense/Priva screenshots |
+| Drain % (corrected) | Image files attached in the app |
+| Notes and tech notes | |
+| Zone stage assignments | |
+| History for all dates | |
+
+Screenshots attached on Binod's phone show as "📸 Saved on another device" on Kevin's phone — they don't transfer. Kevin can attach his own charts from his phone.
+
+---
+
+## GitHub Pages deployment
+
+Drag **index.html**, **manifest.json**, **sw.js**, and **icon.svg** into your GitHub repository, overwriting the existing files. GitHub Pages rebuilds automatically within ~1 minute.
+
+**Install on iPhone:** Safari → open your GitHub Pages URL → Share → Add to Home Screen
+
+**Install on Android:** Chrome → open URL → three-dot menu → Add to Home Screen
+
+---
+
+## Security note
+
+The Supabase anon key is safe to include in the app. It's designed to be public — Supabase anon keys only allow what Row Level Security policies permit. The `setup.sql` configures the table to allow read/write with the anon key. Your Farm ID (e.g. `howe-farms-2026`) acts as a namespace so your data is separate from anyone else using the same Supabase project.
+
+For a private farm app with two trusted users, this is appropriate. If you ever need to revoke access, you can change the Farm ID on both devices and the old entries become inaccessible.
