@@ -10,8 +10,7 @@
 <meta name="theme-color" content="#1a2b1a">
 <title>Irrigation Monitor – Howe Family Farms</title>
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-512.png">
-<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon.svg">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:#f0f2ee}
@@ -170,24 +169,27 @@ const STAGE_COLORS={wet_up:{bg:'#e8eaf6',co:'#3949ab'},to_flowering:{bg:'#fff8e1
 
 // ── ZONE PRESETS ──────────────────────────────────────────────────────────────
 // Stages set June 2026 — update each zone as it advances through the season
+// drain% = drain_ml ÷ (drip_ml × drainDrippers) × 100
+// drip is always measured from 1 emitter; drain is collected over drainDrippers emitters
 const STR_ZONES=[
-  {id:'Z1N',label:'Zone 1 North',valve:'Valve 1',location:'2nd Tunnel, 3rd row North, 14 drippers',variety:'Florida Beauty – Ambient',hasPriva:false,stage:'first_crop'},
-  {id:'Z1S',label:'Zone 1 South',valve:'Valve 1',location:'1st Tunnel, 4th row South, 14 drippers',variety:'Florida Beauty – Ambient',hasPriva:false,stage:'first_crop'},
-  {id:'Z2N',label:'Zone 2 North',valve:'Valve 2',location:'6th Tunnel, 3rd row North, 13 drippers',variety:'Florida Beauty – 250cc',hasPriva:false,stage:'to_fruit'},
-  {id:'Z2S',label:'Zone 2 South',valve:'Valve 2',location:'7th Tunnel, 3rd row South, 12 drippers',variety:'Florida Beauty – 250cc',hasPriva:true,stage:'to_fruit'},
-  {id:'Z3N',label:'Zone 3 North',valve:'Valve 3',location:'12th Tunnel, 3rd row North, 21 drippers',variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering'},
-  {id:'Z3S',label:'Zone 3 South',valve:'Valve 4',location:'12th Tunnel, 2nd row South, 18 drippers',variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering'},
-  {id:'Z4N',label:'Zone 4 North',valve:'Valve 5',location:'18th Tunnel, 3rd row North, 17 drippers',variety:'Florida Beauty – 135cc',hasPriva:false,stage:'to_fruit'},
-  {id:'Z4S',label:'Zone 4 South',valve:'Valve 6',location:'16th Tunnel, 3rd row South, 17 drippers',variety:'Florida Beauty – 135cc',hasPriva:false,stage:'to_fruit'},
-  {id:'Z5N',label:'Zone 5 North',valve:'Valve 8',location:'135cc late trays – 10% bloom',variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering'},
-  {id:'Z5S',label:'Zone 5 South',valve:'Valve 7',location:'22nd Tunnel, 5th row South, 15 drippers',variety:'Florida Beauty – Ambient',hasPriva:false,stage:'first_crop'},
+  {id:'Z1N',label:'Zone 1 North', valve:'Valve 1',location:'2nd Tunnel, 3rd row North',   variety:'Florida Beauty – Ambient',   hasPriva:false,stage:'first_crop', drainDrippers:13},
+  {id:'Z1S',label:'Zone 1 South', valve:'Valve 1',location:'1st Tunnel, 4th row South',    variety:'Florida Beauty – Ambient',   hasPriva:false,stage:'first_crop', drainDrippers:13},
+  {id:'Z2N',label:'Zone 2 North', valve:'Valve 2',location:'6th Tunnel, 3rd row North',    variety:'Florida Beauty – 250cc',     hasPriva:false,stage:'to_fruit',   drainDrippers:13},
+  {id:'Z2S',label:'Zone 2 South', valve:'Valve 2',location:'7th Tunnel, 3rd row South',    variety:'Florida Beauty – 250cc',     hasPriva:true, stage:'to_fruit',   drainDrippers:12,privaDrippers:12},
+  {id:'Z3N',label:'Zone 3 North', valve:'Valve 3',location:'12th Tunnel, 3rd row North',   variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering',drainDrippers:21},
+  {id:'Z3S',label:'Zone 3 South', valve:'Valve 4',location:'12th Tunnel, 2nd row South',   variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering',drainDrippers:18},
+  {id:'Z4N',label:'Zone 4 North', valve:'Valve 5',location:'18th Tunnel, 3rd row North',   variety:'Florida Beauty – 135cc',     hasPriva:false,stage:'to_fruit',   drainDrippers:17},
+  {id:'Z4S',label:'Zone 4 South', valve:'Valve 6',location:'16th Tunnel, 3rd row South',   variety:'Florida Beauty – 135cc',     hasPriva:false,stage:'to_fruit',   drainDrippers:17},
+  {id:'Z5N',label:'Zone 5 North', valve:'Valve 8',location:'135cc late trays – 10% bloom',variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering',drainDrippers:null},
+  {id:'Z5S',label:'Zone 5 South', valve:'Valve 7',location:'22nd Tunnel, 5th row South',   variety:'Florida Beauty – Ambient',   hasPriva:false,stage:'first_crop', drainDrippers:15},
 ];
 const RAS_ZONES=[
-  {id:'R11',label:'1.1 Blackberry Propagation',valve:'Block 1.1',location:'Propagation block',variety:'Blackberry',hasPriva:false,stage:null},
-  {id:'R12',label:'1.2 Bay 6',valve:'Block 1.2',location:'Bay 6',variety:'Raspberry',hasPriva:false,stage:null},
-  {id:'R13',label:'1.3 Bay 5',valve:'Block 1.3',location:'Bay 5',variety:'Raspberry',hasPriva:false,stage:null},
-  {id:'R14',label:'1.4 Bay 1 & 2',valve:'Block 1.4',location:'Bay 1 & 2',variety:'Raspberry',hasPriva:false,stage:null},
-  {id:'R16',label:'1.6 Bay 3',valve:'Block 1.6',location:'Bay 3',variety:'Raspberry',hasPriva:false,stage:null},
+  // drainDrippers: number of drippers the drain bucket collects from (drip is always 1 emitter)
+  {id:'R11',label:'1.1 Blackberry Propagation',valve:'Block 1.1',location:'Propagation block',variety:'Blackberry', hasPriva:false,stage:null,drainDrippers:8},
+  {id:'R12',label:'1.2 Bay 6',               valve:'Block 1.2',location:'Bay 6',             variety:'Raspberry', hasPriva:false,stage:null,drainDrippers:16},
+  {id:'R13',label:'1.3 Bay 5',               valve:'Block 1.3',location:'Bay 5',             variety:'Raspberry', hasPriva:false,stage:null,drainDrippers:16},
+  {id:'R14',label:'1.4 Bay 1 & 2',           valve:'Block 1.4',location:'Bay 1 & 2',         variety:'Raspberry', hasPriva:false,stage:null,drainDrippers:10},
+  {id:'R16',label:'1.6 Bay 3',               valve:'Block 1.6',location:'Bay 3',             variety:'Raspberry', hasPriva:false,stage:null,drainDrippers:20},
 ];
 
 // ── AI STRATEGIES ─────────────────────────────────────────────────────────────
@@ -231,15 +233,22 @@ const CROPS={
 const emptyZone=()=>({drip_ec:'',drip_ph:'',drip_ml:'',drain_ec:'',drain_ph:'',drain_ml:'',priva_ec:'',priva_ph:'',priva_ml:''});
 const emptyDay=(zones,dt)=>{const d={date:dt||todayStr(),notes:'',attachments:[]};zones.forEach(z=>{d[z.id]=emptyZone();});return d;};
 
-function calcDer(z={}){
-  const dm=parseFloat(z.drip_ml)||0,rm=parseFloat(z.drain_ml)||0,tot=dm+rm;
-  return{pct:tot>0?(rm/tot)*100:null,ecSum:(()=>{const a=parseFloat(z.drip_ec),b=parseFloat(z.drain_ec);return(!isNaN(a)&&!isNaN(b)&&a>0&&b>0)?a+b:null;})()};
+// CORRECTED: drain% = drain_ml / (drip_ml * N) * 100
+// drip from 1 emitter, drain from N emitters
+function calcDer(z={},drainDrippers,privaDrippers){
+  const dm=parseFloat(z.drip_ml)||0,rm=parseFloat(z.drain_ml)||0;
+  const pct=(dm>0&&rm>=0&&drainDrippers>0)?rm/(dm*drainDrippers)*100:null;
+  const a=parseFloat(z.drip_ec),b=parseFloat(z.drain_ec);
+  const ecSum=(!isNaN(a)&&!isNaN(b)&&a>0&&b>0)?a+b:null;
+  const prm=parseFloat(z.priva_ml)||0;
+  const privaPct=(dm>0&&prm>0&&privaDrippers>0)?prm/(dm*privaDrippers)*100:null;
+  return{pct,ecSum,privaPct};
 }
 
-function zoneStatus(data={},stageKey){
+function zoneStatus(data={},stageKey,drainDrippers,privaDrippers){
   const sg=GROWTH_STAGES[stageKey];
   if(!sg){
-    const der=calcDer(data),ph=parseFloat(data.drip_ph);
+    const der=calcDer(data,drainDrippers,privaDrippers),ph=parseFloat(data.drip_ph);
     if(der.ecSum>3.5||(der.pct!==null&&der.pct<8))return{overall:'danger',flags:[]};
     if(der.ecSum>3.0||(der.pct!==null&&der.pct<15))return{overall:'warn',flags:[]};
     if(!isNaN(ph)&&(ph<5.0||ph>7.0))return{overall:'danger',flags:[]};
@@ -247,7 +256,7 @@ function zoneStatus(data={},stageKey){
     return{overall:'ok',flags:[]};
   }
   const dec=parseFloat(data.drip_ec),drc=parseFloat(data.drain_ec),ph=parseFloat(data.drip_ph);
-  const der=calcDer(data);
+  const der=calcDer(data,drainDrippers,privaDrippers);
   const flags=[];let overall='ok';
   if(!isNaN(drc)&&drc>0&&drc>sg.reduceIf){flags.push({lvl:'danger',msg:`Drain EC ${drc.toFixed(2)} > ${sg.reduceIf} → Reduce drip EC`});overall='danger';}
   else if(!isNaN(drc)&&drc>0&&drc>sg.drain[1]){flags.push({lvl:'warn',msg:`Drain EC ${drc.toFixed(2)} above target (${sg.drain[0]}–${sg.drain[1]})`});if(overall!=='danger')overall='warn';}
@@ -284,7 +293,7 @@ async function analyzeChart(b64,entry,zones,cropLabel,stageKey){
   if(!apiKey)return'⚠ No API key set. Add it in Settings.';
   const sg=GROWTH_STAGES[stageKey];
   const stageCtx=sg?`Current stage: ${sg.label}. Drip ${sg.drip[0]}–${sg.drip[1]} mS | Drain ${sg.drain[0]}–${sg.drain[1]} mS | R/O ${sg.pct[0]}–${sg.pct[1]}% | Reduce if drain>${sg.reduceIf}${sg.raiseIf?` | Raise if drain<${sg.raiseIf}`:''}`:stageKey?'':null;
-  const zLines=zones.map(z=>{const d=entry[z.id]||emptyZone();const dec=parseFloat(d.drip_ec);if(isNaN(dec)||dec<=0)return null;const der=calcDer(d);const drc=parseFloat(d.drain_ec);return`${z.label}: drip EC=${dec.toFixed(2)} | drain EC=${isNaN(drc)?'—':drc.toFixed(2)} | drain%=${der.pct!==null?der.pct.toFixed(0)+'%':'—'}`;}).filter(Boolean).join('\n');
+  const zLines=zones.map(z=>{const d=entry[z.id]||emptyZone();const dec=parseFloat(d.drip_ec);if(isNaN(dec)||dec<=0)return null;const der=calcDer(d,z.drainDrippers,z.privaDrippers);const drc=parseFloat(d.drain_ec);return`${z.label}: drip EC=${dec.toFixed(2)} | drain EC=${isNaN(drc)?'—':drc.toFixed(2)} | drain%=${der.pct!==null?der.pct.toFixed(0)+'%':'—'}`;}).filter(Boolean).join('\n');
   const prompt=`You are analysing a substrate or irrigation sensor chart for Kevin Howe, Howe Family Farms, Elgin County Ontario. Florida Beauty day-neutral strawberries, coir tabletop tunnels, Priva controller. Well water EC 0.53 mS; Na/Cl accumulate in drain water over season.${stageCtx?'\n'+stageCtx:''}${zLines?'\n\nToday\'s manual readings:\n'+zLines:''}\n\nAnalyse the chart:\n1. Substrate moisture trend — stable, trending dry, over-irrigated?\n2. Run-off pattern — adequate flushing?\n3. Notable events: moisture crashes, EC spikes, irrigation gaps\n4. Priva adjustments this chart suggests\n5. Does this chart explain or contradict today's manual readings?\n\nMax 5 bullets. Farmer-direct.`;
   const parts=b64.split(',');
   try{
@@ -301,7 +310,7 @@ function buildPrompt(entry,zones,stratTpl,cropLabel,defaultStage){
   const stagesByZone=zones.map(z=>{const sk=z.stage||defaultStage;const sg=GROWTH_STAGES[sk];if(!sg)return null;return`  ${z.label}: ${sg.label} (drip ${sg.drip[0]}–${sg.drip[1]} mS, drain ${sg.drain[0]}–${sg.drain[1]} mS, R/O ${sg.pct[0]}–${sg.pct[1]}%, reduce>${sg.reduceIf}${sg.raiseIf?`, raise<${sg.raiseIf}`:''})`;}).filter(Boolean).join('\n');
   const stageBlock=stagesByZone?`Per-zone stages and targets:\n${stagesByZone}`:'Stage targets not configured.';
   const strat=stratTpl.replace('{STAGE_BLOCK}',stageBlock);
-  const lines=zones.map(z=>{const d=entry[z.id]||emptyZone();const dec=parseFloat(d.drip_ec);if(isNaN(dec)||dec<=0)return null;const sk=z.stage||defaultStage;const sg=GROWTH_STAGES[sk];const der=calcDer(d);const st=zoneStatus(d,sk);const dph=parseFloat(d.drip_ph),drc=parseFloat(d.drain_ec),drph=parseFloat(d.drain_ph);const flagStr=st.flags.length>0?` ⚑ ${st.flags.map(f=>f.msg).join('; ')}`:' ✓';const stgLbl=sg?` [${sg.label}]`:'';return`${z.label}${stgLbl}: drip EC=${dec.toFixed(2)} pH=${isNaN(dph)?'—':dph.toFixed(2)} | drain EC=${isNaN(drc)?'—':drc.toFixed(2)} pH=${isNaN(drph)?'—':drph.toFixed(2)} | drain%=${der.pct!==null?der.pct.toFixed(0)+'%':'—'}${flagStr}`;}).filter(Boolean).join('\n');
+  const lines=zones.map(z=>{const d=entry[z.id]||emptyZone();const dec=parseFloat(d.drip_ec);if(isNaN(dec)||dec<=0)return null;const sk=z.stage||defaultStage;const sg=GROWTH_STAGES[sk];const der=calcDer(d,z.drainDrippers,z.privaDrippers);const st=zoneStatus(d,sk,z.drainDrippers,z.privaDrippers);const dph=parseFloat(d.drip_ph),drc=parseFloat(d.drain_ec),drph=parseFloat(d.drain_ph);const flagStr=st.flags.length>0?` ⚑ ${st.flags.map(f=>f.msg).join('; ')}`:' ✓';const stgLbl=sg?` [${sg.label}]`:'';return`${z.label}${stgLbl}: drip EC=${dec.toFixed(2)} pH=${isNaN(dph)?'—':dph.toFixed(2)} | drain EC=${isNaN(drc)?'—':drc.toFixed(2)} pH=${isNaN(drph)?'—':drph.toFixed(2)} | drain%=${der.pct!==null?der.pct.toFixed(0)+'%':'—'}${flagStr}`;}).filter(Boolean).join('\n');
   if(!lines)return null;
   return`${strat}\n\nDate: ${entry.date} | Crop: ${cropLabel}\n${lines}${entry.notes?'\nTech notes: '+entry.notes:''}`;
 }
@@ -310,7 +319,7 @@ function exportCSV(entries,zones,filename){
   const hdr=['Date','Zone','Valve','Stage','Drip_EC','Drip_pH','Drip_mL','Drain_EC','Drain_pH','Drain_mL','Drain_%','EC_Sum','Priva_EC','Priva_pH','Priva_mL','Notes'];
   const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
   const rows=[hdr.join(',')];
-  for(const e of entries){for(const z of zones){const d=e[z.id]||emptyZone();const der=calcDer(d);const sg=GROWTH_STAGES[z.stage]?.label||'';rows.push([e.date,esc(z.label),esc(z.valve),esc(sg),d.drip_ec||'',d.drip_ph||'',d.drip_ml||'',d.drain_ec||'',d.drain_ph||'',d.drain_ml||'',der.pct!==null?der.pct.toFixed(1):'',der.ecSum!==null?der.ecSum.toFixed(2):'',d.priva_ec||'',d.priva_ph||'',d.priva_ml||'',esc(e.notes||'')].join(','));}}
+  for(const e of entries){for(const z of zones){const d=e[z.id]||emptyZone();const der=calcDer(d,z.drainDrippers,z.privaDrippers);const sg=GROWTH_STAGES[z.stage]?.label||'';rows.push([e.date,esc(z.label),esc(z.valve),esc(sg),d.drip_ec||'',d.drip_ph||'',d.drip_ml||'',d.drain_ec||'',d.drain_ph||'',d.drain_ml||'',der.pct!==null?der.pct.toFixed(1):'',der.ecSum!==null?der.ecSum.toFixed(2):'',d.priva_ec||'',d.priva_ph||'',d.priva_ml||'',esc(e.notes||'')].join(','));}}
   const blob=new Blob([rows.join('\n')],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
 }
 
@@ -357,13 +366,14 @@ function SeasonOverview({zones,onChangeStage}){
 function ZoneRow({zone,data,onChange}){
   const d=data||emptyZone();
   const sk=zone.stage||null;
-  const{overall,flags}=zoneStatus(d,sk);
+  const dd=zone.drainDrippers||null,pd=zone.privaDrippers||null;
+  const{overall,flags}=zoneStatus(d,sk,dd,pd);
   const[open,setOpen]=useState(true);
   const upd=(f,v)=>onChange(zone.id,f,v);
   const dot=overall==='danger'?'danger':overall==='warn'?'warn':'';
   const bd=overall==='danger'?'#ef9a9a':overall==='warn'?'#ffe082':'#e8e8e8';
   const sg=GROWTH_STAGES[sk];
-  const der=calcDer(d);
+  const der=calcDer(d,dd,pd);
   return html`
   <div class="card" style=${{borderColor:bd}}>
     <button class=${'card-head '+overall} onClick=${()=>setOpen(o=>!o)}>
@@ -376,6 +386,7 @@ function ZoneRow({zone,data,onChange}){
       <div class="chips">
         ${flags.slice(0,2).map((f,i)=>html`<span key=${i} class=${'chip chip-'+f.lvl}>${f.msg}</span>`)}
         ${flags.length===0&&der.pct!==null?html`<span class="chip chip-neutral">Dr ${der.pct.toFixed(0)}%</span>`:null}
+        ${!dd&&flags.length===0?html`<span class="chip chip-warn">Dr ?%</span>`:null}
         <span class="chev">${open?'▲':'▼'}</span>
       </div>
     </button>
@@ -531,6 +542,21 @@ function ZoneEditor({zones,onSave}){
           </select>
           ${sg?html`<p style=${{fontSize:11,color:'#888',marginTop:4}}>Drip ${sg.drip[0]}–${sg.drip[1]} mS | Drain ${sg.drain[0]}–${sg.drain[1]} mS | R/O ${sg.pct[0]}–${sg.pct[1]}%</p>`:null}
         </div>
+        <div style=${{marginBottom:10}}>
+          <div class="fg2" style=${{marginBottom:0}}>
+            <div>
+              <label class="fl" style=${{fontSize:11}}>Drain drippers <span style=${{color:'#e65100'}}>*required for drain%</span></label>
+              <input type="number" min="1" max="50" class="ti" style=${{fontSize:15}}
+                value=${draft.drainDrippers||''} onInput=${e=>setDraft(d=>({...d,drainDrippers:parseInt(e.target.value)||null}))} placeholder="e.g. 13"/>
+            </div>
+            ${draft.hasPriva?html`<div>
+              <label class="fl" style=${{fontSize:11}}>Priva drain drippers</label>
+              <input type="number" min="1" max="50" class="ti" style=${{fontSize:15}}
+                value=${draft.privaDrippers||''} onInput=${e=>setDraft(d=>({...d,privaDrippers:parseInt(e.target.value)||null}))} placeholder="e.g. 12"/>
+            </div>`:null}
+          </div>
+          <p style=${{fontSize:11,color:'#888',marginTop:4}}>Number of emitters over which you collect drain (drip is always from 1). drain% = drain_mL ÷ (drip_mL × N).</p>
+        </div>
         <label style=${{display:'flex',alignItems:'center',gap:7,fontSize:13,color:'#555',cursor:'pointer',marginBottom:12}}>
           <input type="checkbox" checked=${!!draft.hasPriva} onChange=${e=>setDraft(d=>({...d,hasPriva:e.target.checked}))} style=${{width:16,height:16}}/>
           Has Priva drain sensor
@@ -547,6 +573,7 @@ function ZoneEditor({zones,onSave}){
           ${z.hasPriva?html`<span class="badge-priva">Priva</span>`:null}
           ${z.stage&&GROWTH_STAGES[z.stage]?html`<span class="sbadge" style=${{marginLeft:6}}>${GROWTH_STAGES[z.stage].label.split(' (')[0]}</span>`:null}
           ${z.location?html`<div style=${{fontSize:11,color:'#bbb',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${z.location}</div>`:null}
+          ${z.drainDrippers?html`<div style=${{fontSize:10,color:'#aaa',marginTop:1}}>Drain from ${z.drainDrippers} drippers${z.privaDrippers?' | Priva from '+z.privaDrippers:''}</div>`:html`<div style=${{fontSize:10,color:'#e65100',fontWeight:600,marginTop:1}}>⚠ Set drain dripper count (required)</div>`}
         </div>
         <div style=${{display:'flex',gap:4,flexShrink:0}}>
           <button class="reorder-btn" onClick=${()=>move(z.id,-1)} disabled=${i===0}>↑</button>
@@ -689,11 +716,11 @@ function App(){
   }
 
   // Alert summary
-  const allD=zones.map(z=>{const d=entry[z.id]||emptyZone();const{overall,flags}=zoneStatus(d,isStraw?(z.stage||null):null);return{zone:z,overall,flags};});
+  const allD=zones.map(z=>{const d=entry[z.id]||emptyZone();const{overall,flags}=zoneStatus(d,isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return{zone:z,overall,flags};});
   const alerts=allD.filter(x=>x.overall==='danger');
   const warns=allD.filter(x=>x.overall==='warn');
 
-  const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
+  const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
 
   const{bg,acc,act,actTxt}=crop;
   const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'settings',lbl:'Settings'}];
