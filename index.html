@@ -832,6 +832,31 @@ function App(){
     }else setSyncSt('err');
   }
 
+  // Switch view and auto-pull on History/Today if sync is configured
+  function switchView(v){
+    setView(v);
+    if(sbOn()&&(v==='history'||v==='entry')){
+      syncNow();
+    }
+  }
+
+  // Poll Supabase every 5 minutes while the app is open
+  useEffect(()=>{
+    if(!sbOn())return;
+    const id=setInterval(()=>{
+      sbPull(cropId).then(rows=>{
+        if(!rows)return;
+        setEntries(prev=>{
+          const merged=mergeRemote({...prev},rows);
+          Object.values(merged).forEach(e=>LS.set('hff:'+cropId+':d:'+e.date,e));
+          return merged;
+        });
+        setSyncSt('ok');setLastSync(new Date());
+      });
+    }, 5*60*1000); // every 5 minutes
+    return ()=>clearInterval(id);
+  },[cropId]);
+
   function saveZones(nz){setZones(nz);LS.set('hff:'+cropId+':zones',nz);}
 
   function updateZoneStage(zoneId,newStage){
@@ -901,7 +926,7 @@ function App(){
       </div>
       <div class="vtabs">
         ${TABS.map(t=>html`
-        <button key=${t.id} class="vtab" style=${{borderColor:view===t.id?acc:'#444',background:view===t.id?act:'transparent',color:view===t.id?actTxt:'#777'}} onClick=${()=>setView(t.id)}>
+        <button key=${t.id} class="vtab" style=${{borderColor:view===t.id?acc:'#444',background:view===t.id?act:'transparent',color:view===t.id?actTxt:'#777'}} onClick=${()=>switchView(t.id)}>
           ${t.lbl}
         </button>`)}
       </div>
@@ -912,6 +937,10 @@ function App(){
       <div>
         <div class="drow">
           <input type="date" value=${date} onChange=${e=>{setDate(e.target.value);setSaved(false);setAiOut('');}}/>
+          ${sbOn()?html`<button title="Pull latest from cloud" onClick=${syncNow} disabled=${syncSt==='syncing'}
+            style=${{padding:'9px 12px',borderRadius:8,border:'1.5px solid #ddd',background:'#fff',fontSize:15,cursor:syncSt==='syncing'?'default':'pointer',color:syncSt==='err'?'#c62828':syncSt==='ok'?'#2e7d32':'#666',flexShrink:0}}>
+            ${syncSt==='syncing'?'⟳':syncSt==='err'?'⚠':'☁'}
+          </button>`:null}
           <button class=${'btn'+(saved?' saved':'')} onClick=${saveEntry}>${saved?'✓ Saved':'Save'}</button>
         </div>
         ${isStraw?html`<${SeasonOverview} zones=${zones} onChangeStage=${updateZoneStage}/>`:null}
@@ -937,7 +966,9 @@ function App(){
           <button class="btn btn-sm" disabled=${history.length===0} style=${{opacity:history.length===0?0.4:1}} onClick=${()=>exportCSV(history,zones,cropId+'_irrigation_season_'+todayStr()+'.csv')}>↓ Export all history</button>
         </div>
         <p style=${{fontSize:13,color:'#aaa',marginBottom:10}}>${history.length} day${history.length!==1?'s':''} saved — ${crop.label}</p>
-        ${history.length===0?html`<div class="empty">No saved entries yet for this crop.</div>`:null}
+        ${history.length===0?html`<div class="empty">
+          ${sbOn()?'No entries yet — if Binod has saved data, tap ☁ on the Today tab to pull from cloud.':'No saved entries yet for this crop.'}
+        </div>`:null}
         ${history.map(h=>{
           const lvl=histLvl(h);
           return html`
