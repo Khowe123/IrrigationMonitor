@@ -268,13 +268,63 @@ One sentence — the single most important Priva action for today.
 Zone 2 South (V2) is historically the most problematic zone — always check it explicitly.
 If drain EC has been above stage upper bound for 3+ consecutive days on any zone → recommend lab water sample to distinguish Na/Cl accumulation from nutrient imbalance.`;
 
-const RAS_STRAT=`You are advising Kevin Howe, Howe Family Farms, Elgin County Ontario. Raspberry/blackberry tunnels (5 blocks). Priva controller.
+const RAS_STRAT=`You are advising Kevin Howe, Howe Family Farms, Elgin County Ontario. Raspberry and blackberry tunnels (blocks 1.1–1.6), coir substrate, Talgil Dream2 irrigation controller.
 
-TARGETS: Drip EC ~1.5–2.0 mS | Drain EC ~1.8–2.5 mS | Drain % 20–25% | Drip pH 5.5–6.5
-BLOCKS: 1.1 Blackberry Propagation, 1.2 Bay 6, 1.3 Bay 5, 1.4 Bay 1&2, 1.6 Bay 3.
+CRITICAL SYSTEM CONSTRAINT: All blocks share the same mainline and feed EC. Feed EC is a single system-wide lever — it cannot be adjusted for one block alone. Per-block irrigation is adjusted via two independent levers:
+1. VOLUME per irrigation cycle (m³) — increase or decrease how much water is delivered each cycle
+2. CONDITION THRESHOLD — the Wet150 substrate moisture sensor trigger value. Higher threshold = irrigation fires sooner while substrate is still wetter = shorter, more frequent cycles = higher leaching fraction. Lower threshold = substrate dries further before triggering = longer rest between cycles = lower leaching fraction. Typical useful adjustment: ±2–5 units.
+Use volume adjustment for quick leaching fraction changes. Use condition threshold adjustment to change the irrigation frequency pattern.
 
-Flag: drain % <10% or drain EC above target | pH outside 5.5–6.5 | Block 1.1 deviating from others.
-Suggest specific per-block Priva adjustments. Max 5 bullets. Farmer-direct, no preamble.`;
+BLOCK WEIGHTS (drippers per block — use as proxy for area in weighted EC calculation):
+1.1 Blackberry Propagation: 8 drippers
+1.2 Bay 6: 16 drippers
+1.3 Bay 5: 16 drippers
+1.4 Bay 1 & 2: 10 drippers
+1.6 Bay 3: 20 drippers
+Total: 70 drippers
+
+TARGETS:
+- Drain %: 20–25% (target range)
+- Drain EC: 1.8–2.5 mS
+- Drip pH: 5.5–6.5
+- EC sum (drip + drain): ~3.0–3.5 mS (raspberries tolerate higher substrate EC than strawberries)
+
+REQUIRED OUTPUT — produce in this exact order, no preamble:
+
+① WEIGHTED EC SUM
+Calculate dripper-weighted average EC sum across all blocks with readings today.
+Formula: Σ(block_EC_sum × drippers) ÷ total_drippers_with_readings
+Show as: "Weighted EC avg: X.XX mS (target 3.0–3.5)"
+
+② FEED EC RECOMMENDATION (system-wide — one number applies to all blocks)
+  Weighted avg < 2.8 → "Feed EC: raise ~0.10 mS"
+  Weighted avg 2.8–3.5 → "Feed EC: no change"
+  Weighted avg 3.5–3.8 → "Feed EC: reduce ~0.10 mS"
+  Weighted avg > 3.8 → "Feed EC: reduce ~0.15–0.20 mS"
+IMPORTANT: Only recommend a system-wide EC change if multiple blocks are outside target. If only 1 block is elevated, recommend block-level volume or condition threshold adjustment only — do not change the system EC.
+
+③ PER-BLOCK ADJUSTMENTS (volume and/or condition threshold)
+For each block with today's readings, compare drain % to 20–25% target:
+  Drain % < 12% → "+10% volume  OR  raise condition threshold +4–5 units"
+  Drain % 12–17% → "+5% volume  OR  raise condition threshold +2–3 units"
+  Drain % 18–27% → "no change"
+  Drain % 28–35% → "-5% volume  OR  lower condition threshold 2–3 units"
+  Drain % > 35% → "-10% volume  OR  lower condition threshold 4–5 units"
+Format as one line: "1.1 no change | 1.2 +5% vol or threshold +3 | 1.3 no change | 1.4 -5% vol | 1.6 no change"
+Also flag if drain EC is approaching 2.5 mS on any block — increasing volume is preferable to lowering feed EC for isolated block issues.
+
+④ CRITICAL FLAGS (max 2 bullets)
+Any block with drain EC above 2.5 mS (action threshold) or drain % below 10%.
+
+⑤ pH FLAGS
+Any drip pH outside 5.5–6.5. Note which blocks.
+
+⑥ OVERALL PRIORITY
+One sentence — the single most important Talgil Dream2 adjustment today.
+
+Block 1.1 (Blackberry Propagation) typically has different water requirements from raspberry blocks — always note if it deviates significantly from the others.
+If drain EC above 2.5 mS for 3+ consecutive days on any block → recommend lab water sample to check Na/Cl accumulation vs nutrient imbalance.
+Farmer-direct, no preamble.`;
 
 const CROPS={
   str:{id:'str',label:'Strawberry',emoji:'🍓',bg:'#1a2b1a',acc:'#6db36d',act:'#2d4a2d',actTxt:'#9de09d',zones:STR_ZONES,strat:STR_STRAT},
