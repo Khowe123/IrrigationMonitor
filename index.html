@@ -145,6 +145,7 @@ hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
 <script src="https://cdn.jsdelivr.net/npm/preact@10.23.0/dist/preact.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/preact@10.23.0/hooks/dist/hooks.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 'use strict';
 const{h,render:prender}=preact;
@@ -207,19 +208,37 @@ const STR_STRAT=`You are advising Kevin Howe, Howe Family Farms. Florida Beauty 
 
 Per-zone growth stages and drain % targets: {STAGE_BLOCK}
 
-Produce a simple daily flag report. No preamble. No explanations. Two sections only:
+Valve bay weights (for weighted EC average):
+V1: 6 bays (Zone 1N + 1S) | V2: 10 bays (Zone 2N + 2S) | V3: 6 bays (Zone 3N)
+V4: 6 bays (Zone 3S) | V5: 7 bays (Zone 4N) | V6: 7 bays (Zone 4S)
+V8: 3 bays (Zone 5N) | V9: 3 bays (Zone 5S) | Total: 48 bays
 
-DRAIN %
-List every zone where today's drain % is outside its stage target range.
-Format each line as: • [Zone name]: X% (stage target Y–Z%)
-If all zones are within target write: • All zones within target
+Produce a simple daily report. No preamble. Three sections only:
 
-EC SUM
-List every zone where drip EC + drain EC is above 3.10 or below 2.85.
-Format each line as: • [Zone name]: X.XX mS (above/below 2.85–3.10)
-If all zones are within target write: • All zones within target
+DRAIN % — ALL ZONES
+Show every zone that has data today. One bullet per zone:
+• [Zone name]: X%
+Mark zones outside their stage target range by adding → BELOW TARGET (stage target Y–Z%) or → ABOVE TARGET (stage target Y–Z%) after the percentage.
+Show all zones even if within target.
 
-Nothing else.`;
+EC SUM FLAGS
+List only zones where drip EC + drain EC is above 3.10 or below 2.85.
+• [Zone name]: X.XX mS (above 3.10 / below 2.85)
+If none flagged: • All zones within target
+
+FEED EC RECOMMENDATION
+Calculate bay-weighted average EC sum:
+- V1 (6 bays): average EC sum of Zone 1N and 1S × 6
+- V2 (10 bays): average EC sum of Zone 2N and 2S × 10
+- V3 (6), V4 (6), V5 (7), V6 (7), V8 (3), V9 (3): single zone × bays
+- Divide total by bays with readings
+Then state ONE recommendation:
+  Weighted avg < 2.85 → Raise feed EC ~0.10 mS (weighted avg: X.XX mS)
+  Weighted avg 2.85–3.10 → No feed EC change needed (weighted avg: X.XX mS)
+  Weighted avg 3.10–3.30 → Reduce feed EC ~0.10 mS (weighted avg: X.XX mS)
+  Weighted avg 3.30–3.50 → Reduce feed EC ~0.15 mS (weighted avg: X.XX mS)
+  Weighted avg > 3.50 → Reduce feed EC ~0.20 mS (weighted avg: X.XX mS)
+If only 1–2 zones are above 3.10 but weighted avg is within 2.85–3.10: No system-wide EC change — note which zones need individual volume increase.`;
 
 const RAS_STRAT=`You are advising Kevin Howe, Howe Family Farms. Raspberry and blackberry blocks, coir substrate, Talgil Dream2 controller.
 
@@ -455,8 +474,15 @@ function ZoneRow({zone,data,onChange}){
         ${sg?html`<span class="sbadge">${sg.label.split(' (')[0].replace('Up to ','→').replace('During ','').replace('Between ','~').replace('Initial ','Init.')}</span>`:null}
       </div>
       <div class="chips">
-        ${flags.slice(0,2).map((f,i)=>html`<span key=${i} class=${'chip chip-'+f.lvl}>${f.msg}</span>`)}
-        ${flags.length===0&&der.pct!==null?html`<span class="chip chip-neutral">Dr ${der.pct.toFixed(0)}%</span>`:null}
+        ${(()=>{
+          const drainFlag=flags.find(f=>f.msg.includes('Drain')||f.msg.includes('drain'));
+          const drS=drainFlag?drainFlag.lvl:(der.pct!==null?'ok':'neutral');
+          const otherFlags=flags.filter(f=>!f.msg.includes('Drain')&&!f.msg.includes('drain'));
+          return html`
+            ${der.pct!==null?html`<span class=${'chip chip-'+(drS==='danger'?'danger':drS==='warn'?'warn':'neutral')}>Dr ${der.pct.toFixed(0)}%</span>`:null}
+            ${otherFlags.slice(0,1).map((f,i)=>html`<span key=${i} class=${'chip chip-'+f.lvl}>${f.msg}</span>`)}
+          `;
+        })()}
         ${!dd&&flags.length===0?html`<span class="chip chip-warn">Dr ?%</span>`:null}
         <span class="chev">${open?'▲':'▼'}</span>
       </div>
@@ -580,6 +606,78 @@ function ImageSection({cropId,date,attachments,onUpdate,entry,zones,stageKey,cro
       <img src=${imgs[lb]} onClick=${e=>e.stopPropagation()} alt=""/>
       <button class="lightbox-close" onClick=${()=>setLb(null)}>✕</button>
     </div>`:null}
+  </div>`;
+}
+
+
+// ── TREND CHART ───────────────────────────────────────────────────────────────
+function TrendChart({entries,zones}){
+  const d14=()=>{const d=new Date();d.setDate(d.getDate()-14);return d.toISOString().slice(0,10);};
+  const[from,setFrom]=useState(d14);
+  const[to,setTo]=useState(todayStr);
+  const[variable,setVariable]=useState('drain_pct');
+  const canvasRef=useRef(null);
+  const chartRef=useRef(null);
+  const VARS=[
+    {id:'drain_pct',label:'Drain %',   fn:(d,z)=>{const r=calcDer(d,z.drainDrippers,z.privaDrippers);return r.pct;}},
+    {id:'drip_ec',  label:'Drip EC',   fn:(d)=>{const v=parseFloat(d.drip_ec);return isNaN(v)||v<=0?null:v;}},
+    {id:'drain_ec', label:'Drain EC',  fn:(d)=>{const v=parseFloat(d.drain_ec);return isNaN(v)||v<=0?null:v;}},
+    {id:'drip_ph',  label:'Drip pH',   fn:(d)=>{const v=parseFloat(d.drip_ph);return isNaN(v)||v<=0?null:v;}},
+    {id:'drain_ph', label:'Drain pH',  fn:(d)=>{const v=parseFloat(d.drain_ph);return isNaN(v)||v<=0?null:v;}},
+    {id:'ec_sum',   label:'EC Sum',    fn:(d,z)=>{const r=calcDer(d,z.drainDrippers,z.privaDrippers);return r.ecSum;}},
+  ];
+  const COLORS=['#1976d2','#388e3c','#d32f2f','#f57c00','#7b1fa2','#0097a7','#689f38','#ffa000','#c2185b','#5d4037'];
+
+  useEffect(()=>{
+    if(!canvasRef.current||typeof Chart==='undefined')return;
+    const sorted=Object.values(entries)
+      .filter(e=>e&&e.date&&e.date>=from&&e.date<=to)
+      .sort((a,b)=>a.date.localeCompare(b.date));
+    if(sorted.length===0){if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}return;}
+    const labels=sorted.map(e=>fmtDate(e.date));
+    const varDef=VARS.find(v=>v.id===variable)||VARS[0];
+    const datasets=zones.map((zone,i)=>{
+      const data=sorted.map(entry=>{
+        const d=entry[zone.id];if(!d)return null;
+        const val=varDef.fn(d,zone);
+        return(val===null||val===undefined||isNaN(val))?null:parseFloat(parseFloat(val).toFixed(2));
+      });
+      const lbl=zone.label.replace('Zone ','Z').replace(' North','N').replace(' South','S').replace('1.','');
+      return{label:lbl,data,borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length]+'20',borderWidth:1.5,pointRadius:3,spanGaps:false,tension:0.15};
+    });
+    if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}
+    chartRef.current=new Chart(canvasRef.current,{type:'line',data:{labels,datasets},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}},
+        scales:{
+          y:{title:{display:true,text:varDef.label,font:{size:11}},grid:{color:'rgba(0,0,0,.05)'}},
+          x:{ticks:{maxRotation:40,font:{size:10}},grid:{color:'rgba(0,0,0,.03)'}}
+        }
+      }
+    });
+    return()=>{if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}};
+  },[from,to,variable,entries,zones]);
+
+  const cnt=Object.values(entries).filter(e=>e&&e.date&&e.date>=from&&e.date<=to).length;
+  return html`
+  <div style=${{background:'#fff',border:'1.5px solid #e8e8e8',borderRadius:12,padding:'12px 14px',marginBottom:14}}>
+    <p style=${{fontSize:11,fontWeight:700,color:'#555',letterSpacing:'.06em',textTransform:'uppercase',margin:'0 0 10px'}}>Trend Chart</p>
+    <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
+      <input type="date" value=${from} onChange=${e=>setFrom(e.target.value)}
+        style=${{flex:1,minWidth:110,padding:'7px 9px',border:'1.5px solid #ddd',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none',background:'#fafaf8'}}/>
+      <span style=${{fontSize:12,color:'#aaa',alignSelf:'center'}}>→</span>
+      <input type="date" value=${to} onChange=${e=>setTo(e.target.value)}
+        style=${{flex:1,minWidth:110,padding:'7px 9px',border:'1.5px solid #ddd',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none',background:'#fafal8'}}/>
+      <select value=${variable} onChange=${e=>setVariable(e.target.value)}
+        style=${{width:'100%',padding:'7px 9px',border:'1.5px solid #ddd',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none',background:'#fafaf8',cursor:'pointer'}}>
+        ${VARS.map(v=>html`<option key=${v.id} value=${v.id}>${v.label}</option>`)}
+      </select>
+    </div>
+    ${cnt===0
+      ?html`<p style=${{textAlign:'center',color:'#ccc',padding:'30px 0',fontSize:13}}>No entries in this date range</p>`
+      :html`<div style=${{position:'relative',height:260}}><canvas ref=${canvasRef}></canvas></div>
+            <p style=${{fontSize:10,color:'#ccc',marginTop:5,textAlign:'center'}}>${cnt} day${cnt!==1?'s':''} · tap legend labels to show/hide zones</p>`
+    }
   </div>`;
 }
 
@@ -967,6 +1065,7 @@ function App(){
 
       ${view==='history'?html`
       <div>
+        <${TrendChart} entries=${entries} zones=${zones}/>
         <div class="exp-row">
           <button class="btn btn-sm btn-out" onClick=${()=>exportCSV([entry],zones,cropId+'_irrigation_'+date+'.csv')}>↓ Export today</button>
           <button class="btn btn-sm" disabled=${history.length===0} style=${{opacity:history.length===0?0.4:1}} onClick=${()=>exportCSV(history,zones,cropId+'_irrigation_season_'+todayStr()+'.csv')}>↓ Export all history</button>
