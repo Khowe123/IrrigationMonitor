@@ -1031,6 +1031,42 @@ function SprayBrain(){
     if(url&&key){setSync('syncing');sbSprayDelete(ev.id).then(r=>setSync(r.ok?'ok':'err'));}
   }
 
+
+  function updateSprayAudit(eventId, patch){
+    const upd=spEvents.map(ev=>{
+      if(ev.id!==eventId)return ev;
+      const audit={...(ev.audit||{}),...patch};
+      const updated={...ev,audit,updated_at:new Date().toISOString()};
+      const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
+      if(url&&key){setSync('syncing');sbSprayPush(updated).then(r=>setSync(r.ok?'ok':'err'));}
+      return updated;
+    }).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+    setSE(upd);LS.set('hff:spray:events',upd);
+  }
+
+  function maxEventEAHD(ev){
+    const dates=(ev.products||[])
+      .filter(p=>p.type!=='N')
+      .map(p=>p.eahd||calcEAHD(ev.date,p.phi||0))
+      .filter(Boolean)
+      .sort();
+    return dates.length?dates[dates.length-1]:ev.date;
+  }
+
+  function exportAuditCSV(){
+    const rows=[['Date','Location','Acres','GPA','Product','PCP #','Rate/ac','PHI','EAHD','Harvest Delayed Until EAHD','Verified Date','Field and Packaging Inspected Before Harvest','Inspection Date','Applicator'].join(',')];
+    [...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).forEach(ev=>{
+      (ev.products||[]).filter(p=>p.type!=='N').forEach(prod=>{
+        const audit=ev.audit||{};
+        const cells=[ev.date,ev.loc,ev.acres,ev.gpa,prod.name,prod.pcp||'—',(prod.rate?prod.rate+prod.unit+'/ac':'—'),(prod.phi??'—')+'d',prod.eahd||calcEAHD(ev.date,prod.phi||0),audit.phiVerified?'YES':'NO',audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',audit.preHarvestInspectionDate||'',ev.applicator||''];
+        rows.push(cells.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(','));
+      });
+    });
+    const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=url;a.download='Howe_Farms_spray_audit_report_'+todayStr()+'.csv';a.click();URL.revokeObjectURL(url);
+  }
+
   async function runAI(){
     const apiKey=LS.get('hff:apikey','');
     if(!apiKey){setAO('⚠ No API key set — add it in Settings.');return;}
@@ -1084,6 +1120,7 @@ function SprayBrain(){
     <div class="sp-nav">
       <button class=${'sp-nb'+(spView==='season'?' sp-on':'')} onClick=${()=>setSV('season')}>📅<br/>Season</button>
       <button class=${'sp-nb'+(spView==='rotation'?' sp-on':'')} onClick=${()=>setSV('rotation')}>🔄<br/>Rotation</button>
+      <button class=${'sp-nb'+(spView==='audit'?' sp-on':'')} onClick=${()=>setSV('audit')}>✅<br/>Audit</button>
       <button class=${'sp-nb'+(spView==='build'?' sp-on':'')} onClick=${()=>setSV('build')}>✉️<br/>Build</button>
       <button class=${'sp-nb'+(spView==='ask'?' sp-on':'')} onClick=${()=>setSV('ask')}>💡<br/>Ask</button>
     </div>
@@ -1104,6 +1141,56 @@ function SprayBrain(){
       </div>
       <div class="sp-sec" style=${{marginTop:0}}>2026 spray history — newest first</div>
       ${sorted.map(ev=>html`<${SprayEvCard} key=${ev.id} ev=${ev} onEdit=${editSprayEvent} onDelete=${deleteSprayEvent}/>`)}
+    </div>
+
+
+    <div class=${'sp-screen'+(spView==='audit'?' sp-on':'')}>
+      <div class="sbox">
+        <div class="sbox-title">CanadaGAP Spray Audit Report</div>
+        <div class="sbox-hint">Use this report to show PCP #, PHI, EAHD, and your two manual harvest-release checks. Check the boxes only after harvest was delayed until the EAHD and the field/packaging inspection was completed before harvest started.</div>
+        <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
+          <button class="btn btn-sm btn-out" onClick=${exportAuditCSV}>↓ Export audit CSV</button>
+          <button class="btn btn-sm btn-out" onClick=${()=>window.print()}>Print page</button>
+        </div>
+        <div style=${{overflowX:'auto',border:'1.5px solid #e8e8e4',borderRadius:8}}>
+          <table class="sp-gap-table">
+            <thead><tr>
+              ${['Date','Location','Product','PCP #','Rate/ac','PHI','EAHD','Harvest delayed until EAHD','Field & packaging inspected before harvest','Applicator'].map(h=>html`<th key=${h}>${h}</th>`)}
+            </tr></thead>
+            <tbody>
+              {[...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).flatMap(ev=>
+                (ev.products||[]).filter(p=>p.type!=='N').map((prod,i)=>{
+                  const audit=ev.audit||{};
+                  const eahd=prod.eahd||calcEAHD(ev.date,prod.phi||0);
+                  return html`<tr key=${ev.id+'-'+i} style=${{background:audit.phiVerified&&audit.preHarvestInspection?'#f8fff8':'#fff'}}>
+                    <td>${ev.date}</td>
+                    <td>${ev.loc}${ev.note?' — '+ev.note:''}<br/><span style=${{color:'#aaa'}}>${ev.acres}ac · ${ev.gpa} GPA</span></td>
+                    <td>${prod.name}</td>
+                    <td>${prod.pcp||'—'}</td>
+                    <td>${prod.rate?prod.rate+prod.unit+'/ac':'—'}</td>
+                    <td>${prod.phi!==undefined?prod.phi+'d':'—'}</td>
+                    <td><strong>${eahd}</strong></td>
+                    <td>
+                      <label style=${{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
+                        <input type="checkbox" checked=${!!audit.phiVerified} onChange=${e=>updateSprayAudit(ev.id,{phiVerified:e.target.checked,phiVerifiedDate:e.target.checked?todayStr():''})}/>
+                        <span>${audit.phiVerified?'✓ '+(audit.phiVerifiedDate||'verified'):'Not verified'}</span>
+                      </label>
+                    </td>
+                    <td>
+                      <label style=${{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
+                        <input type="checkbox" checked=${!!audit.preHarvestInspection} onChange=${e=>updateSprayAudit(ev.id,{preHarvestInspection:e.target.checked,preHarvestInspectionDate:e.target.checked?todayStr():''})}/>
+                        <span>${audit.preHarvestInspection?'✓ '+(audit.preHarvestInspectionDate||'inspected'):'Not inspected'}</span>
+                      </label>
+                    </td>
+                    <td>${ev.applicator||''}</td>
+                  </tr>`;
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p style=${{fontSize:11,color:'#aaa',lineHeight:1.6,marginTop:8}}>Note: The checkboxes are saved with the spray event and synced to Supabase when sync is configured. PCP numbers depend on the product database being filled in for each product.</p>
+      </div>
     </div>
 
     <div class=${'sp-screen'+(spView==='rotation'?' sp-on':'')}>
