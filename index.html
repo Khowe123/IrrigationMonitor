@@ -138,6 +138,59 @@ hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
 .test-result{font-size:12px;margin-top:6px;padding:5px 9px;border-radius:6px;font-weight:600}
 .test-ok{background:#e8f5e9;color:#2e7d32}
 .test-err{background:#ffebee;color:#c62828}
+/* ── SPRAY BRAIN ─────────────────────────────────────────────────────────── */
+.sp-screen{display:none}.sp-screen.sp-on{display:block}
+.sp-nav{display:flex;border-bottom:1px solid #e8e8e8;margin-bottom:14px;background:#fff;position:sticky;top:64px;z-index:10}
+.sp-nb{flex:1;padding:9px 4px 7px;border:none;background:none;font-size:11px;color:#888;cursor:pointer;border-bottom:2px solid transparent;display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:600}
+.sp-nb span{font-size:16px}.sp-nb.sp-on{color:#1a2b1a;border-bottom:2px solid #1a2b1a}
+.sp-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.sp-stat{background:#f5f5f3;border-radius:10px;padding:10px 12px}
+.sp-stat .n{font-size:20px;font-weight:700;line-height:1}.sp-stat .l{font-size:10px;color:#888;margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
+.sp-flag{border-radius:8px;padding:9px 11px;margin-bottom:6px;font-size:12px;line-height:1.5;display:flex;gap:8px}
+.sp-flag strong{font-weight:600}
+.sp-fr{background:#ffebee;color:#c62828;border:1px solid #ef9a9a}
+.sp-fa{background:#fff8e1;color:#b36200;border:1px solid #ffe082}
+.sp-fg{background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7}
+.sp-ev{border:1.5px solid #e8e8e8;border-radius:10px;padding:10px 12px;margin-bottom:7px;background:#fff}
+.sp-ev-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.sp-ev-date{font-size:12px;font-weight:700}
+.sp-ev-meta{display:flex;gap:5px;align-items:center}
+.sp-loc-t{font-size:10px;background:#e8f5e9;color:#2e7d32;border-radius:5px;padding:2px 7px;font-weight:600}
+.sp-loc-f{font-size:10px;background:#e3f2fd;color:#0277bd;border-radius:5px;padding:2px 7px;font-weight:600}
+.sp-pills{display:flex;flex-wrap:wrap;gap:4px}
+.sp-pill{font-size:10px;padding:2px 7px;border-radius:12px;font-weight:600}
+.sp-pf{background:#e8f5e9;color:#2e7d32}.sp-pi{background:#fff8e1;color:#b36200}.sp-pn{background:#f5f5f5;color:#888}
+.sp-ev-foot{font-size:10px;color:#aaa;margin-top:5px}
+.sp-frac-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:4px}
+.sp-fc{border-radius:8px;padding:6px 5px;text-align:center;border:1px solid #e8e8e8}
+.sp-fc .g{font-size:11px;font-weight:700}.sp-fc .n2{font-size:9px;color:#666;margin-top:2px;line-height:1.3}.sp-fc .u{font-size:9px;margin-top:2px;font-weight:600}
+.sp-chi{background:#ffebee;border-color:#ef9a9a;color:#c62828}.sp-cmd{background:#fff8e1;border-color:#ffe082;color:#b36200}.sp-clo{background:#e8f5e9;border-color:#a5d6a7;color:#2e7d32}.sp-cno{background:#f5f5f5;color:#aaa}
+.sp-form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px}
+.sp-lbl{font-size:11px;color:#666;margin-bottom:3px;display:block;font-weight:600}
+.sp-sel{width:100%;padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;background:#fafaf8;outline:none}
+.sp-sel:focus{border-color:#1a2b1a}
+.sp-pe{border:1.5px solid #e8e8e8;border-radius:8px;padding:8px 10px;margin-bottom:6px;background:#fafaf8}
+.sp-pr{display:grid;grid-template-columns:1fr 68px 56px 22px;gap:6px;align-items:center}
+.sp-prate{font-size:11px;color:#888;margin-top:3px}
+.sp-pflag{font-size:10px;color:#c62828;margin-top:2px}
+.sp-addp{width:100%;background:none;border:1.5px dashed #ccc;border-radius:7px;padding:8px;font-size:12px;color:#888;cursor:pointer;margin-bottom:9px}
+.sp-addp:hover{background:#f5f5f3}
+.sp-rmb{background:none;border:none;cursor:pointer;color:#bbb;font-size:14px;padding:0;line-height:1}
+.sp-rmb:hover{color:#c62828}
+.sp-iwarn{background:#ffebee;border-radius:6px;padding:7px 10px;font-size:11px;color:#c62828;margin-top:6px;border:1px solid #ef9a9a}
+.sp-mono{background:#f5f5f3;border:1.5px solid #e8e8e8;border-radius:8px;padding:11px;font-size:12px;line-height:1.75;white-space:pre-wrap;font-family:'SF Mono','Fira Code',monospace;overflow-x:auto;margin-top:8px}
+.sp-cpb{background:none;border:1.5px solid #ddd;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:#666;float:right}
+.sp-cpb:hover{background:#f5f5f3}
+.sp-tinfo{font-size:11px;color:#888;margin-bottom:10px}
+.sp-frow3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:9px}
+.sp-filter-row{display:flex;gap:6px;margin-bottom:10px}
+.sp-fb{background:none;border:1.5px solid #ddd;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;color:#666;font-weight:600}
+.sp-fb.sp-on{background:#1a2b1a;color:#fff;border-color:#1a2b1a}
+.sp-sec{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#888;margin-bottom:8px;margin-top:14px}
+.sp-sec:first-child{margin-top:0}
+.sp-divider{border-top:1px solid #f0f0f0;margin:12px 0}
+.sp-ai-box{background:#f8faf6;border:1.5px solid #c8e6c9;border-radius:12px;padding:14px;margin-top:10px}
+.sp-ai-out{margin-top:10px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:12px;font-size:13px;line-height:1.7;white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -411,6 +464,431 @@ function mergeRemote(localMap,rows){
     if(!local||remoteTs>localTs)updated[remote.date]=remote;
   });
   return updated;
+}
+
+
+// ── SPRAY BRAIN — SUPABASE ────────────────────────────────────────────────────
+async function sbSprayPush(event){
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  if(!url||!key)return{ok:false,reason:'not-configured'};
+  const row={id:team+':spray:'+event.id,team_id:team,event_id:event.id,event_data:event,updated_at:new Date().toISOString()};
+  try{const r=await sbReq('POST','spray_events',row,url,key);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,msg:e?.message||'HTTP '+r.status};}
+    return{ok:true};}
+  catch(e){return{ok:false,reason:e.message};}
+}
+async function sbSprayPull(){
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  if(!url||!key)return null;
+  try{const path='spray_events?team_id=eq.'+encodeURIComponent(team)+'&select=event_data,updated_at&order=updated_at.desc&limit=500';
+    const r=await sbReq('GET',path,null,url,key);
+    if(!r.ok)return null;return await r.json();}
+  catch(e){return null;}
+}
+
+// ── SPRAY BRAIN — PRODUCT DATABASE ────────────────────────────────────────────
+const SPRAY_PROD_DB={
+  'Switch':        {frac:'9+12',irac:null,type:'F',phi:1},
+  'Pristine':      {frac:'7+11',irac:null,type:'F',phi:0},
+  'Luna Tranquility':{frac:'7+9',irac:null,type:'F',phi:3},
+  'Kenja':         {frac:'7',   irac:null,type:'F',phi:1},
+  'Miravis Prime': {frac:'7+12',irac:null,type:'F',phi:0},
+  'Gatten':        {frac:'U13', irac:null,type:'F',phi:0},
+  'Property':      {frac:'U6',  irac:null,type:'F',phi:0},
+  'ProBlad':       {frac:'BM1', irac:null,type:'F',phi:0},
+  'Potassium Bicarbonate':{frac:'NC',irac:null,type:'F',phi:0},
+  'Sulfur':        {frac:'M2',  irac:null,type:'F',phi:0,isSulf:1},
+  'Sulforix':      {frac:'M2',  irac:null,type:'F',phi:0,isSulf:1},
+  'Folpan':        {frac:'M4',  irac:null,type:'F',phi:3},
+  'Captan':        {frac:'M4',  irac:null,type:'F',phi:3},
+  'Elevate':       {frac:'17',  irac:null,type:'F',phi:0},
+  'Echo 720':      {frac:'M5',  irac:null,type:'F',phi:7},
+  'Echo NP':       {frac:'M5',  irac:null,type:'F',phi:7},
+  'Cueva':         {frac:'M1',  irac:null,type:'F',phi:0,noFrost:1},
+  'Phostrol':      {frac:'33',  irac:null,type:'F',phi:0},
+  'Sanidate':      {frac:'NC',  irac:null,type:'F',phi:0,noMix:1},
+  'Quadris Top':   {frac:'11+3',irac:null,type:'F',phi:0},
+  'Nexter':        {frac:null,irac:'21',type:'I',phi:1},
+  'Nealta':        {frac:null,irac:'25',type:'I',phi:1,needsOil:1},
+  'Agrimec':       {frac:null,irac:'6', type:'I',phi:3,prefOil:1},
+  'Magister':      {frac:null,irac:'25',type:'I',phi:1,needsPH:1},
+  'Delegate':      {frac:null,irac:'5', type:'I',phi:1,bioSafe:1},
+  'Exirel':        {frac:null,irac:'28',type:'I',phi:3,bioSafe:1},
+  'Oberon':        {frac:null,irac:'23',type:'I',phi:3,noBloom:1},
+  'Assail':        {frac:null,irac:'4A',type:'I',phi:7},
+  'Actara':        {frac:null,irac:'4A',type:'I',phi:3},
+  'Beleaf':        {frac:null,irac:'29',type:'I',phi:0},
+  'Cormoran':      {frac:null,irac:'15,4',type:'I',phi:3},
+  'Rimon':         {frac:null,irac:'15',type:'I',phi:1},
+  'Sivanto':       {frac:null,irac:'4D',type:'I',phi:3},
+  'Malathion':     {frac:null,irac:'1B',type:'I',phi:3},
+  'PureSpray Green Oil':{frac:null,irac:null,type:'N',phi:0,isOil:1},
+  'Xiameter':      {frac:null,irac:null,type:'N',phi:0,noFrost:1},
+  'InCa':          {frac:null,irac:null,type:'N',phi:0,noFrost:1},
+  'Inca':          {frac:null,irac:null,type:'N',phi:0,noFrost:1},
+  'SVite 30-10-10':{frac:null,irac:null,type:'N',phi:0},
+  'Sylvite Blue 15-30-15':{frac:null,irac:null,type:'N',phi:0},
+  'Spear-T':       {frac:null,irac:null,type:'N',phi:0,isOil:1},
+  'Nitric acid':   {frac:null,irac:null,type:'N',phi:0},
+  'MKP':           {frac:null,irac:null,type:'N',phi:0},
+  'Epsotop (MgSO4)':{frac:null,irac:null,type:'N',phi:0},
+  'Etidot (Boron)':{frac:null,irac:null,type:'N',phi:0},
+};
+const SPRAY_TANK_VOL={tunnels:160,field:720};
+
+// 2026 seed data — all confirmed events with calculated rates
+const SPRAY_SEED=[
+  {id:'ev-20260423',date:'2026-04-23',loc:'Field',gpa:40,acres:19,note:'',products:[
+    {name:'Echo NP',rate:947,unit:'mL',type:'F',frac:'M5'},{name:'Cueva',rate:1053,unit:'mL',type:'F',frac:'M1'},
+    {name:'Sylvite Blue 15-30-15',rate:526,unit:'g',type:'N'},{name:'Etidot (Boron)',rate:263,unit:'mL',type:'N'},{name:'Nitric acid',rate:105,unit:'mL',type:'N'}]},
+  {id:'ev-20260429',date:'2026-04-29',loc:'Tunnels',gpa:50,acres:10,note:'',products:[
+    {name:'Switch',rate:406,unit:'g',type:'F',frac:'9+12'},{name:'Pristine',rate:719,unit:'g',type:'F',frac:'7+11'},{name:'SVite 30-10-10',rate:219,unit:'g',type:'N'}]},
+  {id:'ev-20260508',date:'2026-05-08',loc:'Field',gpa:40,acres:7.5,note:'Row cover · skip rows 1–13 barn field',products:[
+    {name:'Switch',rate:369,unit:'g',type:'F',frac:'9+12'},{name:'Malathion',rate:400,unit:'mL',type:'I',irac:'1B'},
+    {name:'Phostrol',rate:1667,unit:'mL',type:'F',frac:'33'},{name:'Sylvite Blue 15-30-15',rate:605,unit:'g',type:'N'}]},
+  {id:'ev-20260512',date:'2026-05-12',loc:'Field',gpa:35,acres:19,note:'',products:[
+    {name:'Agrimec',rate:105,unit:'mL',type:'I',irac:'6'},{name:'PureSpray Green Oil',rate:789,unit:'mL',type:'N'},
+    {name:'Xiameter',rate:53,unit:'mL',type:'N'},{name:'Quadris Top',rate:421,unit:'mL',type:'F',frac:'11+3'}]},
+  {id:'ev-20260518a',date:'2026-05-18',loc:'Field',gpa:40,acres:7.5,note:'Row cover 7.5 ac',products:[
+    {name:'Elevate',rate:693,unit:'g',type:'F',frac:'17'},{name:'Folpan',rate:1000,unit:'g',type:'F',frac:'M4'},{name:'SVite 30-10-10',rate:667,unit:'g',type:'N'}]},
+  {id:'ev-20260518b',date:'2026-05-18',loc:'Field',gpa:40,acres:11.5,note:'Late berries 11.5 ac',products:[
+    {name:'Echo 720',rate:1000,unit:'mL',type:'F',frac:'M5'},{name:'Cueva',rate:870,unit:'mL',type:'F',frac:'M1'},{name:'SVite 30-10-10',rate:435,unit:'g',type:'N'}]},
+  {id:'ev-20260518t',date:'2026-05-18',loc:'Tunnels',gpa:120,acres:10,note:'',products:[
+    {name:'Nexter',rate:180,unit:'g',type:'I',irac:'21'},{name:'PureSpray Green Oil',rate:4500,unit:'mL',type:'N'},{name:'Delegate',rate:90,unit:'g',type:'I',irac:'5'}]},
+  {id:'ev-20260525f',date:'2026-05-25',loc:'Field',gpa:30,acres:19.5,note:'',products:[
+    {name:'Switch',rate:359,unit:'g',type:'F',frac:'9+12'},{name:'Captan',rate:513,unit:'mL',type:'F',frac:'M4'},
+    {name:'Beleaf',rate:120,unit:'g',type:'I',irac:'29'},{name:'Sylvite Blue 15-30-15',rate:465,unit:'g',type:'N'}]},
+  {id:'ev-20260525t',date:'2026-05-25',loc:'Tunnels',gpa:120,acres:10,note:'',products:[
+    {name:'Agrimec',rate:90,unit:'mL',type:'I',irac:'6'},{name:'PureSpray Green Oil',rate:4500,unit:'mL',type:'N'},
+    {name:'Property',rate:150,unit:'mL',type:'F',frac:'U6'},{name:'Nitric acid',rate:225,unit:'mL',type:'N'},{name:'Inca',rate:375,unit:'mL',type:'N'}]},
+  {id:'ev-20260603',date:'2026-06-03',loc:'Field',gpa:30,acres:19.5,note:'',products:[
+    {name:'Luna Tranquility',rate:490,unit:'mL',type:'F',frac:'7+9'},{name:'Cormoran',rate:364,unit:'mL',type:'I',irac:'15,4'},
+    {name:'MKP',rate:465,unit:'g',type:'N'},{name:'Epsotop (MgSO4)',rate:465,unit:'g',type:'N'},{name:'Etidot (Boron)',rate:233,unit:'g',type:'N'}]},
+  {id:'ev-20260606a',date:'2026-06-06',loc:'Tunnels',gpa:100,acres:10,note:'Tank A',products:[
+    {name:'Potassium Bicarbonate',rate:2250,unit:'g',type:'F',frac:'NC'},{name:'Sulfur',rate:625,unit:'g',type:'F',frac:'M2'},{name:'Xiameter',rate:375,unit:'mL',type:'N'}]},
+  {id:'ev-20260606b',date:'2026-06-06',loc:'Tunnels',gpa:100,acres:10,note:'Tank B',products:[
+    {name:'Delegate',rate:87.5,unit:'g',type:'I',irac:'5'},{name:'Luna Tranquility',rate:362.5,unit:'mL',type:'F',frac:'7+9'},{name:'InCa',rate:625,unit:'mL',type:'N'}]},
+  {id:'ev-20260613',date:'2026-06-13',loc:'Field',gpa:30,acres:19.5,note:'',products:[
+    {name:'Switch',rate:369,unit:'g',type:'F',frac:'9+12'},{name:'Folpan',rate:974,unit:'g',type:'F',frac:'M4'},
+    {name:'Cormoran',rate:1000,unit:'g',type:'I',irac:'15,4'},{name:'Xiameter',rate:67,unit:'mL',type:'N'}]},
+];
+
+const SPRAY_IPM_KB=`HOWE FAMILY FARMS IPM KB
+PROVEN MIXES: TSSM knockdown (worked 2025): 1.2L Nealta + 6L PureSpray Green Oil + 1kg MgSO4 + 300mL Xiameter at 120 GPA — smoked every mite and egg until late September. PSG with Nealta is critical. Follow with Oberon 5-7 days for eggs. Failed without oil at 80 GPA.
+HARD RULES: Never mix Sanidate/H2O2 with anything. Never use H2O2 in spray water. Oil+sulfur within 7 days = injury. Oberon at bloom = petal retention. K2CO3 in heat = petal retention (max 3-6g/L). Magister needs pH>5. Xiameter/InCa/Cueva within 24-48h frost = damage.
+PRODUCTS: Agrimec long PHI — pre-bloom, save Magister for later. Exirel bio-safe on Orius (use 2x before release). Sulfur hurts beneficials. Beleaf 120g/ac thrips+TPB. Sivanto 0.4L/ac TPB/leafhopper via drip. Cormoran: leafhoppers+SSB with red fruit. Group 4 foliar preserve for leafhopper; bees ~June 25. Gatten excellent PM. InCa improves Florida Beauty calyx.`;
+
+// ── SPRAY BRAIN — PREACT COMPONENT ───────────────────────────────────────────
+function SprayBrain(){
+  const[spView,setSV]=useState('season');
+  const[spFilter,setSF]=useState('all');
+  const[spEvents,setSE]=useState(()=>{const s=LS.get('hff:spray:events',null);return(s&&s.length>0)?s:SPRAY_SEED;});
+  const[spSync,setSync]=useState('idle');
+  // Build tab
+  const[bLoc,setBL]=useState('Tunnels — Hagie 160 gal');
+  const[bGpa,setBG]=useState('100');
+  const[bAcres,setBA]=useState('10');
+  const[bDate,setBD]=useState(todayStr());
+  const[bProds,setBP]=useState([{id:1,name:'',amt:'',unit:'g'}]);
+  const[bCtr,setBC]=useState(1);
+  const[bJulio,setBJ]=useState(null);
+  const[bRec,setBR]=useState(null);
+  const[bWarn,setBW]=useState('');
+  // Ask tab
+  const[aLoc,setAL]=useState('Tunnels');
+  const[aStg,setAS]=useState('Green fruit');
+  const[aTgt,setAT]=useState('Powdery mildew');
+  const[aPres,setAP]=useState('Preventative');
+  const[aNotes,setAN]=useState('');
+  const[aOut,setAO]=useState('');
+  const[aLoad,setALoad]=useState(false);
+
+  useEffect(()=>{LS.set('hff:spray:events',spEvents);},[spEvents]);
+
+  useEffect(()=>{
+    const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
+    if(!url||!key)return;
+    setSync('syncing');
+    sbSprayPull().then(rows=>{
+      if(!rows){setSync('err');return;}
+      if(rows.length===0){setSync('ok');return;}
+      setSE(prev=>{
+        const map={};prev.forEach(e=>{map[e.id]=e;});
+        rows.forEach(r=>{if(r.event_data?.id)map[r.event_data.id]=r.event_data;});
+        const m=Object.values(map).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+        LS.set('hff:spray:events',m);return m;
+      });
+      setSync('ok');
+    });
+  },[]);
+
+  const tvol=bLoc.includes('Field')?SPRAY_TANK_VOL.field:SPRAY_TANK_VOL.tunnels;
+  const gpa=parseFloat(bGpa)||100;
+  const acres=parseFloat(bAcres)||10;
+  const apt=tvol/gpa;
+  const nm=(v,u)=>u==='kg'?v*1000:u==='L'?v*1000:v;
+  const du=u=>u==='kg'?'g':u==='L'?'mL':u;
+
+  function rateStr(amt,unit){
+    const n=nm(parseFloat(amt)||0,unit);const d=du(unit);
+    if(!n)return'';return'→ '+(n/apt).toFixed(1)+' '+d+'/ac';
+  }
+
+  function chkWarn(prods){
+    const sel=prods.map(p=>p.name).filter(Boolean);
+    const w=[];
+    if(sel.includes('Sanidate')&&sel.length>1)w.push('⛔ Sanidate cannot be tank mixed with anything');
+    if(sel.some(n=>SPRAY_PROD_DB[n]?.isOil)&&sel.some(n=>SPRAY_PROD_DB[n]?.isSulf))w.push('⛔ Oil + Sulfur in same tank — crop injury risk');
+    setBW(w.join('\n'));
+  }
+
+  function addP(){const id=bCtr+1;setBC(id);setBP(p=>[...p,{id,name:'',amt:'',unit:'g'}]);}
+  function updP(id,f,v){setBP(p=>{const u=p.map(r=>r.id===id?{...r,[f]:v}:r);chkWarn(u);return u;});}
+  function remP(id){setBP(p=>{const u=p.filter(r=>r.id!==id);chkWarn(u);return u;});}
+
+  function pFlags(name){
+    const info=SPRAY_PROD_DB[name]||{};
+    const sel=bProds.map(p=>p.name).filter(Boolean);
+    const hasOil=sel.some(n=>SPRAY_PROD_DB[n]?.isOil);
+    const ff=[];
+    if(info.needsOil&&!hasOil)ff.push('⚠ Requires PureSpray Green Oil');
+    if(info.prefOil&&!hasOil)ff.push('⚠ Add PureSpray Green Oil for best results');
+    if(info.bioSafe)ff.push('✓ Bio-safe (Orius)');
+    if(info.needsPH)ff.push('⚠ Spray water pH must be >5');
+    if(info.noMix)ff.push('⛔ Never tank mix with anything');
+    if(info.noBloom)ff.push('⛔ Do not use at bloom — petal retention');
+    if(info.noFrost)ff.push('⚠ Do not apply within 24–48h of frost');
+    return ff.join(' · ');
+  }
+
+  function genJulio(){
+    const vp=bProds.filter(p=>p.name&&parseFloat(p.amt)>0);
+    if(!vp.length){alert('Add at least one product with a quantity');return;}
+    const lines=['Julio,'];
+    const rF=[],rI=[],rN=[],ff=new Set(),fi=new Set();
+    vp.forEach(p=>{
+      lines.push(p.name+' — '+p.amt+p.unit+' per tank');
+      const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);const rt=(n/apt).toFixed(1);
+      const info=SPRAY_PROD_DB[p.name]||{type:'N'};
+      const entry=p.name+' '+rt+d+'/ac';
+      if(info.type==='F'){rF.push(entry);if(info.frac)ff.add(info.frac);}
+      else if(info.type==='I'){rI.push(entry);if(info.irac)fi.add(info.irac);}
+      else rN.push(entry);
+    });
+    lines.push(gpa+' GPA');
+    setBJ(lines.join('\n'));
+    setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+apt.toFixed(2)+'ac/tank · '+acres+'ac');
+  }
+
+  function saveEv(){
+    const vp=bProds.filter(p=>p.name&&parseFloat(p.amt)>0);if(!vp.length)return;
+    const id='ev-'+Date.now();
+    const event={id,date:bDate,loc:bLoc.includes('Field')?'Field':'Tunnels',gpa,acres,note:'',
+      products:vp.map(p=>{const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null};
+        return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null};})};
+    const upd=[event,...spEvents].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+    setSE(upd);
+    const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
+    if(url&&key){setSync('syncing');sbSprayPush(event).then(r=>setSync(r.ok?'ok':'err'));}
+    setBJ(null);setBR(null);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');
+    setSV('season');
+  }
+
+  async function runAI(){
+    const apiKey=LS.get('hff:apikey','');
+    if(!apiKey){setAO('⚠ No API key set — add it in Settings.');return;}
+    const hist=spEvents.slice(0,20).map(e=>e.date+' ('+e.loc+' '+e.acres+'ac '+e.gpa+'GPA): '+e.products.map(p=>p.name).join(', ')).join('\n');
+    const fF={},fI={},fnF={},fnI={};
+    spEvents.forEach(ev=>ev.products.forEach(p=>{
+      if(p.frac&&p.type==='F'){fF[p.frac]=(fF[p.frac]||0)+1;fnF[p.frac]=fnF[p.frac]||new Set();fnF[p.frac].add(p.name);}
+      if(p.irac&&p.type==='I'){fI[p.irac]=(fI[p.irac]||0)+1;fnI[p.irac]=fnI[p.irac]||new Set();fnI[p.irac].add(p.name);}
+    }));
+    const fLines=[...Object.entries(fF).map(([g,c])=>'FRAC '+g+' ('+[...fnF[g]].join(', ')+'): '+c+'×'),
+      ...Object.entries(fI).map(([g,c])=>'IRAC '+g+' ('+[...fnI[g]].join(', ')+'): '+c+'×')].join('\n')||'No data';
+    const prompt=SPRAY_IPM_KB+'\n\nFRAC/IRAC usage:\n'+fLines+'\n\nSpray history (newest first):\n'+hist+'\n\nSituation: '+aLoc+' · '+aStg+' · '+aTgt+' · '+aPres+'\nNotes: '+(aNotes||'none')+'\n\nRecommendation (180 words max):\n1. Top 1-2 products with FRAC/IRAC and rotation rationale\n2. Tank mix partners if justified\n3. Safety flags or timing constraints\n4. What to preserve for next window\nDirect and specific. No disclaimers.';
+    setALoad(true);setAO('');
+    try{
+      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:800,messages:[{role:'user',content:prompt}]})});
+      const d=await r.json();
+      if(!r.ok)setAO('API error ('+r.status+'): '+(d?.error?.message||JSON.stringify(d)));
+      else setAO(d.content?.[0]?.text||'No response.');
+    }catch(e){setAO('Network error: '+e.message);}
+    setALoad(false);
+  }
+
+  const fF={},fI={},fnF={},fnI={};
+  spEvents.forEach(ev=>ev.products.forEach(p=>{
+    if(p.frac&&p.type==='F'){fF[p.frac]=(fF[p.frac]||0)+1;fnF[p.frac]=fnF[p.frac]||new Set();fnF[p.frac].add(p.name);}
+    if(p.irac&&p.type==='I'){fI[p.irac]=(fI[p.irac]||0)+1;fnI[p.irac]=fnI[p.irac]||new Set();fnI[p.irac].add(p.name);}
+  }));
+  const sdhi=(fF['7']||0)+(fF['7+9']||0)+(fF['7+11']||0)+(fF['7+12']||0);
+  const activeFlags=[
+    sdhi>=3?{cls:'sp-fr',msg:'<strong>SDHI Group 7 used '+sdhi+'× this season</strong> (Pristine, Luna Tranquility). Rotate to Switch (9+12), Gatten (U13), Captan, or Folpan for next botrytis/PM.'}:null,
+    (fI['5']||0)>=2?{cls:'sp-fr',msg:'<strong>IRAC Group 5 (Delegate) used '+(fI['5']||0)+'× in tunnels.</strong> Rotate to Exirel (IRAC 28, bio-safe) for next thrips app.'}:null,
+    (fI['15,4']||0)>=2?{cls:'sp-fa',msg:'<strong>Cormoran (IRAC 15,4) used '+(fI['15,4']||0)+'× in field.</strong> Rotate insecticide mode of action.'}:null,
+    {cls:'sp-fa',msg:'<strong>Bees arriving ~June 25.</strong> Group 4 foliar window closing — finish Assail/Cormoran now or shift to Sivanto drip.'},
+    {cls:'sp-fa',msg:'<strong>Peak bloom — scout now for TPB and Thrips.</strong> June 27 was the missed window in 2025. Do not skip during 2nd flush.'},
+    {cls:'sp-fa',msg:'<strong>Fe/Mn deficiency risk at 2nd flush.</strong> Begin weekly foliar shots proactively. Full rate in last 25% of A+B tanks.'},
+    {cls:'sp-fg',msg:'<strong>Exirel (IRAC 28) unused this season</strong> — bio-safe, available for next thrips rotation.'},
+  ].filter(Boolean);
+
+  const fracCell=(grp,cnt,names,pre)=>{
+    const cls=cnt>=3?'sp-chi':cnt>=2?'sp-cmd':cnt>=1?'sp-clo':'sp-cno';
+    return html`<div class=${'sp-fc '+cls}><div class="g">${pre} ${grp}</div><div class="n2">${names?[...names].join(', '):'—'}</div><div class="u">${cnt?cnt+'×':'—'}</div></div>`;
+  };
+  const FG=[['9+12'],['7+11'],['7+9'],['7'],['7+12'],['U13'],['M4'],['M5'],['M2'],['M1'],['NC'],['11+3'],['17'],['33'],['U6'],['BM1']];
+  const IG=[['5'],['6'],['21'],['25'],['23'],['28'],['4A'],['4D'],['29'],['15'],['15,4'],['1B']];
+  const filtered=spFilter==='all'?spEvents:spEvents.filter(e=>e.loc===spFilter);
+  const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  const sbOn=!!(LS.get('hff:sb_url','')&&LS.get('hff:sb_key',''));
+  const prodOpts=Object.keys(SPRAY_PROD_DB);
+
+  return html`<div>
+    <div class="sp-nav">
+      <button class=${'sp-nb'+(spView==='season'?' sp-on':'')} onClick=${()=>setSV('season')}>📅<br/>Season</button>
+      <button class=${'sp-nb'+(spView==='rotation'?' sp-on':'')} onClick=${()=>setSV('rotation')}>🔄<br/>Rotation</button>
+      <button class=${'sp-nb'+(spView==='build'?' sp-on':'')} onClick=${()=>setSV('build')}>✉️<br/>Build</button>
+      <button class=${'sp-nb'+(spView==='ask'?' sp-on':'')} onClick=${()=>setSV('ask')}>💡<br/>Ask</button>
+    </div>
+
+    <div class=${'sp-screen'+(spView==='season'?' sp-on':'')}>
+      <div class="sp-stat-grid">
+        <div class="sp-stat"><div class="n">${spEvents.length}</div><div class="l">Spray events</div></div>
+        <div class="sp-stat"><div class="n">${spEvents.filter(e=>e.loc==='Tunnels').length}</div><div class="l">Tunnel sprays</div></div>
+        <div class="sp-stat"><div class="n">${spEvents.filter(e=>e.loc==='Field').length}</div><div class="l">Field sprays</div></div>
+      </div>
+      ${activeFlags.slice(0,3).map((f,i)=>html`<div key=${i} class=${'sp-flag '+f.cls} dangerouslySetInnerHTML=${{__html:f.msg}}></div>`)}
+      <div class="sp-divider"></div>
+      <div class="sp-filter-row">
+        ${['all','Tunnels','Field'].map(f=>html`<button key=${f} class=${'sp-fb'+(spFilter===f?' sp-on':'')} onClick=${()=>setSF(f)}>${f==='all'?'All':f}</button>`)}
+        ${sbOn?html`<span style=${{marginLeft:'auto',fontSize:10,color:spSync==='ok'?'#2e7d32':spSync==='err'?'#c62828':'#aaa',fontWeight:600}}>${spSync==='syncing'?'⟳ syncing':spSync==='ok'?'☁ synced':spSync==='err'?'⚠ sync error':'☁'}</span>`:null}
+      </div>
+      <div class="sp-sec" style=${{marginTop:0}}>2026 spray history — newest first</div>
+      ${sorted.map(ev=>html`
+        <div class="sp-ev" key=${ev.id}>
+          <div class="sp-ev-head">
+            <span class="sp-ev-date">${ev.date}${ev.note?html` <span style=${{fontWeight:400,color:'#aaa',fontSize:10}}>${ev.note}</span>`:null}</span>
+            <div class="sp-ev-meta">
+              <span class=${ev.loc==='Tunnels'?'sp-loc-t':'sp-loc-f'}>${ev.loc}</span>
+              <span style=${{fontSize:10,color:'#aaa'}}>${ev.gpa} GPA · ${ev.acres}ac</span>
+            </div>
+          </div>
+          <div class="sp-pills">
+            ${ev.products.map((p,i)=>{const cls=p.type==='F'?'sp-pf':p.type==='I'?'sp-pi':'sp-pn';const grp=p.frac||p.irac||'';
+              return html`<span key=${i} class=${'sp-pill '+cls} title=${p.rate+p.unit+'/ac'}>${p.name}${grp?html` <small style=${{opacity:.5}}>${grp}</small>`:null}</span>`;})}
+          </div>
+          <div class="sp-ev-foot">${ev.products.map(p=>p.rate?p.name+': '+p.rate+p.unit+'/ac':null).filter(Boolean).join(' · ')}</div>
+        </div>`)}
+    </div>
+
+    <div class=${'sp-screen'+(spView==='rotation'?' sp-on':'')}>
+      <div class="sp-sec">Fungicide FRAC groups</div>
+      <p style=${{fontSize:10,color:'#aaa',marginBottom:6}}>Red ≥ 3× · Amber = 2× · Green = 1×</p>
+      <div class="sp-frac-grid">${FG.map(([g])=>fracCell(g,fF[g]||0,fnF[g],'F'))}</div>
+      <div class="sp-divider"></div>
+      <div class="sp-sec">Insecticide IRAC groups</div>
+      <div class="sp-frac-grid">${IG.map(([g])=>fracCell(g,fI[g]||0,fnI[g],'I'))}</div>
+      <div class="sp-divider"></div>
+      <div class="sp-sec">Incompatibility rules</div>
+      <div class="sp-flag sp-fr"><strong>Sanidate / H₂O₂:</strong> Never tank mix with anything. Never use H₂O₂ in spray water.</div>
+      <div class="sp-flag sp-fr"><strong>Oil + Sulfur:</strong> Same tank or within 7 days — crop injury risk (either order).</div>
+      <div class="sp-flag sp-fr"><strong>Oberon around bloom:</strong> Petal retention. Do not use during any bloom period.</div>
+      <div class="sp-flag sp-fr"><strong>K₂CO₃ in heat:</strong> Petal retention. Pawel max 3–6 g/L.</div>
+      <div class="sp-flag sp-fa"><strong>Magister:</strong> Spray water pH must be above 5.</div>
+      <div class="sp-flag sp-fa"><strong>Frost window:</strong> No Xiameter, Cueva, or Inca within 24–48 hrs of frost.</div>
+      <div class="sp-flag sp-fg"><strong>Bio-safe:</strong> Exirel (IRAC 28) and Delegate (IRAC 5) compatible with Orius.</div>
+    </div>
+
+    <div class=${'sp-screen'+(spView==='build'?' sp-on':'')}>
+      <div class="sp-form-row">
+        <div><label class="sp-lbl">Location</label>
+          <select class="sp-sel" value=${bLoc} onChange=${e=>setBL(e.target.value)}>
+            <option>Tunnels — Hagie 160 gal</option><option>Field — 720 gal</option>
+          </select></div>
+        <div><label class="sp-lbl">GPA</label>
+          <input type="number" class="sp-sel" value=${bGpa} onInput=${e=>setBG(e.target.value)} min="10" max="200"/></div>
+      </div>
+      <div class="sp-form-row">
+        <div><label class="sp-lbl">Acres</label>
+          <input type="number" class="sp-sel" value=${bAcres} onInput=${e=>setBA(e.target.value)} min="0.1" step="0.5"/></div>
+        <div><label class="sp-lbl">Date</label>
+          <input type="text" class="sp-sel" value=${bDate} onInput=${e=>setBD(e.target.value)}/></div>
+      </div>
+      <p class="sp-tinfo">${tvol} gal tank · ${apt.toFixed(2)} ac/tank · ~${(acres/apt).toFixed(1)} tanks for ${acres} ac</p>
+      <div class="sp-sec" style=${{marginTop:0}}>Products (quantities per tank)</div>
+      ${bProds.map(p=>html`
+        <div class="sp-pe" key=${p.id}>
+          <div class="sp-pr">
+            <select class="sp-sel" value=${p.name} onChange=${e=>updP(p.id,'name',e.target.value)}>
+              <option value="">— select product —</option>
+              ${prodOpts.map(n=>html`<option key=${n} value=${n}>${n}</option>`)}
+              <option value="Other">Other</option>
+            </select>
+            <input type="number" class="sp-sel" value=${p.amt} onInput=${e=>updP(p.id,'amt',e.target.value)} placeholder="0" min="0" step="any"/>
+            <select class="sp-sel" value=${p.unit} onChange=${e=>updP(p.id,'unit',e.target.value)}>
+              <option>g</option><option>mL</option><option>L</option><option>kg</option>
+            </select>
+            <button class="sp-rmb" onClick=${()=>remP(p.id)}>✕</button>
+          </div>
+          ${p.name&&parseFloat(p.amt)?html`<div class="sp-prate">${rateStr(p.amt,p.unit)}</div>`:null}
+          ${p.name?html`<div class="sp-pflag">${pFlags(p.name)}</div>`:null}
+        </div>`)}
+      <button class="sp-addp" onClick=${addP}>+ Add product</button>
+      ${bWarn?html`<div class="sp-iwarn">${bWarn}</div>`:null}
+      <button class="btn" style=${{width:'100%',marginTop:4}} onClick=${genJulio}>Generate Julio text + record row</button>
+      ${bJulio?html`
+        <div class="sp-divider"></div>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#888'}}>Julio text</span>
+          <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(bJulio).catch(()=>{})}>Copy</button>
+        </div>
+        <div class="sp-mono">${bJulio}</div>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
+          <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#888'}}>Excel record row</span>
+          <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(bRec).catch(()=>{})}>Copy</button>
+        </div>
+        <div class="sp-mono" style=${{fontSize:11}}>${bRec}</div>
+        <button class="btn btn-out" style=${{width:'100%',marginTop:10}} onClick=${saveEv}>✓ Save to season history</button>
+      `:null}
+    </div>
+
+    <div class=${'sp-screen'+(spView==='ask'?' sp-on':'')}>
+      <div class="sp-form-row">
+        <div><label class="sp-lbl">Location</label>
+          <select class="sp-sel" value=${aLoc} onChange=${e=>setAL(e.target.value)}><option>Tunnels</option><option>Field</option></select></div>
+        <div><label class="sp-lbl">Crop stage</label>
+          <select class="sp-sel" value=${aStg} onChange=${e=>setAS(e.target.value)}>
+            <option>Vegetative</option><option>Pre-bloom</option><option>Bloom</option>
+            <option>Green fruit</option><option>Red fruit present</option><option>Post-harvest</option>
+          </select></div>
+      </div>
+      <div class="sp-form-row">
+        <div><label class="sp-lbl">Primary concern</label>
+          <select class="sp-sel" value=${aTgt} onChange=${e=>setAT(e.target.value)}>
+            <option>Powdery mildew</option><option>Botrytis</option><option>Cyclamen mites</option>
+            <option>Two-spotted spider mites</option><option>Thrips</option>
+            <option>Tarnished plant bug / leafhopper</option><option>Strawberry sap beetle</option>
+            <option>Angular leaf spot (ALS)</option><option>Calcium / nutrition</option><option>General / multiple</option>
+          </select></div>
+        <div><label class="sp-lbl">Pressure</label>
+          <select class="sp-sel" value=${aPres} onChange=${e=>setAP(e.target.value)}>
+            <option>Preventative</option><option>Moderate — visible</option><option>High — rescue</option>
+          </select></div>
+      </div>
+      <div><label class="sp-lbl">Additional context</label>
+        <textarea class="notes-area" value=${aNotes} onInput=${e=>setAN(e.target.value)}
+          placeholder="e.g. bios released last week, hot forecast, saw leaf curl, bees moving in June 25..."></textarea></div>
+      <button class=${'btn'+(aLoad?' loading':'')} style=${{width:'100%'}} onClick=${runAI} disabled=${aLoad}>
+        ${aLoad?'Generating…':'Get recommendation ↗'}</button>
+      ${aOut?html`<div class="sp-ai-box">
+        <div class="sec-lbl">Recommendation</div>
+        <div class=${'sp-ai-out'+(aOut.startsWith('⚠')||aOut.startsWith('API')||aOut.startsWith('Network')?' err':'')}>${aOut}</div>
+        <button class="btn btn-sm btn-out" style=${{marginTop:10}} onClick=${()=>setSV('build')}>Open build spray →</button>
+      </div>`:null}
+    </div>
+  </div>`;
 }
 
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
@@ -996,7 +1474,7 @@ function App(){
   const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
 
   const{bg,acc,act,actTxt}=crop;
-  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'settings',lbl:'Settings'}];
+  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'spray',lbl:'Spray'},{id:'settings',lbl:'Settings'}];
 
   const FlagBox=({level,items})=>items.length===0?null:html`
   <div class=${'flag-box '+level}>
@@ -1095,6 +1573,8 @@ function App(){
       <${SettingsView} strat=${strat} defaultStage=${defaultStage} onSaveStrat=${saveStrat}
         onSaveStage=${saveDefStage} cropLabel=${crop.label} isStraw=${isStraw}
         syncSt=${syncSt} lastSync=${lastSync} onSyncNow=${syncNow}/>`:null}
+
+      ${view==='spray'?html`<${SprayBrain}/>`:null}
     </div>
   </div>`;
 }
