@@ -412,11 +412,71 @@ function exportCSV(entries,zones,filename){
 
 // ── CLOUD SYNC (SUPABASE REST) ───────────────────────────────────────────────
 // No SDK needed — Supabase exposes a standard REST + PostgREST API
+// ── AUTH HELPERS ─────────────────────────────────────────────────────────────
+// Returns the best available auth token: user session > anon key
+function sbAuthToken(){
+  const sess=LS.get('hff:sb_session',null);
+  if(sess&&sess.access_token&&sess.expires_at&&Date.now()<sess.expires_at*1000)
+    return{token:sess.access_token,isUser:true};
+  return{token:LS.get('hff:sb_key',''),isUser:false};
+}
+
+async function sbLogin(email,password){
+  const url=LS.get('hff:sb_url','');
+  if(!url)return{ok:false,msg:'No Supabase URL configured'};
+  try{
+    const r=await fetch(url.replace(/\/+$/,'')+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':LS.get('hff:sb_key','')},
+      body:JSON.stringify({email,password})
+    });
+    const d=await r.json();
+    if(!r.ok)return{ok:false,msg:d?.error_description||d?.msg||'Login failed'};
+    LS.set('hff:sb_session',{access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at,email:d.user?.email});
+    return{ok:true,email:d.user?.email};
+  }catch(e){return{ok:false,msg:e.message};}
+}
+
+async function sbRefreshSession(){
+  const sess=LS.get('hff:sb_session',null);
+  if(!sess?.refresh_token)return false;
+  const url=LS.get('hff:sb_url','');
+  try{
+    const r=await fetch(url.replace(/\/+$/,'')+'/auth/v1/token?grant_type=refresh_token',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':LS.get('hff:sb_key','')},
+      body:JSON.stringify({refresh_token:sess.refresh_token})
+    });
+    if(!r.ok)return false;
+    const d=await r.json();
+    LS.set('hff:sb_session',{access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at,email:sess.email});
+    return true;
+  }catch(e){return false;}
+}
+
+function sbLogout(){LS.del('hff:sb_session');}
+
+function sbIsLoggedIn(){
+  const sess=LS.get('hff:sb_session',null);
+  return !!(sess&&sess.access_token&&sess.expires_at&&Date.now()<sess.expires_at*1000);
+}
+
 async function sbReq(method,path,body,url,key){
-  const base=url.replace(/\/+$/,''); // strip trailing slash
-  const h={'apikey':key,'Authorization':'Bearer '+key,'Content-Type':'application/json'};
+  const base=url.replace(/\/+$/,'');
+  const{token}=sbAuthToken();
+  const h={'apikey':key,'Authorization':'Bearer '+token,'Content-Type':'application/json'};
   if(method==='POST')h['Prefer']='resolution=merge-duplicates';
-  return fetch(base+'/rest/v1/'+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+  let r=await fetch(base+'/rest/v1/'+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+  // If 401, try refreshing session once
+  if(r.status===401&&sbIsLoggedIn()){
+    const refreshed=await sbRefreshSession();
+    if(refreshed){
+      const{token:t2}=sbAuthToken();
+      h['Authorization']='Bearer '+t2;
+      r=await fetch(base+'/rest/v1/'+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+    }
+  }
+  return r;
 }
 
 async function sbPush(entry,cropId){
@@ -445,10 +505,11 @@ async function sbTest(){
   const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
   if(!url||!key)return{ok:false,msg:'Enter URL and anon key first'};
   try{const r=await sbReq('GET','irrigation_entries?limit=1',null,url,key);
-    if(r.status===401)return{ok:false,msg:'Invalid API key'};
-    if(r.status===404||r.status===400){const e=await r.json().catch(()=>({}));return{ok:false,msg:'Table not found — run the setup SQL in Supabase first. '+( e?.message||'')};}
+    if(r.status===401)return{ok:false,msg:'Invalid API key or not logged in'};
+    if(r.status===404||r.status===400){const e=await r.json().catch(()=>({}));return{ok:false,msg:'Table not found — run setup SQL first. '+(e?.message||'')};}
     if(!r.ok)return{ok:false,msg:'HTTP '+r.status};
-    return{ok:true,msg:'Connected ✓'};}
+    const authInfo=sbIsLoggedIn()?(' · Logged in as '+LS.get('hff:sb_session',{}).email):'· Using anon key (not secure)';
+    return{ok:true,msg:'Connected ✓'+authInfo};}
   catch(e){return{ok:false,msg:e.message};}
 }
 
@@ -1253,6 +1314,19 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
   const[sbTeam,setSbTeam]=useState(()=>LS.get('hff:sb_team','howe-farms'));
   const[sbSaved,setSbSaved]=useState(false);
   const[testResult,setTestResult]=useState(null);
+  const[loginEmail,setLoginEmail]=useState('');
+  const[loginPw,setLoginPw]=useState('');
+  const[loginResult,setLoginResult]=useState(null);
+  const[loginLoading,setLoginLoading]=useState(false);
+  const[,forceUpdate]=useState(0);  // trigger re-render after login/logout
+
+  async function doLogin(){
+    if(!loginEmail||!loginPw){setLoginResult({ok:false,msg:'Enter email and password'});return;}
+    setLoginLoading(true);setLoginResult(null);
+    const r=await sbLogin(loginEmail,loginPw);
+    setLoginResult(r);setLoginLoading(false);
+    if(r.ok){setLoginPw('');forceUpdate(n=>n+1);}
+  }
   const sg=GROWTH_STAGES[defaultStage];
   const kb=LS.kbUsed();
   const lastSyncStr=lastSync?lastSync.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):null;
@@ -1264,7 +1338,7 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
   <div>
     <div class="sbox">
       <div class="sbox-title">☁ Cloud Sync — Supabase</div>
-      <div class="sbox-hint">Enter your Supabase project URL, anon key, and a Farm ID (any short string both devices share). Binod saves on his phone; you pull the latest on yours. <strong>See the README.md in the zip for 5-minute setup instructions.</strong></div>
+      <div class="sbox-hint">Connection config. The anon key is required for the connection; log in below to keep your data private.</div>
       <label class="fl" style=${{fontSize:11,marginTop:2}}>Supabase Project URL</label>
       <input class="apikey-in" type="url" value=${sbUrl} onInput=${e=>setSbUrl(e.target.value)} placeholder="https://xxxxxxxxxxxx.supabase.co"/>
       <label class="fl" style=${{fontSize:11}}>Anon / Public Key</label>
@@ -1286,6 +1360,33 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
         Last-write-wins: if two people edit the same day, the most recently saved version is kept.<br/>
         Works offline — saves locally and syncs when back online.
       </p>
+    </div>
+    <div class="sbox">
+      <div class="sbox-title">🔒 Account Login</div>
+      <div class="sbox-hint">Log in with your Supabase account to make your data private. Without login, anyone with your anon key can read your records.</div>
+      ${sbIsLoggedIn()?html`
+        <div style=${{background:'#e8f5e9',border:'1.5px solid #a5d6a7',borderRadius:8,padding:'10px 12px',marginBottom:10}}>
+          <p style=${{fontSize:13,fontWeight:600,color:'#2e7d32',marginBottom:2}}>✓ Logged in</p>
+          <p style=${{fontSize:12,color:'#555'}}>${LS.get('hff:sb_session',{}).email||'authenticated'}</p>
+        </div>
+        <button class="btn btn-sm btn-danger" onClick=${()=>{sbLogout();forceUpdate();}}>Log out</button>
+      `:html`
+        <label class="fl" style=${{fontSize:11}}>Email</label>
+        <input class="apikey-in" type="email" value=${loginEmail} onInput=${e=>setLoginEmail(e.target.value)} placeholder="you@example.com"/>
+        <label class="fl" style=${{fontSize:11}}>Password</label>
+        <input class="apikey-in" type="password" value=${loginPw} onInput=${e=>setLoginPw(e.target.value)} placeholder="••••••••"
+          onKeyDown=${e=>{if(e.key==='Enter')doLogin();}}/>
+        <div style=${{display:'flex',gap:8,alignItems:'center'}}>
+          <button class=${'btn btn-sm'+(loginLoading?' loading':'')} onClick=${doLogin} disabled=${loginLoading}>
+            ${loginLoading?'Logging in…':'Log in'}
+          </button>
+          ${loginResult?html`<span class=${'test-result '+(loginResult.ok?'test-ok':'test-err')} style=${{marginTop:0}}>${loginResult.ok?'✓ Logged in':'✗ '+loginResult.msg}</span>`:null}
+        </div>
+        <p style=${{fontSize:11,color:'#bbb',marginTop:8,lineHeight:1.5}}>
+          Use the email and password from your Supabase account (supabase.com → Account settings),
+          or create a user in Supabase Authentication → Users.
+        </p>
+      `}
     </div>
     <div class="sbox">
       <div class="sbox-title">Anthropic API Key</div>
