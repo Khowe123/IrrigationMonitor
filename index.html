@@ -1158,7 +1158,7 @@ function SprayBrain(){
               ${['Date','Location','Product','PCP #','Rate/ac','PHI','EAHD','Harvest delayed until EAHD','Field & packaging inspected before harvest','Applicator'].map(h=>html`<th key=${h}>${h}</th>`)}
             </tr></thead>
             <tbody>
-              {[...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).flatMap(ev=>
+              ${[...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).flatMap(ev=>
                 (ev.products||[]).filter(p=>p.type!=='N').map((prod,i)=>{
                   const audit=ev.audit||{};
                   const eahd=prod.eahd||calcEAHD(ev.date,prod.phi||0);
