@@ -1069,8 +1069,14 @@ function SprayBrain(){
       lines.push('Zones: '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', ')+' ('+acres.toFixed(2)+' ac)');
     }
     vp.forEach(p=>{
-      lines.push(p.name+' — '+p.amt+p.unit+' per tank');
-      const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);const rt=(n/apt).toFixed(1);
+      // Use the label-rate calculation at the current GPA/tank size for Julio text,
+      // even if React has not finished updating the visible input value yet.
+      // Example: 160 gal ÷ 50 GPA = 3.2 ac/tank, then rate/ac × 3.2 = product/tank.
+      const fill=tankAmountFromRateLabelForApt(p.name, apt);
+      const tankAmt=fill?fill.amt:p.amt;
+      const tankUnit=fill?fill.unit:p.unit;
+      lines.push(p.name+' — '+tankAmt+tankUnit+' per tank');
+      const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const rt=(n/apt).toFixed(1);
       const info=SPRAY_PROD_DB[p.name]||{type:'N'};
       const entry=p.name+' '+rt+d+'/ac';
       if(info.type==='F'){rF.push(entry);if(info.frac)ff.add(info.frac);}
@@ -1083,7 +1089,10 @@ function SprayBrain(){
     const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):fieldZoneObj.label;
     const gapRows=vp.filter(p=>SPRAY_PROD_DB[p.name]?.type!=='N').map(p=>{
       const info=SPRAY_PROD_DB[p.name]||{};
-      const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);
+      const fill=tankAmountFromRateLabelForApt(p.name, apt);
+      const tankAmt=fill?fill.amt:p.amt;
+      const tankUnit=fill?fill.unit:p.unit;
+      const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);
       const rate=(n/apt).toFixed(1)+' '+d+'/ac';
       const eahd=calcEAHD(bDate,info.phi);
       return[p.name,info.pcp||'—',info.phi!==undefined?info.phi+'d':'—',eahd,rate,locLabel,bDate+' '+bTime,bApplicator].join('\t');
@@ -1099,7 +1108,7 @@ function SprayBrain(){
       :(fieldZoneObj.label!=='All field'?fieldZoneObj.label:'');
     LS.set('hff:spray:applicator',bApplicator);
     const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',gpa,acres,note:zoneNote,applicator:bApplicator,
-      products:vp.map(p=>{const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null,pcp:null,phi:0};
+      products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null,pcp:null,phi:0};
         return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
