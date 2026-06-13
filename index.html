@@ -14,7 +14,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:#f0f2ee}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;color:#1a1a1a;padding-bottom:env(safe-area-inset-bottom)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;color:#1a1a1a;padding-bottom:env(safe-area-inset-bottom);padding-top:env(safe-area-inset-top)}
 input,textarea,button,select{font-family:inherit;font-size:inherit}
 button{cursor:pointer}
 .hdr{padding:14px 16px 12px;border-radius:0 0 16px 16px;margin-bottom:14px;position:sticky;top:0;z-index:20}
@@ -189,6 +189,9 @@ hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
 .sp-sec{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#888;margin-bottom:8px;margin-top:14px}
 .sp-sec:first-child{margin-top:0}
 .sp-divider{border-top:1px solid #f0f0f0;margin:12px 0}
+.sp-gap-table{width:100%;border-collapse:collapse;font-size:11px;min-width:580px}
+.sp-gap-table th{padding:4px 8px;border-bottom:1.5px solid #e8e8e4;text-align:left;font-size:10px;font-weight:700;color:#888;white-space:nowrap;background:#fafaf8}
+.sp-gap-table td{padding:5px 8px;border-bottom:0.5px solid #f0f0ee;white-space:nowrap}
 .sp-ai-box{background:#f8faf6;border:1.5px solid #c8e6c9;border-radius:12px;padding:14px;margin-top:10px}
 .sp-sync-badge{margin-left:auto;font-size:10px;font-weight:600;color:#888}
 .sp-sync-ok{color:#2e7d32}
@@ -211,6 +214,7 @@ const html=htm.bind(h);
 // ── LOCAL DATE ────────────────────────────────────────────────────────────────
 const todayStr=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const fmtDate=s=>s?new Date(s+'T12:00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'}):'';
+const calcEAHD=(sprayDate,phiDays=0)=>{const d=new Date((sprayDate||todayStr())+'T12:00:00');d.setDate(d.getDate()+(parseInt(phiDays)||0));return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const genId=()=>'Z_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 
 // ── LOCALSTORAGE ──────────────────────────────────────────────────────────────
@@ -541,6 +545,16 @@ async function sbSprayPush(event){
     return{ok:true};}
   catch(e){return{ok:false,reason:e.message};}
 }
+async function sbSprayDelete(eventId){
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  if(!url||!key)return{ok:false,reason:'not-configured'};
+  try{
+    const path='spray_events?id=eq.'+encodeURIComponent(team+':spray:'+eventId);
+    const r=await sbReq('DELETE',path,null,url,key);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,msg:e?.message||'HTTP '+r.status};}
+    return{ok:true};
+  }catch(e){return{ok:false,reason:e.message};}
+}
 async function sbSprayPull(){
   const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
   if(!url||!key)return null;
@@ -648,8 +662,6 @@ const SPRAY_SEED=[
     {name:'MKP',rate:465,unit:'g',type:'N'},{name:'Epsotop (MgSO4)',rate:465,unit:'g',type:'N'},{name:'Etidot (Boron)',rate:233,unit:'g',type:'N'}]},
   {id:'ev-20260606a',date:'2026-06-06',loc:'Tunnels',gpa:100,acres:10,note:'Tank A',products:[
     {name:'Potassium Bicarbonate',rate:2250,unit:'g',type:'F',frac:'NC'},{name:'Sulfur',rate:625,unit:'g',type:'F',frac:'M2'},{name:'Xiameter',rate:375,unit:'mL',type:'N'}]},
-  {id:'ev-20260606b',date:'2026-06-06',loc:'Tunnels',gpa:100,acres:10,note:'Tank B',products:[
-    {name:'Delegate',rate:87.5,unit:'g',type:'I',irac:'5'},{name:'Luna Tranquility',rate:362.5,unit:'mL',type:'F',frac:'7+9'},{name:'InCa',rate:625,unit:'mL',type:'N'}]},
   {id:'ev-20260613',date:'2026-06-13',loc:'Field',gpa:30,acres:19.5,note:'',products:[
     {name:'Switch',rate:369,unit:'g',type:'F',frac:'9+12'},{name:'Folpan',rate:974,unit:'g',type:'F',frac:'M4'},
     {name:'Cormoran',rate:1000,unit:'g',type:'I',irac:'15,4'},{name:'Xiameter',rate:67,unit:'mL',type:'N'}]},
@@ -672,7 +684,7 @@ function SprayPill({name, frac, irac, rate, unit}){
   return html`<span class=${'sp-pill '+cls} title=${tip}>${name}${grp?' '+grp:''}</span>`;
 }
 
-function SprayEvCard({ev}){
+function SprayEvCard({ev,onEdit,onDelete}){
   const locCls = ev.loc==='Tunnels' ? 'sp-loc-t' : 'sp-loc-f';
   const rates = ev.products.map(p=>p.rate?p.name+': '+p.rate+p.unit+'/ac':null).filter(Boolean).join(' · ');
   return html`<div class="sp-ev">
@@ -687,6 +699,10 @@ function SprayEvCard({ev}){
       ${ev.products.map((p,i)=>html`<${SprayPill} key=${i} name=${p.name} frac=${p.frac} irac=${p.irac} rate=${p.rate} unit=${p.unit}/>`)}
     </div>
     <div class="sp-ev-foot">${rates}</div>
+    <div style=${{display:'flex',gap:6,justifyContent:'flex-end',marginTop:8}}>
+      <button class="btn-sm btn-out" onClick=${()=>onEdit&&onEdit(ev)}>Edit</button>
+      <button class="btn-sm btn-danger" onClick=${()=>onDelete&&onDelete(ev)}>Delete</button>
+    </div>
   </div>`;
 }
 
@@ -758,7 +774,7 @@ function SprayProdRow({p, apt, acres, isTunnels, bZones, onUpdate, onRemove}){
   </div>`;
 }
 
-function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,bDate,setBD}){
+function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,bDate,setBD,bTime,setBT}){
   if(isTunnels){
     return html`<div>
       <div style=${{marginBottom:9}}>
@@ -787,7 +803,8 @@ function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,
       <div class="sp-form-row" style=${{marginBottom:9}}>
         <div><label class="sp-lbl">Date</label>
           <input type="text" class="sp-sel" value=${bDate} onInput=${e=>setBD(e.target.value)}/></div>
-        <div></div>
+        <div><label class="sp-lbl">Time</label>
+          <input type="time" class="sp-sel" value=${bTime} onInput=${e=>setBT(e.target.value)}/></div>
       </div>
     </div>`;
   }
@@ -815,13 +832,17 @@ function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,
     <div class="sp-form-row" style=${{marginBottom:9}}>
       <div><label class="sp-lbl">Date</label>
         <input type="text" class="sp-sel" value=${bDate} onInput=${e=>setBD(e.target.value)}/></div>
-      <div></div>
+      <div><label class="sp-lbl">Time</label>
+        <input type="time" class="sp-sel" value=${bTime} onInput=${e=>setBT(e.target.value)}/></div>
     </div>
   </div>`;
 }
 
-function SprayJulioOut({bJulio, bRec, onSave}){
+function SprayJulioOut({bJulio, bRec, bGap, onSave}){
   if(!bJulio) return null;
+  const gapHeader='Product\tPCP #\tPHI\tEAHD\tRate\tLocation\tDate/Time\tApplicator';
+  const gapFull=gapHeader+'\n'+(bGap||[]).join('\n');
+  const colHdrs=['Product','PCP #','PHI','EAHD','Rate','Location','Date/Time','Applicator'];
   return html`<div>
     <div class="sp-divider"></div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -829,8 +850,25 @@ function SprayJulioOut({bJulio, bRec, onSave}){
       <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(bJulio).catch(()=>{})}>Copy</button>
     </div>
     <div class="sp-mono">${bJulio}</div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14}}>
+      <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#2e7d32'}}>CanadaGAP spray record</span>
+      <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(gapFull).catch(()=>{})}>Copy all</button>
+    </div>
+    <div style=${{overflowX:'auto',marginTop:6,borderRadius:8,border:'1.5px solid #e8e8e4'}}>
+      <table class="sp-gap-table">
+        <thead><tr>${colHdrs.map(h=>html`<th key=${h}>${h}</th>`)}</tr></thead>
+        <tbody>
+          ${(bGap||[]).map((row,i)=>{
+            const cells=row.split('\t');
+            return html`<tr key=${i} style=${{background:i%2?'#fafaf8':'#fff'}}>
+              ${cells.map((c,j)=>html`<td key=${j}>${c}</td>`)}
+            </tr>`;
+          })}
+        </tbody>
+      </table>
+    </div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
-      <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#888'}}>Excel record row</span>
+      <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#888'}}>Spray log row (Excel)</span>
       <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(bRec).catch(()=>{})}>Copy</button>
     </div>
     <div class="sp-mono" style=${{fontSize:11}}>${bRec}</div>
@@ -859,10 +897,14 @@ function SprayBrain(){
   const[bGpa,setBG]=useState('100');
   const[bAcres,setBA]=useState('19.5');
   const[bDate,setBD]=useState(todayStr());
+  const[bTime,setBT]=useState('');
+  const[bApplicator,setBAp]=useState(()=>LS.get('hff:spray:applicator','Julio'));
+  const[editId,setEditId]=useState(null);
   const[bProds,setBP]=useState([{id:1,name:'',amt:'',unit:'g'}]);
   const[bCtr,setBC]=useState(1);
   const[bJulio,setBJ]=useState(null);
   const[bRec,setBR]=useState(null);
+  const[bGap,setBGap]=useState([]);
   const[bWarn,setBW]=useState('');
   const[aLoc,setAL]=useState('Tunnels');
   const[aStg,setAS]=useState('Green fruit');
@@ -934,23 +976,59 @@ function SprayBrain(){
     lines.push(gpa+' GPA');
     setBJ(lines.join('\n'));
     setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+apt.toFixed(2)+'ac/tank · '+acres.toFixed(2)+'ac');
+    const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):fieldZoneObj.label;
+    const gapRows=vp.filter(p=>SPRAY_PROD_DB[p.name]?.type!=='N').map(p=>{
+      const info=SPRAY_PROD_DB[p.name]||{};
+      const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);
+      const rate=(n/apt).toFixed(1)+' '+d+'/ac';
+      const eahd=calcEAHD(bDate,info.phi);
+      return[p.name,info.pcp||'—',info.phi!==undefined?info.phi+'d':'—',eahd,rate,locLabel,bDate+' '+bTime,bApplicator].join('\t');
+    });
+    setBGap(gapRows);
   }
 
   function saveEv(){
     const vp=bProds.filter(p=>p.name&&parseFloat(p.amt)>0);if(!vp.length)return;
-    const id='ev-'+Date.now();
+    const id=editId||('ev-'+Date.now());
     const zoneNote=isTunnels
       ?(bZones.length<TUNNEL_ZONES.length?'Zones: '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'')
       :(fieldZoneObj.label!=='All field'?fieldZoneObj.label:'');
-    const event={id,date:bDate,loc:isTunnels?'Tunnels':'Field',gpa,acres,note:zoneNote,
-      products:vp.map(p=>{const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null};
-        return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null};})};
-    const upd=[event,...spEvents].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+    LS.set('hff:spray:applicator',bApplicator);
+    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',gpa,acres,note:zoneNote,applicator:bApplicator,
+      products:vp.map(p=>{const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null,pcp:null,phi:0};
+        return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,eahd:calcEAHD(bDate,info.phi)};})};
+    const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
     const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
     if(url&&key){setSync('syncing');sbSprayPush(event).then(r=>setSync(r.ok?'ok':'err'));}
-    setBJ(null);setBR(null);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');
+    setBJ(null);setBR(null);setBGap([]);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');setEditId(null);
     setSV('season');
+  }
+
+  function editSprayEvent(ev){
+    const locIsTunnels=ev.loc==='Tunnels';
+    const tankVol=locIsTunnels?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
+    const eventGpa=parseFloat(ev.gpa)||100;
+    const eventApt=tankVol/eventGpa;
+    setEditId(ev.id);
+    setSV('build');
+    setBL(locIsTunnels?'Tunnels — Hagie 160 gal':'Field — 720 gal');
+    setBG(String(ev.gpa||100));
+    setBD(ev.date||todayStr());
+    setBT(ev.time||'');
+    setBA(String(ev.acres||''));
+    setBAp(ev.applicator||LS.get('hff:spray:applicator','Julio'));
+    setBJ(null);setBR(null);setBGap([]);setBW('');
+    setBP((ev.products||[]).map((p,i)=>({id:i+1,name:p.name||'',amt:p.rate?String(+(p.rate*eventApt).toFixed(2)):'',unit:p.unit||'g'})));
+    setBC((ev.products||[]).length||1);
+  }
+
+  function deleteSprayEvent(ev){
+    if(!confirm('Delete this spray event?\n\n'+ev.date+(ev.note?' — '+ev.note:'')+'\n'+ev.products.map(p=>p.name).join(', ')))return;
+    const upd=spEvents.filter(e=>e.id!==ev.id);
+    setSE(upd);LS.set('hff:spray:events',upd);
+    const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
+    if(url&&key){setSync('syncing');sbSprayDelete(ev.id).then(r=>setSync(r.ok?'ok':'err'));}
   }
 
   async function runAI(){
@@ -1025,7 +1103,7 @@ function SprayBrain(){
         <span style=${{marginLeft:'auto',fontSize:10,fontWeight:600,color:syncColor,display:sbOn?'inline':'none'}}>${syncLabel}</span>
       </div>
       <div class="sp-sec" style=${{marginTop:0}}>2026 spray history — newest first</div>
-      ${sorted.map(ev=>html`<${SprayEvCard} key=${ev.id} ev=${ev}/>`)}
+      ${sorted.map(ev=>html`<${SprayEvCard} key=${ev.id} ev=${ev} onEdit=${editSprayEvent} onDelete=${deleteSprayEvent}/>`)}
     </div>
 
     <div class=${'sp-screen'+(spView==='rotation'?' sp-on':'')}>
@@ -1051,6 +1129,7 @@ function SprayBrain(){
     </div>
 
     <div class=${'sp-screen'+(spView==='build'?' sp-on':'')}>
+      ${editId?html`<div class="sp-flag sp-fa"><strong>Editing saved spray event.</strong> Generate the record row again, then save to update the original event.</div>`:null}
       <div class="sp-form-row">
         <div><label class="sp-lbl">Location</label>
           <select class="sp-sel" value=${bLoc} onChange=${e=>setBL(e.target.value)}>
@@ -1063,16 +1142,22 @@ function SprayBrain(){
         bZones=${bZones} setBZ=${setBZ}
         bFieldZone=${bFieldZone} setBFZ=${setBFZ}
         bAcres=${bAcres} setBA=${setBA}
-        bDate=${bDate} setBD=${setBD}/>
+        bDate=${bDate} setBD=${setBD}
+        bTime=${bTime} setBT=${setBT}/>
       <p class="sp-tinfo">${tvol} gal tank · ${apt.toFixed(2)} ac/tank · ~${(acres/apt).toFixed(1)} tanks for ${acres.toFixed(2)} ac</p>
+      <div class="sp-form-row" style=${{marginBottom:9}}>
+        <div><label class="sp-lbl">Applicator</label>
+          <input type="text" class="sp-sel" value=${bApplicator} onInput=${e=>setBAp(e.target.value)} placeholder="e.g. Julio"/></div>
+        <div></div>
+      </div>
       <div class="sp-sec" style=${{marginTop:0}}>Products (quantities per tank)</div>
       ${bProds.map(p=>html`<${SprayProdRow} key=${p.id} p=${p} apt=${apt} acres=${acres}
         isTunnels=${isTunnels} bZones=${bZones}
         onUpdate=${updP} onRemove=${remP}/>`)}
       <button class="sp-addp" onClick=${addP}>+ Add product</button>
       <div class="sp-iwarn" style=${{display:bWarn?'block':'none'}}>${bWarn}</div>
-      <button class="btn" style=${{width:'100%',marginTop:4}} onClick=${genJulio}>Generate Julio text + record row</button>
-      <${SprayJulioOut} bJulio=${bJulio} bRec=${bRec} onSave=${saveEv}/>
+      <button class="btn" style=${{width:'100%',marginTop:4}} onClick=${genJulio}>${editId?'Regenerate edited record row':'Generate Julio text + record row'}</button>
+      <${SprayJulioOut} bJulio=${bJulio} bRec=${bRec} bGap=${bGap} onSave=${saveEv}/>
     </div>
 
     <div class=${'sp-screen'+(spView==='ask'?' sp-on':'')}>
