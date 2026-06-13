@@ -1024,13 +1024,40 @@ function SprayBrain(){
     if(!m)return null;
     return {rate:parseFloat(m[1]),unit:m[2]};
   }
-  function tankAmountFromRateLabel(name){
+  function tankAmountFromRateLabelForApt(name, aptVal){
     const info=SPRAY_PROD_DB[name]||{};
     const parsed=parseRateLabel(info.rateLabel);
-    if(!parsed)return null;
-    const amount=parsed.rate*apt;
+    if(!parsed||!aptVal)return null;
+    const amount=parsed.rate*aptVal;
     const rounded=amount>=10?Math.round(amount):Math.round(amount*100)/100;
     return {amt:String(rounded),unit:parsed.unit};
+  }
+  function tankAmountFromRateLabel(name){
+    return tankAmountFromRateLabelForApt(name, apt);
+  }
+  function recalcProductsForApt(aptVal){
+    setBP(prev=>{
+      const u=prev.map(r=>{
+        if(!r.name)return r;
+        const fill=tankAmountFromRateLabelForApt(r.name, aptVal);
+        return fill?{...r,amt:fill.amt,unit:fill.unit}:r;
+      });
+      chkWarn(u);
+      return u;
+    });
+    setBJ(null);setBR(null);setBGap([]);
+  }
+  function handleGpaChange(v){
+    setBG(v);
+    const newGpa=parseFloat(v)||100;
+    const newTankVol=(!bLoc.includes('Field'))?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
+    recalcProductsForApt(newTankVol/newGpa);
+  }
+  function handleLocChange(v){
+    setBL(v);
+    const newGpa=parseFloat(bGpa)||100;
+    const newTankVol=(!v.includes('Field'))?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
+    recalcProductsForApt(newTankVol/newGpa);
   }
 
   function genJulio(){
@@ -1296,11 +1323,11 @@ function SprayBrain(){
       ${editId?html`<div class="sp-flag sp-fa"><strong>Editing saved spray event.</strong> Generate the record row again, then save to update the original event.</div>`:null}
       <div class="sp-form-row">
         <div><label class="sp-lbl">Location</label>
-          <select class="sp-sel" value=${bLoc} onChange=${e=>setBL(e.target.value)}>
+          <select class="sp-sel" value=${bLoc} onChange=${e=>handleLocChange(e.target.value)}>
             <option>Tunnels — Hagie 160 gal</option><option>Field — 720 gal</option>
           </select></div>
         <div><label class="sp-lbl">GPA</label>
-          <input type="number" class="sp-sel" value=${bGpa} onInput=${e=>setBG(e.target.value)} min="10" max="200"/></div>
+          <input type="number" class="sp-sel" value=${bGpa} onInput=${e=>handleGpaChange(e.target.value)} min="10" max="200"/></div>
       </div>
       <${SprayZonePicker} isTunnels=${isTunnels}
         bZones=${bZones} setBZ=${setBZ}
