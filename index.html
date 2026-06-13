@@ -566,52 +566,95 @@ async function sbSprayPull(){
 
 // ── SPRAY BRAIN — PRODUCT DATABASE ────────────────────────────────────────────
 const SPRAY_PROD_DB={
-  'Switch':        {frac:'9+12',irac:null,type:'F',phi:1},
-  'Pristine':      {frac:'7+11',irac:null,type:'F',phi:0},
-  'Luna Tranquility':{frac:'7+9',irac:null,type:'F',phi:3},
-  'Kenja':         {frac:'7',   irac:null,type:'F',phi:1},
-  'Miravis Prime': {frac:'7+12',irac:null,type:'F',phi:0},
-  'Gatten':        {frac:'U13', irac:null,type:'F',phi:0},
-  'Property':      {frac:'U6',  irac:null,type:'F',phi:0},
-  'ProBlad':       {frac:'BM1', irac:null,type:'F',phi:0},
-  'Potassium Bicarbonate':{frac:'NC',irac:null,type:'F',phi:0},
-  'Sulfur':        {frac:'M2',  irac:null,type:'F',phi:0,isSulf:1},
-  'Sulforix':      {frac:'M2',  irac:null,type:'F',phi:0,isSulf:1},
-  'Folpan':        {frac:'M4',  irac:null,type:'F',phi:3},
-  'Captan':        {frac:'M4',  irac:null,type:'F',phi:3},
-  'Elevate':       {frac:'17',  irac:null,type:'F',phi:0},
-  'Echo 720':      {frac:'M5',  irac:null,type:'F',phi:7},
-  'Echo NP':       {frac:'M5',  irac:null,type:'F',phi:7},
-  'Cueva':         {frac:'M1',  irac:null,type:'F',phi:0,noFrost:1},
-  'Phostrol':      {frac:'33',  irac:null,type:'F',phi:0},
-  'Sanidate':      {frac:'NC',  irac:null,type:'F',phi:0,noMix:1},
-  'Quadris Top':   {frac:'11+3',irac:null,type:'F',phi:0},
-  'Nexter':        {frac:null,irac:'21',type:'I',phi:1},
-  'Nealta':        {frac:null,irac:'25',type:'I',phi:1,needsOil:1},
-  'Agrimec':       {frac:null,irac:'6', type:'I',phi:3,prefOil:1},
-  'Magister':      {frac:null,irac:'25',type:'I',phi:1,needsPH:1},
-  'Delegate':      {frac:null,irac:'5', type:'I',phi:1,bioSafe:1},
-  'Exirel':        {frac:null,irac:'28',type:'I',phi:3,bioSafe:1},
-  'Oberon':        {frac:null,irac:'23',type:'I',phi:3,noBloom:1},
-  'Assail':        {frac:null,irac:'4A',type:'I',phi:7},
-  'Actara':        {frac:null,irac:'4A',type:'I',phi:3},
-  'Beleaf':        {frac:null,irac:'29',type:'I',phi:0},
-  'Cormoran':      {frac:null,irac:'15,4',type:'I',phi:3},
-  'Rimon':         {frac:null,irac:'15',type:'I',phi:1},
-  'Sivanto':       {frac:null,irac:'4D',type:'I',phi:3},
-  'Malathion':     {frac:null,irac:'1B',type:'I',phi:3},
-  'PureSpray Green Oil':{frac:null,irac:null,type:'N',phi:0,isOil:1},
-  'Xiameter':      {frac:null,irac:null,type:'N',phi:0,noFrost:1},
-  'InCa':          {frac:null,irac:null,type:'N',phi:0,noFrost:1},
-  'Inca':          {frac:null,irac:null,type:'N',phi:0,noFrost:1},
-  'SVite 30-10-10':{frac:null,irac:null,type:'N',phi:0},
-  'Sylvite Blue 15-30-15':{frac:null,irac:null,type:'N',phi:0},
-  'Spear-T':       {frac:null,irac:null,type:'N',phi:0,isOil:1},
-  'Nitric acid':   {frac:null,irac:null,type:'N',phi:0},
-  'MKP':           {frac:null,irac:null,type:'N',phi:0},
-  'Epsotop (MgSO4)':{frac:null,irac:null,type:'N',phi:0},
-  'Etidot (Boron)':{frac:null,irac:null,type:'N',phi:0},
-};
+  // Strawberry fungicides — PCP/PHI/REI from Howe Farms audit sheet
+  'Azoshy':        {frac:'11',  irac:null,type:'F',pcp:'32263',rateLabel:'0.45 L/ac',phi:1,rei:'12h'},
+  'Bravo ZN':      {frac:'M',   irac:null,type:'F',pcp:'28900',rateLabel:'1.4 L/ac',phi:30,rei:'48h'},
+  'Captan Supra':  {frac:'M',   irac:null,type:'F',pcp:'24613',rateLabel:'1.33 kg/ac',phi:2,rei:'48h'},
+  'Captan':        {frac:'M4',  irac:null,type:'F',pcp:'24613',rateLabel:'1.33 kg/ac',phi:2,rei:'48h'},
+  'Cueva':         {frac:'M1',  irac:null,type:'F',pcp:'31825',rateLabel:'1% v/v',phi:1,rei:'4h',noFrost:1},
+  'Diplomat':      {frac:'19',  irac:null,type:'F',pcp:'32918',rateLabel:'0.28 kg/ac',phi:0,rei:'dry'},
+  'Echo 720':      {frac:'M5',  irac:null,type:'F',pcp:'29356',rateLabel:'0.97 L/ac',phi:30,rei:'48h'},
+  'Echo NP':       {frac:'M5',  irac:null,type:'F',pcp:'29356',rateLabel:'0.97 L/ac',phi:30,rei:'48h'},
+  'Elevate':       {frac:'17',  irac:null,type:'F',pcp:'25900',rateLabel:'0.69 kg/ac',phi:1,rei:'4h'},
+  'Folpan':        {frac:'M4',  irac:null,type:'F',pcp:'27733',rateLabel:'1.01 kg/ac',phi:1,rei:'24h'},
+  'Fontelis':      {frac:'7',   irac:null,type:'F',pcp:'30331',rateLabel:'0.71 L/ac',phi:0,rei:'12h'},
+  'Gatten':        {frac:'U13', irac:null,type:'F',pcp:'34297',rateLabel:'0.24 L/ac',phi:0,rei:'dry'},
+  'Granuflo-T':    {frac:'M',   irac:null,type:'F',pcp:'30548',rateLabel:'—',phi:3,rei:'24h'},
+  'Jade':          {frac:'3',   irac:null,type:'F',pcp:'24030',rateLabel:'0.2 L/ac',phi:1,rei:'12h'},
+  'Kenja':         {frac:'7',   irac:null,type:'F',pcp:'31758',rateLabel:'0.45 L/ac',phi:0,rei:'12h'},
+  'Luna Tranquility':{frac:'7+9',irac:null,type:'F',pcp:'30510',rateLabel:'0.49 L/ac',phi:1,rei:'12h'},
+  'Miravis Prime': {frac:'7+12',irac:null,type:'F',pcp:'33207',rateLabel:'0.4 L/ac',phi:1,rei:'12h'},
+  'Nova 40W':      {frac:'3',   irac:null,type:'F',pcp:'22399',rateLabel:'0.14 kg/ac',phi:3,rei:'2h'},
+  'Nova':          {frac:'3',   irac:null,type:'F',pcp:'22399',rateLabel:'0.14 kg/ac',phi:3,rei:'2h'},
+  'Orondis Ultra': {frac:'49+40',irac:null,type:'F',pcp:'32805',rateLabel:'—',phi:0,rei:'—'},
+  'Orondis Gold':  {frac:'49+4',irac:null,type:'F',pcp:'33508',rateLabel:'1.85 L/ac',phi:30,rei:'12h'},
+  'Phostrol':      {frac:'33',  irac:null,type:'F',pcp:'30449',rateLabel:'1.66 L/ac',phi:3,rei:'12h'},
+  'Pristine':      {frac:'7+11',irac:null,type:'F',pcp:'27985',rateLabel:'0.65 kg/ac',phi:1,rei:'24h'},
+  'ProBlad':       {frac:'BM1', irac:null,type:'F',pcp:'34050',rateLabel:'1 L/ac',phi:0,rei:'dry'},
+  'Proline':       {frac:'3',   irac:null,type:'F',pcp:'28359',rateLabel:'—',phi:0,rei:'—'},
+  'Property':      {frac:'50',  irac:null,type:'F',pcp:'32534',rateLabel:'0.15 L/ac',phi:0,rei:'dry'},
+  'Quadris':       {frac:'11',  irac:null,type:'F',pcp:'26153',rateLabel:'0.45 L/ac',phi:1,rei:'12h'},
+  'Quadris Top':   {frac:'11+3',irac:null,type:'F',pcp:'30518',rateLabel:'0.4 L/ac',phi:1,rei:'12h'},
+  'Quilt':         {frac:'11+3',irac:null,type:'F',pcp:'28328',rateLabel:'—',phi:0,rei:'—'},
+  'Ridomil Gold':  {frac:'4',   irac:null,type:'F',pcp:'28474',rateLabel:'0.4 L/ac',phi:0,rei:'—'},
+  'Scala SC':      {frac:'9',   irac:null,type:'F',pcp:'28011',rateLabel:'0.81 L/ac',phi:1,rei:'12h'},
+  'Senator 70WP':  {frac:'1',   irac:null,type:'F',pcp:'25343',rateLabel:'0.45 kg/ac',phi:1,rei:'12h'},
+  'Serenade Max':  {frac:'44',  irac:null,type:'F',pcp:'31666',rateLabel:'2.43 kg/ac',phi:0,rei:'dry'},
+  'Switch':        {frac:'9+12',irac:null,type:'F',pcp:'28189',rateLabel:'0.37 kg/ac',phi:1,rei:'12h'},
+  'Tivano':        {frac:'NC',  irac:null,type:'F',pcp:'30468',rateLabel:'9.71 L/ac',phi:0,rei:'dry'},
+  'Velum Prime':   {frac:'7',   irac:null,type:'F',pcp:'30334',rateLabel:'0.2 L/ac',phi:0,rei:'12h'},
+  'Milstop':       {frac:'NC',  irac:null,type:'F',pcp:'28095',rateLabel:'1.134 kg/ac',phi:0,rei:'4h'},
+  'Potassium Bicarbonate':{frac:'NC',irac:null,type:'F',pcp:'28095',rateLabel:'1.134 kg/ac',phi:0,rei:'4h'},
+  'Oxidate':       {frac:'NC',  irac:null,type:'F',pcp:'32907',rateLabel:'4.007 L/ac',phi:0,rei:'dry',noMix:1},
+  'Sulfur':        {frac:'M2',  irac:null,type:'F',pcp:'—',rateLabel:'—',phi:0,rei:'—',isSulf:1},
+  'Sulforix':      {frac:'M2',  irac:null,type:'F',pcp:'—',rateLabel:'—',phi:0,rei:'—',isSulf:1},
+  'Sanidate':      {frac:'NC',  irac:null,type:'F',pcp:'—',rateLabel:'—',phi:0,rei:'—',noMix:1},
+
+  // Strawberry insecticides — PCP/PHI/REI from Howe Farms audit sheet
+  'Actara':        {frac:null,irac:'4A',type:'I',pcp:'28408',rateLabel:'0.11 kg/ac',phi:3,rei:'12h'},
+  'Admire 240':    {frac:null,irac:'4A',type:'I',pcp:'29094',rateLabel:'0.49 L/ac',phi:7,rei:'24h'},
+  'Agrimec':       {frac:null,irac:'6', type:'I',pcp:'31607',rateLabel:'100 mL/ac',phi:3,rei:'12h',prefOil:1},
+  'AgriMek':       {frac:null,irac:'6', type:'I',pcp:'31607',rateLabel:'100 mL/ac',phi:3,rei:'12h',prefOil:1},
+  'Assail':        {frac:null,irac:'4A',type:'I',pcp:'27128',rateLabel:'0.08 kg/ac',phi:1,rei:'12h'},
+  'Assail 70WP':   {frac:null,irac:'4A',type:'I',pcp:'27128',rateLabel:'0.08 kg/ac',phi:1,rei:'12h'},
+  'Beleaf':        {frac:null,irac:'29',type:'I',pcp:'29796',rateLabel:'0.07 kg/ac',phi:0,rei:'12h'},
+  'Cormoran':      {frac:null,irac:'15,4',type:'I',pcp:'33353',rateLabel:'364 mL/ac',phi:1,rei:'12h'},
+  'Delegate':      {frac:null,irac:'5', type:'I',pcp:'28778',rateLabel:'113 g/ac',phi:1,rei:'12h',bioSafe:1},
+  'Exirel':        {frac:null,irac:'28',type:'I',pcp:'30895',rateLabel:'0.6 L/ac',phi:1,rei:'12h',bioSafe:1},
+  'Harvanta':      {frac:null,irac:'28',type:'I',pcp:'32889',rateLabel:'0.65 L/ac',phi:1,rei:'12h'},
+  'Lagon':         {frac:null,irac:'1B',type:'I',pcp:'9382',rateLabel:'0.9 L/ac',phi:7,rei:'—'},
+  'Magister':      {frac:null,irac:'25',type:'I',pcp:'34544',rateLabel:'0.9 L/ac',phi:12,rei:'12h',needsPH:1},
+  'Mako':          {frac:null,irac:'3', type:'I',pcp:'30316',rateLabel:'101 mL/ac',phi:2,rei:'7h'},
+  'Malathion':     {frac:null,irac:'1B',type:'I',pcp:'8372',rateLabel:'395 mL/ac',phi:3,rei:'12h'},
+  'Matador':       {frac:null,irac:'3', type:'I',pcp:'24984',rateLabel:'0.04 L/ac',phi:7,rei:'24h'},
+  'Nealta':        {frac:null,irac:'25',type:'I',pcp:'31284',rateLabel:'0.4 L/ac',phi:1,rei:'12h',needsOil:1},
+  'Nexter':        {frac:null,irac:'21',type:'I',pcp:'—',rateLabel:'—',phi:1,rei:'12h'},
+  'Oberon':        {frac:null,irac:'23',type:'I',pcp:'28905',rateLabel:'0.4 L/ac',phi:3,rei:'12h',noBloom:1},
+  'Rimon':         {frac:null,irac:'15',type:'I',pcp:'28881',rateLabel:'0.34 L/ac',phi:1,rei:'12h'},
+  'Sivanto':       {frac:null,irac:'4D',type:'I',pcp:'31452',rateLabel:'0.4 L/ac',phi:0,rei:'—'},
+  'Sluggo':        {frac:null,irac:'NC',type:'I',pcp:'30025',rateLabel:'20 kg/ac',phi:0,rei:'—'},
+  'Success':       {frac:null,irac:'5', type:'I',pcp:'26835',rateLabel:'72.9 mL/ac',phi:1,rei:'dry'},
+  'Up-Cyde':       {frac:null,irac:'3', type:'I',pcp:'28795',rateLabel:'105 mL/ac',phi:2,rei:'12h'},
+
+  // Non-pesticide tank partners / nutrients / adjuvants
+  'PureSpray Green Oil':{frac:null,irac:null,type:'N',pcp:'27666',rateLabel:'1.06 L/ac',phi:0,rei:'0h',isOil:1},
+  'Xiameter':      {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',noFrost:1},
+  'InCa':          {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',noFrost:1},
+  'Inca':          {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',noFrost:1},
+  'SVite 30-10-10':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
+  'Sylvite Blue 15-30-15':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
+  'Spear-T':       {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',isOil:1},
+  'Nitric acid':   {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
+  'MKP':           {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
+  'Epsotop (MgSO4)':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
+  'Etidot (Boron)':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
+}
+
+function sprayInfo(name){return SPRAY_PROD_DB[name]||{};}
+function prodPCP(prod){const info=sprayInfo(prod.name);return prod.pcp||info.pcp||'—';}
+function prodPHI(prod){const info=sprayInfo(prod.name);return prod.phi!==undefined?prod.phi:(info.phi!==undefined?info.phi:null);}
+function prodREI(prod){const info=sprayInfo(prod.name);return prod.rei||info.rei||'—';}
+function prodEAHD(ev,prod){const phi=prodPHI(prod);return prod.eahd||calcEAHD(ev.date,phi||0);}
 const SPRAY_TANK_VOL={tunnels:160,field:720};
 
 // Tunnel zone areas (exact acreages)
@@ -951,10 +994,44 @@ function SprayBrain(){
   }
 
   function addP(){const id=bCtr+1;setBC(id);setBP(p=>[...p,{id,name:'',amt:'',unit:'g'}]);}
-  function updP(id,f,v){setBP(p=>{const u=p.map(r=>r.id===id?{...r,[f]:v}:r);chkWarn(u);return u;});}
+  function updP(id,f,v){
+    setBP(p=>{
+      const u=p.map(r=>{
+        if(r.id!==id)return r;
+        let nr={...r,[f]:v};
+        // When a product is selected, auto-fill the per-tank amount from the label rate table.
+        // Example: Delegate 0.105 kg/ac at 1.6 ac/tank -> 0.17 kg per tank.
+        if(f==='name'){
+          const fill=tankAmountFromRateLabel(v);
+          if(fill){nr={...nr,amt:fill.amt,unit:fill.unit};}
+        }
+        return nr;
+      });
+      chkWarn(u);return u;
+    });
+  }
   function remP(id){setBP(p=>{const u=p.filter(r=>r.id!==id);chkWarn(u);return u;});}
   const nm=(v,u)=>u==='kg'?v*1000:u==='L'?v*1000:v;
   const du=u=>u==='kg'?'g':u==='L'?'mL':u;
+  function rateDisplay(prod){
+    const info=SPRAY_PROD_DB[prod.name]||{};
+    if(prod.rate&&prod.unit)return prod.rate+prod.unit+'/ac';
+    return info.rateLabel||'—';
+  }
+  function parseRateLabel(label){
+    if(!label||label==='—'||label.includes('%'))return null;
+    const m=String(label).match(/([0-9.]+)\s*(kg|g|L|mL)\s*\/?\s*ac/i);
+    if(!m)return null;
+    return {rate:parseFloat(m[1]),unit:m[2]};
+  }
+  function tankAmountFromRateLabel(name){
+    const info=SPRAY_PROD_DB[name]||{};
+    const parsed=parseRateLabel(info.rateLabel);
+    if(!parsed)return null;
+    const amount=parsed.rate*apt;
+    const rounded=amount>=10?Math.round(amount):Math.round(amount*100)/100;
+    return {amt:String(rounded),unit:parsed.unit};
+  }
 
   function genJulio(){
     const vp=bProds.filter(p=>p.name&&parseFloat(p.amt)>0);
@@ -996,7 +1073,7 @@ function SprayBrain(){
     LS.set('hff:spray:applicator',bApplicator);
     const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',gpa,acres,note:zoneNote,applicator:bApplicator,
       products:vp.map(p=>{const n=nm(parseFloat(p.amt),p.unit);const d=du(p.unit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null,pcp:null,phi:0};
-        return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,eahd:calcEAHD(bDate,info.phi)};})};
+        return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
     const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
@@ -1058,7 +1135,7 @@ function SprayBrain(){
     [...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).forEach(ev=>{
       (ev.products||[]).filter(p=>p.type!=='N').forEach(prod=>{
         const audit=ev.audit||{};
-        const cells=[ev.date,ev.loc,ev.acres,ev.gpa,prod.name,prod.pcp||'—',(prod.rate?prod.rate+prod.unit+'/ac':'—'),(prod.phi??'—')+'d',prod.eahd||calcEAHD(ev.date,prod.phi||0),audit.phiVerified?'YES':'NO',audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',audit.preHarvestInspectionDate||'',ev.applicator||''];
+        const cells=[ev.date,ev.loc,ev.acres,ev.gpa,prod.name,prodPCP(prod),rateDisplay(prod),(prodPHI(prod)??'—')+'d',prodEAHD(ev,prod),audit.phiVerified?'YES':'NO',audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',audit.preHarvestInspectionDate||'',ev.applicator||''];
         rows.push(cells.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(','));
       });
     });
@@ -1161,14 +1238,14 @@ function SprayBrain(){
               ${[...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).flatMap(ev=>
                 (ev.products||[]).filter(p=>p.type!=='N').map((prod,i)=>{
                   const audit=ev.audit||{};
-                  const eahd=prod.eahd||calcEAHD(ev.date,prod.phi||0);
+                  const eahd=prodEAHD(ev,prod);
                   return html`<tr key=${ev.id+'-'+i} style=${{background:audit.phiVerified&&audit.preHarvestInspection?'#f8fff8':'#fff'}}>
                     <td>${ev.date}</td>
                     <td>${ev.loc}${ev.note?' — '+ev.note:''}<br/><span style=${{color:'#aaa'}}>${ev.acres}ac · ${ev.gpa} GPA</span></td>
                     <td>${prod.name}</td>
-                    <td>${prod.pcp||'—'}</td>
+                    <td>${prodPCP(prod)}</td>
                     <td>${prod.rate?prod.rate+prod.unit+'/ac':'—'}</td>
-                    <td>${prod.phi!==undefined?prod.phi+'d':'—'}</td>
+                    <td>${prodPHI(prod)!==null?prodPHI(prod)+'d':'—'}</td>
                     <td><strong>${eahd}</strong></td>
                     <td>
                       <label style=${{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
