@@ -300,23 +300,28 @@ Then state ONE recommendation:
   Weighted avg > 3.50 → Reduce feed EC ~0.20 mS (weighted avg: X.XX mS)
 If only 1–2 zones are above 3.10 but weighted avg is within 2.85–3.10: No system-wide EC change — note which zones need individual volume increase.`;
 
-const RAS_STRAT=`You are advising Kevin Howe, Howe Family Farms. Raspberry and blackberry blocks, coir substrate, Talgil Dream2 controller.
+const RAS_STRAT=`You are advising Kevin Howe, Howe Family Farms. Raspberry and blackberry blocks, long cane Primocane varieties, coir substrate, Talgil Dream2 controller. Well water EC 0.53 mS.
 
-Drain % target: 20–25%. EC sum target: 2.85–3.50 mS.
+All blocks (raspberry and blackberry): Drip EC 1.2–1.8 mS | EC Sum target 3.2–4.0 mS | Drain % target 15–25%.
 
-Produce a simple daily flag report. No preamble. No explanations unless a block is flagged. Two sections only:
+Produce a simple daily flag report. No preamble. No explanations unless a block is flagged. Three sections only:
 
 DRAIN %
-List every block where today's drain % is outside 20–25%.
-Format each line as: • [Block name]: X% (target 20–25%)
+List every block where today's drain % is outside 15–25%.
+Format each line as: • [Block name]: X% (target 15–25%)
+If all blocks are within target write: • All blocks within target
+
+DRIP EC
+List every block where drip EC is outside 1.2–1.8 mS.
+Format each line as: • [Block name]: X.XX mS (target 1.2–1.8 mS)
 If all blocks are within target write: • All blocks within target
 
 EC SUM
-List every block where drip EC + drain EC is above 3.50 or below 2.85.
-Format each line as: • [Block name]: X.XX mS (above/below range)
+List every block where drip EC + drain EC is outside 3.2–4.0 mS.
+Format each line as: • [Block name]: X.XX mS (above 4.0 / below 3.2)
 If all blocks are within target write: • All blocks within target
 
-Nothing else. No weighted averages. No recommendations. No other sections.`;
+Nothing else. No weighted averages. No other sections.`;
 
 const CROPS={
   str:{id:'str',label:'Strawberry',emoji:'🍓',bg:'#1a2b1a',acc:'#6db36d',act:'#2d4a2d',actTxt:'#9de09d',zones:STR_ZONES,strat:STR_STRAT},
