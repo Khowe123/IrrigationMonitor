@@ -487,7 +487,7 @@ async function sbReq(method,path,body,url,key){
 }
 
 async function sbPush(entry,cropId){
-  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms-2026');
   if(!url||!key)return{ok:false,reason:'not-configured'};
   // Image binaries stay local; only sync metadata so payload stays small
   const safe={...entry,attachments:(entry.attachments||[]).map(({id,caption,timestamp,name})=>({id,caption,timestamp,name}))};
@@ -499,7 +499,7 @@ async function sbPush(entry,cropId){
 }
 
 async function sbPull(cropId){
-  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms-2026');
   if(!url||!key)return null;
   try{const path='irrigation_entries?team_id=eq.'+encodeURIComponent(team)+'&crop=eq.'+cropId+'&select=date,entry_data,updated_at&order=date.desc&limit=300';
     const r=await sbReq('GET',path,null,url,key);
@@ -537,7 +537,7 @@ function mergeRemote(localMap,rows){
 
 // ── SPRAY BRAIN — SUPABASE ────────────────────────────────────────────────────
 async function sbSprayPush(event){
-  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms-2026');
   if(!url||!key)return{ok:false,reason:'not-configured'};
   const row={id:team+':spray:'+event.id,team_id:team,event_id:event.id,event_data:event,updated_at:new Date().toISOString()};
   try{const r=await sbReq('POST','spray_events',row,url,key);
@@ -546,7 +546,7 @@ async function sbSprayPush(event){
   catch(e){return{ok:false,reason:e.message};}
 }
 async function sbSprayDelete(eventId){
-  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms-2026');
   if(!url||!key)return{ok:false,reason:'not-configured'};
   try{
     const path='spray_events?id=eq.'+encodeURIComponent(team+':spray:'+eventId);
@@ -556,7 +556,7 @@ async function sbSprayDelete(eventId){
   }catch(e){return{ok:false,reason:e.message};}
 }
 async function sbSprayPull(){
-  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms');
+  const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms-2026');
   if(!url||!key)return null;
   try{const path='spray_events?team_id=eq.'+encodeURIComponent(team)+'&select=event_data,updated_at&order=updated_at.desc&limit=500';
     const r=await sbReq('GET',path,null,url,key);
@@ -1755,7 +1755,7 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
   const[stratSaved,setStratSaved]=useState(false);
   const[sbUrl,setSbUrl]=useState(()=>LS.get('hff:sb_url',''));
   const[sbKey,setSbKey]=useState(()=>LS.get('hff:sb_key',''));
-  const[sbTeam,setSbTeam]=useState(()=>LS.get('hff:sb_team','howe-farms'));
+  const[sbTeam,setSbTeam]=useState(()=>LS.get('hff:sb_team','howe-farms-2026'));
   const[sbSaved,setSbSaved]=useState(false);
   const[testResult,setTestResult]=useState(null);
   const[loginEmail,setLoginEmail]=useState('');
@@ -1915,9 +1915,13 @@ function App(){
       sbPull(cropId).then(rows=>{
         if(rows){
           const mapRef={};LS.keys('hff:'+cropId+':d:').forEach(k=>{const e=LS.get(k,null);if(e?.date)mapRef[e.date]=e;});
-          const merged=mergeRemote(mapRef,rows);
-          Object.values(merged).forEach(e=>{LS.set('hff:'+cropId+':d:'+e.date,e);});
-          setEntries(merged);setSyncSt('ok');setLastSync(new Date());
+          setEntries(prev=>{
+            const base={...mapRef,...prev};
+            const merged=mergeRemote(base,rows);
+            Object.values(merged).forEach(e=>{LS.set('hff:'+cropId+':d:'+e.date,e);});
+            return {...merged};
+          });
+          setSyncSt('ok');setLastSync(new Date());
         }else{setSyncSt('err');}
       });
     }
@@ -1953,9 +1957,12 @@ function App(){
     setSyncSt('syncing');
     const rows=await sbPull(cropId);
     if(rows){
-      const merged=mergeRemote({...entries},rows);
-      Object.values(merged).forEach(e=>{LS.set('hff:'+cropId+':d:'+e.date,e);});
-      setEntries(merged);setSyncSt('ok');setLastSync(new Date());
+      setEntries(prev=>{
+        const merged=mergeRemote({...prev},rows);
+        Object.values(merged).forEach(e=>{LS.set('hff:'+cropId+':d:'+e.date,e);});
+        return {...merged};
+      });
+      setSyncSt('ok');setLastSync(new Date());
     }else setSyncSt('err');
   }
 
