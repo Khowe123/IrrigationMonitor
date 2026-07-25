@@ -694,7 +694,16 @@ function prodPCP(prod){const info=sprayInfo(prod.name);return prod.pcp||info.pcp
 function prodPHI(prod){const info=sprayInfo(prod.name);return prod.phi!==undefined?prod.phi:(info.phi!==undefined?info.phi:null);}
 function prodREI(prod){const info=sprayInfo(prod.name);return prod.rei||info.rei||'—';}
 function prodEAHD(ev,prod){const phi=prodPHI(prod);return prod.eahd||calcEAHD(ev.date,phi||0);}
-const SPRAY_TANK_VOL={tunnels:160,field:680}; // Patriot SPX 680 gal
+const SPRAY_TANK_VOL={
+  hagie:  120,  // Julio — tunnels (was 160, corrected)
+  hardi:  750,  // Jose  — field berries, cucurbit fungicides/insecticides
+  patriot:680,  // Glenn — herbicides, sweetcorn
+};
+function tvolForLoc(loc){
+  if(loc.includes('Hagie'))return SPRAY_TANK_VOL.hagie;
+  if(loc.includes('Hardi'))return SPRAY_TANK_VOL.hardi;
+  return SPRAY_TANK_VOL.patriot;
+}
 
 // Tunnel zone areas (exact acreages)
 const TUNNEL_ZONES=[
@@ -713,7 +722,8 @@ const FIELD_ZONES=[
   {id:'pumpkin', label:'Pumpkin',            acres:149.9},
   {id:'corn',    label:'Sweetcorn',          acres:null},
   {id:'berries', label:'Field Berries',      acres:null},
-  {id:'rye',     label:'Rye / Cover Crop',   acres:null},
+  {id:'rye',     label:'Rye / Cover Crop',   acres:87.0},
+  {id:'str27',   label:'Strawberry 2027 Field',acres:7.4},
   {id:'frc',     label:'Row Cover Only',     acres:7.5},
   {id:'flb',     label:'Late Berries Only',  acres:11.5},
   {id:'fall',    label:'All field',          acres:238.7},
@@ -996,7 +1006,7 @@ function SprayBrain(){
   const[spSync,setSync]=useState('idle');
   const[bZones,setBZ]=useState(()=>TUNNEL_ZONES.map(z=>z.id));
   const[bFieldZone,setBFZ]=useState('melon');
-  const[bLoc,setBL]=useState('Tunnels — Hagie 160 gal');
+  const[bLoc,setBL]=useState('Tunnels — Hagie 120 gal (Julio)');
   const[bGpa,setBG]=useState('100');
   const[bAcres,setBA]=useState('19.5');
   const[bDate,setBD]=useState(todayStr());
@@ -1036,8 +1046,8 @@ function SprayBrain(){
     });
   },[]);
 
-  const isTunnels=!bLoc.includes('Field');
-  const tvol=isTunnels?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
+  const isTunnels=bLoc.includes('Hagie');
+  const tvol=tvolForLoc(bLoc);
   const gpa=parseFloat(bGpa)||100;
   const apt=tvol/gpa;
   const fieldZoneObj=FIELD_ZONES.find(z=>z.id===bFieldZone)||FIELD_ZONES[0];
@@ -1115,21 +1125,21 @@ function SprayBrain(){
   function handleGpaChange(v){
     setBG(v);
     const newGpa=parseFloat(v)||100;
-    const newTankVol=(!bLoc.includes('Field'))?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
-    recalcProductsForApt(newTankVol/newGpa);
+    recalcProductsForApt(tvolForLoc(bLoc)/newGpa);
   }
   function handleLocChange(v){
     setBL(v);
-    // Auto-suggest applicator based on location
-    const newIsTunnels=v.includes('Tunnels');
+    // Auto-assign applicator to the sprayer's usual operator
     setBAp(prev=>{
       const known=['Julio','Jose','Glenn Howe','Glenn','Kevin','Kevin Howe'];
-      if(!known.includes(prev))return prev; // don't override manual entry
-      return newIsTunnels?'Julio':'Jose';
+      if(!known.includes(prev))return prev;
+      if(v.includes('Hagie')) return 'Julio';
+      if(v.includes('Hardi')) return 'Jose';
+      if(v.includes('Patriot')) return 'Glenn Howe';
+      return prev;
     });
     const newGpa=parseFloat(bGpa)||100;
-    const newTankVol=v.includes('Tunnels')?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
-    recalcProductsForApt(newTankVol/newGpa);
+    recalcProductsForApt(tvolForLoc(v)/newGpa);
   }
 
   function genJulio(){
@@ -1158,9 +1168,13 @@ function SprayBrain(){
     });
     if(certNote)lines.push('Applicator: '+bApplicator+' — '+certNote);
     else lines.push('Applicator: '+bApplicator);
-    lines.push(gpa+' GPA');
+    const totalTanks=(acres/apt);
+    const fullT=Math.floor(totalTanks);
+    const partT=totalTanks-fullT;
+    const tanksStr=partT>0.05?totalTanks.toFixed(1)+' tanks ('+fullT+' full + '+Math.round(partT*100)+'% of a tank)':fullT+' full tanks';
+    lines.push('Tanks needed: '+tanksStr+' for '+acres.toFixed(2)+' ac at '+gpa+' GPA');
     setBJ(lines.join('\n'));
-    setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+apt.toFixed(2)+'ac/tank · '+acres.toFixed(2)+'ac');
+    setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+apt.toFixed(2)+'ac/tank · '+totalTanks.toFixed(1)+' tanks · '+acres.toFixed(2)+'ac');
     const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):fieldZoneObj.label;
     const gapRows=vp.filter(p=>SPRAY_PROD_DB[p.name]?.type!=='N').map(p=>{
       const info=SPRAY_PROD_DB[p.name]||{};
@@ -1200,7 +1214,10 @@ function SprayBrain(){
     const eventApt=tankVol/eventGpa;
     setEditId(ev.id);
     setSV('build');
-    setBL(locIsTunnels?'Tunnels — Hagie 160 gal':'Field — 680 gal');
+    // Re-map stored loc to current sprayer options
+    setBL(ev.loc==='Tunnels'?'Tunnels — Hagie 120 gal (Julio)':
+          (ev.applicator&&ev.applicator.includes('Glenn'))?'Field — Patriot 680 gal (Glenn)':
+          'Field — Hardi 750 gal (Jose)');
     setBG(String(ev.gpa||100));
     setBD(ev.date||todayStr());
     setBT(ev.time||'');
@@ -1408,7 +1425,9 @@ function SprayBrain(){
       <div class="sp-form-row">
         <div><label class="sp-lbl">Location</label>
           <select class="sp-sel" value=${bLoc} onChange=${e=>handleLocChange(e.target.value)}>
-            <option>Tunnels — Hagie 160 gal</option><option>Field — 680 gal</option>
+            <option>Tunnels — Hagie 120 gal (Julio)</option>
+            <option>Field — Hardi 750 gal (Jose)</option>
+            <option>Field — Patriot 680 gal (Glenn)</option>
           </select></div>
         <div><label class="sp-lbl">GPA</label>
           <input type="number" class="sp-sel" value=${bGpa} onInput=${e=>handleGpaChange(e.target.value)} min="10" max="200"/></div>
@@ -1419,7 +1438,7 @@ function SprayBrain(){
         bAcres=${bAcres} setBA=${setBA}
         bDate=${bDate} setBD=${setBD}
         bTime=${bTime} setBT=${setBT}/>
-      <p class="sp-tinfo">${tvol} gal tank · ${apt.toFixed(2)} ac/tank · ~${(acres/apt).toFixed(1)} tanks for ${acres.toFixed(2)} ac</p>
+      <p class="sp-tinfo">${bLoc.split(' — ')[1]||''} · ${apt.toFixed(2)} ac/tank · ${(acres/apt).toFixed(1)} tanks for ${acres.toFixed(2)} ac</p>
       <div class="sp-form-row" style=${{marginBottom:9}}>
         <div><label class="sp-lbl">Applicator</label>
           <input type="text" class="sp-sel" value=${bApplicator} onInput=${e=>setBAp(e.target.value)} placeholder="e.g. Julio"/></div>
