@@ -1,4 +1,4 @@
-const CACHE='hff-v3';
+const CACHE='hff-v4';
 const CORE=['./','./index.html','./manifest.json','./icon.svg',
   'https://cdn.jsdelivr.net/npm/preact@10.23.0/dist/preact.umd.js',
   'https://cdn.jsdelivr.net/npm/preact@10.23.0/hooks/dist/hooks.umd.js',
@@ -8,7 +8,6 @@ self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.add
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
 self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
-  // Never cache API calls — always fetch live data
   if(e.request.url.includes('api.anthropic.com'))return;
   if(e.request.url.includes('supabase.co'))return;
   e.respondWith(caches.match(e.request).then(hit=>hit||fetch(e.request).then(res=>{
