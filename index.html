@@ -591,7 +591,7 @@ const SPRAY_PROD_DB={
   'Miravis Prime': {frac:'7+12',irac:null,type:'F',pcp:'33207',rateLabel:'0.4 L/ac',phi:1,rei:'12h'},
   'Nova 40W':      {frac:'3',   irac:null,type:'F',pcp:'22399',rateLabel:'0.14 kg/ac',phi:3,rei:'2h'},
   'Nova':          {frac:'3',   irac:null,type:'F',pcp:'22399',rateLabel:'0.14 kg/ac',phi:3,rei:'2h'},
-  'Orondis Ultra': {frac:'49+40',irac:null,type:'F',pcp:'32805',rateLabel:'—',phi:0,rei:'—'},
+  'Orondis Ultra': {frac:'49+40',irac:null,type:'F',pcp:'32805',rateLabel:'243 mL/ac',phi:0,rei:'12h',notes:'Phytophthora+Downy — cucurbits'},
   'Orondis Gold':  {frac:'49+4',irac:null,type:'F',pcp:'33508',rateLabel:'1.85 L/ac',phi:30,rei:'12h'},
   'Phostrol':      {frac:'33',  irac:null,type:'F',pcp:'30449',rateLabel:'1.66 L/ac',phi:3,rei:'12h'},
   'Pristine':      {frac:'7+11',irac:null,type:'F',pcp:'27985',rateLabel:'0.65 kg/ac',phi:1,rei:'24h'},
@@ -653,6 +653,39 @@ const SPRAY_PROD_DB={
   'MKP':           {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
   'Epsotop (MgSO4)':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
   'Etidot (Boron)':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
+
+  // ── WATERMELON & PUMPKIN — FUNGICIDES ──────────────────────────────────────
+  // Phytophthora & Downy Mildew
+  'Presidio':         {frac:'43',    irac:null,type:'F',pcp:'30051',rateLabel:'118 mL/ac', phi:2, rei:'48h',notes:'Phytophthora+Downy — pumpkin/Caribbean'},
+  'Zampro':           {frac:'40+45', irac:null,type:'F',pcp:'30321',rateLabel:'0.35 L/ac', phi:1, rei:'12h',notes:'Downy mildew — cucurbits'},
+  'Torrent 400SC':    {frac:'21',    irac:null,type:'F',pcp:'30392',rateLabel:'70 mL/ac',  phi:1, rei:'12h',notes:'Phytophthora — pumpkin/Caribbean'},
+  // Powdery Mildew + general cucurbit
+  'Manzate Pro Stick':{frac:'M3',  irac:null,type:'F',pcp:'28217',rateLabel:'1 kg/ac',    phi:14,rei:'12h',notes:'Cucurbits — mancozeb'},
+  'Vivando':          {frac:'U8',  irac:null,type:'F',pcp:'29765',rateLabel:'0.45 L/ac',  phi:0, rei:'—',  notes:'Cucurbit powdery mildew'},
+  'Aprovia Top':      {frac:'7+3', irac:null,type:'F',pcp:'31526',rateLabel:'0.32 L/ac',  phi:1, rei:'12h',notes:'Cucurbits — benzovindiflupyr+difenoconazole'},
+  'Echo 90 WSP':      {frac:'M5',  irac:null,type:'F',pcp:'33519',rateLabel:'1 kg/ac',    phi:2, rei:'12h',notes:'Cucurbits — chlorothalonil WSP'},
+  // Corn borer / cucurbit insect
+  'Voliam Xpress':    {frac:null,irac:'3+28',type:'I',pcp:'30325',rateLabel:'202 mL/ac',phi:1,rei:'3d',  notes:'Corn borer — sweetcorn 1wk before harvest; cucurbits'},
+  'Coragen':          {frac:null,irac:'28',  type:'I',pcp:'28982',rateLabel:'150 mL/ac',phi:1,rei:'12h', notes:'Corn — Lepidoptera larvae'},
+
+  // ── FIELD HERBICIDES — Glenn Howe, Patriot SPX 680 gal ────────────────────
+  // Field Berries
+  'Sinbar':           {frac:null,irac:null,hrac:'C1',    type:'H',pcp:'10628',rateLabel:'0.3 g/ac',   phi:0,  rei:'—',   notes:'Before new growth in spring only'},
+  'Venture':          {frac:null,irac:null,hrac:'A',     type:'H',pcp:'21209',rateLabel:'0.8 L/ac',   phi:30, rei:'12h', notes:'Berries'},
+  'Betamix':          {frac:null,irac:null,hrac:'O',     type:'H',pcp:'28650',rateLabel:'0.7 L/ac',   phi:0,  rei:'—',   notes:'Non-fruiting fields only'},
+  'Chateau EZ':       {frac:null,irac:null,hrac:'E',     type:'H',pcp:'34036',rateLabel:'90 mL/ac',   phi:0,  rei:'—',   notes:'Dormant only'},
+  '2,4-D':            {frac:null,irac:null,hrac:'O',     type:'H',pcp:'14726',rateLabel:'0.32 L/ac',  phi:30, rei:'—',   notes:'Berries + Rye'},
+  'Assure':           {frac:null,irac:null,hrac:'A',     type:'H',pcp:'25462',rateLabel:'0.2 L/ac',   phi:30, rei:'12h', notes:'Berries + Watermelon'},
+  // Pumpkin
+  'Command':          {frac:null,irac:null,hrac:'F3',    type:'H',pcp:'27827',rateLabel:'0.38 L/ac',  phi:45, rei:'—',   notes:'Pumpkin + Watermelon — pre-emergent'},
+  'Dual II Magnum':   {frac:null,irac:null,hrac:'K3',    type:'H',pcp:'25729',rateLabel:'0.6 L/ac',   phi:65, rei:'—',   notes:'Pumpkin + Berries — pre-emergent'},
+  'Sandea':           {frac:null,irac:null,hrac:'C3',    type:'H',pcp:'31209',rateLabel:'18 g/ac',    phi:57, rei:'12h', notes:'Pumpkin only'},
+  // Sweetcorn
+  'Lumax':            {frac:null,irac:null,hrac:'C1+K3', type:'H',pcp:'30864',rateLabel:'1.8 L/ac',   phi:50, rei:'—',   notes:'Corn — pre-emergent'},
+  'Frontier':         {frac:null,irac:null,hrac:'K3',    type:'H',pcp:'29194',rateLabel:'360 mL/ac',  phi:30, rei:'—',   notes:'Corn — pre-emergent'},
+  'Integrity':        {frac:null,irac:null,hrac:'C1+K3', type:'H',pcp:'29371',rateLabel:'0.3 L/ac',   phi:60, rei:'NA',  notes:'Corn — pre-emergent'},
+  // Rye / Cover crop
+  'Credit':           {frac:null,irac:null,hrac:'9',     type:'H',pcp:'29888',rateLabel:'1 L/ac',     phi:0,  rei:'—',   notes:'Rye — glyphosate'},
 }
 
 function sprayInfo(name){return SPRAY_PROD_DB[name]||{};}
@@ -660,7 +693,7 @@ function prodPCP(prod){const info=sprayInfo(prod.name);return prod.pcp||info.pcp
 function prodPHI(prod){const info=sprayInfo(prod.name);return prod.phi!==undefined?prod.phi:(info.phi!==undefined?info.phi:null);}
 function prodREI(prod){const info=sprayInfo(prod.name);return prod.rei||info.rei||'—';}
 function prodEAHD(ev,prod){const phi=prodPHI(prod);return prod.eahd||calcEAHD(ev.date,phi||0);}
-const SPRAY_TANK_VOL={tunnels:160,field:720};
+const SPRAY_TANK_VOL={tunnels:160,field:680}; // Patriot SPX 680 gal
 
 // Tunnel zone areas (exact acreages)
 const TUNNEL_ZONES=[
@@ -672,12 +705,18 @@ const TUNNEL_ZONES=[
 ];
 const TUNNEL_TOTAL=9.92; // All tunnels combined
 
-// Field zone presets
+// Field zone presets — 2026 confirmed cucurbit acreages
 const FIELD_ZONES=[
-  {id:'fall',  label:'All field',         acres:19.5},
-  {id:'frc',   label:'Row cover only',    acres:7.5},
-  {id:'flb',   label:'Late berries only', acres:11.5},
-  {id:'fcust', label:'Custom acres',      acres:null},
+  {id:'melon',   label:'Watermelon',         acres:78.8},
+  {id:'carib',   label:'Caribbean Pumpkin',  acres:10.0},
+  {id:'pumpkin', label:'Pumpkin',            acres:149.9},
+  {id:'corn',    label:'Sweetcorn',          acres:null},
+  {id:'berries', label:'Field Berries',      acres:null},
+  {id:'rye',     label:'Rye / Cover Crop',   acres:null},
+  {id:'frc',     label:'Row Cover Only',     acres:7.5},
+  {id:'flb',     label:'Late Berries Only',  acres:11.5},
+  {id:'fall',    label:'All field',          acres:238.7},
+  {id:'fcust',   label:'Custom Acres',       acres:null},
 ];
 
 // 2026 seed data — all confirmed events with calculated rates
@@ -940,7 +979,7 @@ function SprayBrain(){
   const[spEvents,setSE]=useState(()=>{const s=LS.get('hff:spray:events',null);return(s&&s.length>0)?s:SPRAY_SEED;});
   const[spSync,setSync]=useState('idle');
   const[bZones,setBZ]=useState(()=>TUNNEL_ZONES.map(z=>z.id));
-  const[bFieldZone,setBFZ]=useState('fall');
+  const[bFieldZone,setBFZ]=useState('melon');
   const[bLoc,setBL]=useState('Tunnels — Hagie 160 gal');
   const[bGpa,setBG]=useState('100');
   const[bAcres,setBA]=useState('19.5');
@@ -1130,7 +1169,7 @@ function SprayBrain(){
     const eventApt=tankVol/eventGpa;
     setEditId(ev.id);
     setSV('build');
-    setBL(locIsTunnels?'Tunnels — Hagie 160 gal':'Field — 720 gal');
+    setBL(locIsTunnels?'Tunnels — Hagie 160 gal':'Field — 680 gal');
     setBG(String(ev.gpa||100));
     setBD(ev.date||todayStr());
     setBT(ev.time||'');
@@ -1338,7 +1377,7 @@ function SprayBrain(){
       <div class="sp-form-row">
         <div><label class="sp-lbl">Location</label>
           <select class="sp-sel" value=${bLoc} onChange=${e=>handleLocChange(e.target.value)}>
-            <option>Tunnels — Hagie 160 gal</option><option>Field — 720 gal</option>
+            <option>Tunnels — Hagie 160 gal</option><option>Field — 680 gal</option>
           </select></div>
         <div><label class="sp-lbl">GPA</label>
           <input type="number" class="sp-sel" value=${bGpa} onInput=${e=>handleGpaChange(e.target.value)} min="10" max="200"/></div>
