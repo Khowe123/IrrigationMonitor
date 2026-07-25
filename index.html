@@ -574,12 +574,12 @@ const SPRAY_PROD_DB={
   // Strawberry fungicides — PCP/PHI/REI from Howe Farms audit sheet
   'Azoshy':        {frac:'11',  irac:null,type:'F',pcp:'32263',rateLabel:'0.45 L/ac',phi:1,rei:'12h'},
   'Bravo ZN':      {frac:'M',   irac:null,type:'F',pcp:'28900',rateLabel:'1.4 L/ac',phi:30,rei:'48h'},
-  'Captan Supra':  {frac:'M',   irac:null,type:'F',pcp:'24613',rateLabel:'1.33 kg/ac',phi:2,rei:'48h'},
-  'Captan':        {frac:'M4',  irac:null,type:'F',pcp:'24613',rateLabel:'1.33 kg/ac',phi:2,rei:'48h'},
+  'Captan Supra':  {frac:'M4',  irac:null,type:'F',pcp:'24613',rateLabel:'1 kg/ac',   phi:2,rei:'48h',notes:'Supra Captan 80 WDG — dry formulation (kg/g, not mL). Hand harvest REI ~6 days'},
+  'Captan':        {frac:'M4',  irac:null,type:'F',pcp:'24613',rateLabel:'1 kg/ac',   phi:2,rei:'48h',notes:'Supra Captan 80 WDG — dry formulation (kg/g). Hand harvest REI ~6 days'},
   'Cueva':         {frac:'M1',  irac:null,type:'F',pcp:'31825',rateLabel:'1% v/v',phi:1,rei:'4h',noFrost:1},
-  'Diplomat':      {frac:'19',  irac:null,type:'F',pcp:'32918',rateLabel:'0.28 kg/ac',phi:0,rei:'dry'},
+  'Diplomat':      {frac:'19',  irac:null,type:'F',pcp:'32918',rateLabel:'281 mL/ac', phi:0,rei:'dry',notes:'Diplomat 5SC is a liquid — rate in mL not g'},
   'Echo 720':      {frac:'M5',  irac:null,type:'F',pcp:'29356',rateLabel:'0.97 L/ac',phi:30,rei:'48h'},
-  'Echo NP':       {frac:'M5',  irac:null,type:'F',pcp:'29356',rateLabel:'0.97 L/ac',phi:30,rei:'48h'},
+  'Echo 720 Ag':   {frac:'M5',  irac:null,type:'F',pcp:'29356',rateLabel:'0.97 L/ac',phi:30,rei:'48h',notes:'PCP 29356 = Echo 720 Agricultural Fungicide (not Echo NP which is PCP 33479)'},
   'Elevate':       {frac:'17',  irac:null,type:'F',pcp:'25900',rateLabel:'0.69 kg/ac',phi:1,rei:'4h'},
   'Folpan':        {frac:'M4',  irac:null,type:'F',pcp:'27733',rateLabel:'1.01 kg/ac',phi:1,rei:'24h'},
   'Fontelis':      {frac:'7',   irac:null,type:'F',pcp:'30331',rateLabel:'0.71 L/ac',phi:0,rei:'12h'},
@@ -613,6 +613,7 @@ const SPRAY_PROD_DB={
   'Oxidate':       {frac:'NC',  irac:null,type:'F',pcp:'32907',rateLabel:'4.007 L/ac',phi:0,rei:'dry',noMix:1},
   'Sulfur':        {frac:'M2',  irac:null,type:'F',pcp:'—',rateLabel:'—',phi:0,rei:'—',isSulf:1},
   'Sulforix':      {frac:'M2',  irac:null,type:'F',pcp:'—',rateLabel:'—',phi:0,rei:'—',isSulf:1},
+  'Microthiol Disperss':{frac:'M2',irac:null,type:'F',pcp:'10629',rateLabel:'—',phi:0,rei:'24h',isSulf:1,notes:'PCP 10629 confirmed. No confirmed strawberry rate — verify label (French label only)'},
   'Sanidate':      {frac:'NC',  irac:null,type:'F',pcp:'—',rateLabel:'—',phi:0,rei:'—',noMix:1},
 
   // Strawberry insecticides — PCP/PHI/REI from Howe Farms audit sheet
@@ -623,17 +624,17 @@ const SPRAY_PROD_DB={
   'Assail':        {frac:null,irac:'4A',type:'I',pcp:'27128',rateLabel:'0.08 kg/ac',phi:1,rei:'12h'},
   'Assail 70WP':   {frac:null,irac:'4A',type:'I',pcp:'27128',rateLabel:'0.08 kg/ac',phi:1,rei:'12h'},
   'Beleaf':        {frac:null,irac:'29',type:'I',pcp:'29796',rateLabel:'0.07 kg/ac',phi:0,rei:'12h'},
-  'Cormoran':      {frac:null,irac:'15,4',type:'I',pcp:'33353',rateLabel:'364 mL/ac',phi:1,rei:'12h'},
+  'Cormoran':      {frac:null,irac:'15,4',type:'I',pcp:'33353',rateLabel:'300 mL/ac',phi:1,rei:'12h',notes:'Max label ~364 mL/ac; Howe Farms use rate 300 mL/ac'},
   'Delegate':      {frac:null,irac:'5', type:'I',pcp:'28778',rateLabel:'113 g/ac',phi:1,rei:'12h',bioSafe:1},
   'Exirel':        {frac:null,irac:'28',type:'I',pcp:'30895',rateLabel:'0.6 L/ac',phi:1,rei:'12h',bioSafe:1},
   'Harvanta':      {frac:null,irac:'28',type:'I',pcp:'32889',rateLabel:'0.65 L/ac',phi:1,rei:'12h'},
   'Lagon':         {frac:null,irac:'1B',type:'I',pcp:'9382',rateLabel:'0.9 L/ac',phi:7,rei:'—'},
-  'Magister':      {frac:null,irac:'25',type:'I',pcp:'34544',rateLabel:'0.9 L/ac',phi:12,rei:'12h',needsPH:1},
+  'Magister':      {frac:null,irac:'25',type:'I',pcp:'34544',rateLabel:'0.9 L/ac',phi:1, rei:'12h (7d hand harvest)',needsPH:1,notes:'PHI 1 day. General REI 12h but HAND HARVEST restricted 7 days — EAHD for harvest must use 7d'},
   'Mako':          {frac:null,irac:'3', type:'I',pcp:'30316',rateLabel:'101 mL/ac',phi:2,rei:'7h'},
   'Malathion':     {frac:null,irac:'1B',type:'I',pcp:'8372',rateLabel:'395 mL/ac',phi:3,rei:'12h'},
   'Matador':       {frac:null,irac:'3', type:'I',pcp:'24984',rateLabel:'0.04 L/ac',phi:7,rei:'24h'},
   'Nealta':        {frac:null,irac:'25',type:'I',pcp:'31284',rateLabel:'0.4 L/ac',phi:1,rei:'12h',needsOil:1},
-  'Nexter':        {frac:null,irac:'21',type:'I',pcp:'—',rateLabel:'—',phi:1,rei:'12h'},
+  'Nexter':        {frac:null,irac:'21',type:'I',pcp:'25135',rateLabel:'—',phi:10,rei:'12h',notes:'Nexter WP PCP 25135 — strawberry PHI 10 days'},
   'Oberon':        {frac:null,irac:'23',type:'I',pcp:'28905',rateLabel:'0.4 L/ac',phi:3,rei:'12h',noBloom:1},
   'Rimon':         {frac:null,irac:'15',type:'I',pcp:'28881',rateLabel:'0.34 L/ac',phi:1,rei:'12h'},
   'Sivanto':       {frac:null,irac:'4D',type:'I',pcp:'31452',rateLabel:'0.4 L/ac',phi:0,rei:'—'},
@@ -760,6 +761,21 @@ HARD RULES: Never mix Sanidate/H2O2 with anything. Never use H2O2 in spray water
 PRODUCTS: Agrimec long PHI — pre-bloom, save Magister for later. Exirel bio-safe on Orius (use 2x before release). Sulfur hurts beneficials. Beleaf 120g/ac thrips+TPB. Sivanto 0.4L/ac TPB/leafhopper via drip. Cormoran: leafhoppers+SSB with red fruit. Group 4 foliar preserve for leafhopper; bees ~June 25. Gatten excellent PM. InCa improves Florida Beauty calyx.`;
 
 
+
+// ── APPLICATOR CERTIFICATES ─────────────────────────────────────────────────
+// Kevin Howe: certified | Jose: certified | Julio: not certified (supervised by Kevin)
+// Glenn Howe: certified (field herbicides + sweetcorn)
+const APPLICATOR_CERTS={
+  'Kevin':true,'Kevin Howe':true,
+  'Jose':true,
+  'Julio':false,         // supervised by Kevin Howe while spraying
+  'Glenn':true,'Glenn Howe':true,
+};
+function appCertNote(name){
+  if(APPLICATOR_CERTS[name]===false)return'Supervised by Kevin Howe';
+  if(APPLICATOR_CERTS[name]===true)return'Cert. holder';
+  return'';
+}
 // ── SPRAY BRAIN HELPERS ───────────────────────────────────────────────────────
 function SprayPill({name, frac, irac, rate, unit}){
   const cls = name ? (
@@ -906,7 +922,7 @@ function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,
             border:'1.5px solid '+(sel?'#90caf9':'#ddd'),
             borderRadius:7,padding:'5px 10px',cursor:'pointer',fontWeight:600,
             color:sel?'#0277bd':'#666'}}>
-            <input type="radio" name="fzone" checked=${sel} onChange=${()=>setBFZ(z.id)}/>
+            <input type="radio" name="fzone" checked=${sel} onChange=${()=>{setBFZ(z.id);if(z.id==='corn')setBAp('Glenn Howe');}}/>
             ${' '+z.label+(z.acres?' '+z.acres+'ac':'')}
           </label>`;
         })}
@@ -1051,6 +1067,11 @@ function SprayBrain(){
         }
         return nr;
       });
+      // Auto-suggest Glenn when herbicide added in field, Jose for fungicide/insecticide
+      if(!isTunnels){
+        const hasHerb=u.some(r=>r.name&&SPRAY_PROD_DB[r.name]?.type==='H');
+        if(hasHerb)setBAp('Glenn Howe');
+      }
       chkWarn(u);return u;
     });
   }
@@ -1099,14 +1120,22 @@ function SprayBrain(){
   }
   function handleLocChange(v){
     setBL(v);
+    // Auto-suggest applicator based on location
+    const newIsTunnels=v.includes('Tunnels');
+    setBAp(prev=>{
+      const known=['Julio','Jose','Glenn Howe','Glenn','Kevin','Kevin Howe'];
+      if(!known.includes(prev))return prev; // don't override manual entry
+      return newIsTunnels?'Julio':'Jose';
+    });
     const newGpa=parseFloat(bGpa)||100;
-    const newTankVol=(!v.includes('Field'))?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
+    const newTankVol=v.includes('Tunnels')?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
     recalcProductsForApt(newTankVol/newGpa);
   }
 
   function genJulio(){
     const vp=bProds.filter(p=>p.name&&parseFloat(p.amt)>0);
     if(!vp.length){alert('Add at least one product with a quantity');return;}
+    const certNote=appCertNote(bApplicator);
     const lines=['Julio,'];
     const rF=[],rI=[],rN=[],ff=new Set(),fi=new Set();
     if(isTunnels&&bZones.length<TUNNEL_ZONES.length){
@@ -1127,6 +1156,8 @@ function SprayBrain(){
       else if(info.type==='I'){rI.push(entry);if(info.irac)fi.add(info.irac);}
       else rN.push(entry);
     });
+    if(certNote)lines.push('Applicator: '+bApplicator+' — '+certNote);
+    else lines.push('Applicator: '+bApplicator);
     lines.push(gpa+' GPA');
     setBJ(lines.join('\n'));
     setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+apt.toFixed(2)+'ac/tank · '+acres.toFixed(2)+'ac');
@@ -1139,7 +1170,7 @@ function SprayBrain(){
       const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);
       const rate=(n/apt).toFixed(1)+' '+d+'/ac';
       const eahd=calcEAHD(bDate,info.phi);
-      return[p.name,info.pcp||'—',info.phi!==undefined?info.phi+'d':'—',eahd,rate,locLabel,bDate+' '+bTime,bApplicator].join('\t');
+      const cn=appCertNote(bApplicator);const appl=bApplicator+(cn?' ('+cn+')':'');return[p.name,info.pcp||'—',info.phi!==undefined?info.phi+'d':'—',eahd,rate,locLabel,bDate+' '+bTime,appl].join('\t');
     });
     setBGap(gapRows);
   }
