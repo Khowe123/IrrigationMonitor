@@ -636,7 +636,7 @@ const SPRAY_PROD_DB={
   'Malathion':     {frac:null,irac:'1B',type:'I',pcp:'8372',rateLabel:'395 mL/ac',phi:3,rei:'12h'},
   'Matador':       {frac:null,irac:'3', type:'I',pcp:'24984',rateLabel:'0.04 L/ac',phi:7,rei:'24h'},
   'Nealta':        {frac:null,irac:'25',type:'I',pcp:'31284',rateLabel:'0.4 L/ac',phi:1,rei:'12h',needsOil:1},
-  'Nexter':        {frac:null,irac:'21',type:'I',pcp:'25135',rateLabel:'—',phi:10,rei:'12h',notes:'Nexter WP PCP 25135 — strawberry PHI 10 days'},
+  'Nexter':        {frac:null,irac:'21',type:'I',pcp:'33433',rateLabel:'—',phi:10,rei:'12h',notes:'Nexter WP PCP 33433 — strawberry PHI 10 days'},
   'Oberon':        {frac:null,irac:'23',type:'I',pcp:'28905',rateLabel:'0.4 L/ac',phi:3,rei:'12h',noBloom:1},
   'Rimon':         {frac:null,irac:'15',type:'I',pcp:'28881',rateLabel:'0.34 L/ac',phi:1,rei:'12h'},
   'Sivanto':       {frac:null,irac:'4D',type:'I',pcp:'31452',rateLabel:'0.4 L/ac',phi:0,rei:'—'},
@@ -788,6 +788,28 @@ function appCertNote(name){
   if(APPLICATOR_CERTS[name]===true)return'Cert. holder';
   return'';
 }
+function sprayerForApplicator(appl){
+  if(!appl)return'—';
+  if(appl.includes('Julio'))return'Hagie 120 gal';
+  if(appl.toLowerCase().includes('glenn'))return'Patriot 680 gal';
+  return'Hardi 750 gal';
+}
+function inferCrop(ev){
+  if(ev.crop)return ev.crop;
+  if(ev.loc==='Tunnels')return 'Strawberry (Tunnels)';
+  if(ev.note&&ev.note.length>0&&!ev.note.startsWith('Zones:'))return ev.note;
+  const a=parseFloat(ev.acres)||0;
+  if(Math.abs(a-78.8)<0.5)  return 'Watermelon';
+  if(Math.abs(a-149.9)<0.5) return 'Pumpkin';
+  if(Math.abs(a-10.0)<0.5)  return 'Caribbean Pumpkin';
+  if(Math.abs(a-87.0)<0.5)  return 'Rye / Cover Crop';
+  if(Math.abs(a-7.5)<0.5)   return 'Row Cover';
+  if(Math.abs(a-11.5)<0.5)  return 'Field Berries';
+  if(Math.abs(a-7.4)<0.5)   return 'Strawberry 2027';
+  if(Math.abs(a-9.92)<0.5||Math.abs(a-2.46)<0.2) return 'Strawberry (Tunnels)';
+  if(Math.abs(a-19.5)<1.0)  return 'Field Berries / All';
+  return ev.note||'—';
+}
 // ── SPRAY BRAIN HELPERS ───────────────────────────────────────────────────────
 function SprayPill({name, frac, irac, rate, unit}){
   const cls = name ? (
@@ -807,6 +829,7 @@ function SprayEvCard({ev,onEdit,onDelete}){
       <span class="sp-ev-date">${ev.date}${ev.note?' — '+ev.note:''}</span>
       <div class="sp-ev-meta">
         <span class=${locCls}>${ev.loc}</span>
+        <span style=${{fontSize:10,color:'#555',fontWeight:600}}>${inferCrop(ev)}</span>
         <span style=${{fontSize:10,color:'#aaa'}}>${ev.gpa} GPA · ${ev.acres}ac</span>
       </div>
     </div>
@@ -934,7 +957,12 @@ function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,
             border:'1.5px solid '+(sel?'#90caf9':'#ddd'),
             borderRadius:7,padding:'5px 10px',cursor:'pointer',fontWeight:600,
             color:sel?'#0277bd':'#666'}}>
-            <input type="radio" name="fzone" checked=${sel} onChange=${()=>{setBFZ(z.id);if(z.id==='corn')setBAp('Glenn Howe');}}/>
+            <input type="radio" name="fzone" checked=${sel} onChange=${()=>{
+              setBFZ(z.id);
+              if(z.id==='corn')setBAp('Glenn Howe');
+              const cropMap={melon:'Watermelon',carib:'Caribbean Pumpkin',pumpkin:'Pumpkin',corn:'Sweetcorn',berries:'Field Berries',rye:'Rye / Cover Crop',frc:'Row Cover',flb:'Field Berries',str27:'Strawberry 2027',fall:'All Field'};
+              setBCrop(cropMap[z.id]||'');
+            }}/>
             ${' '+z.label+(z.acres?' '+z.acres+'ac':'')}
           </label>`;
         })}
@@ -1021,6 +1049,7 @@ function SprayBrain(){
   const[bRec,setBR]=useState(null);
   const[bGap,setBGap]=useState([]);
   const[bWarn,setBW]=useState('');
+  const[bCrop,setBCrop]=useState('');
   const[aLoc,setAL]=useState('Tunnels');
   const[aStg,setAS]=useState('Green fruit');
   const[aTgt,setAT]=useState('Powdery mildew');
@@ -1131,6 +1160,8 @@ function SprayBrain(){
   }
   function handleLocChange(v){
     setBL(v);
+    if(v.includes('Hagie'))setBCrop('Strawberry (Tunnels)');
+    else setBCrop('');
     // Auto-assign applicator to the sprayer's usual operator
     setBAp(prev=>{
       const known=['Julio','Jose','Glenn Howe','Glenn','Kevin','Kevin Howe'];
@@ -1198,14 +1229,14 @@ function SprayBrain(){
       ?(bZones.length<TUNNEL_ZONES.length?'Zones: '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'')
       :(fieldZoneObj.label!=='All field'?fieldZoneObj.label:'');
     LS.set('hff:spray:applicator',bApplicator);
-    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',gpa,acres,note:zoneNote,applicator:bApplicator,
+    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',crop:bCrop||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
       products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null,pcp:null,phi:0};
         return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
     const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
     if(url&&key){setSync('syncing');sbSprayPush(event).then(r=>setSync(r.ok?'ok':'err'));}
-    setBJ(null);setBR(null);setBGap([]);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');setEditId(null);
+    setBJ(null);setBR(null);setBGap([]);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');setEditId(null);setBCrop('');
     setSV('season');
   }
 
@@ -1261,11 +1292,11 @@ function SprayBrain(){
   }
 
   function exportAuditCSV(){
-    const rows=[['Date','Location','Acres','GPA','Product','PCP #','Rate/ac','PHI','EAHD','Harvest Delayed Until EAHD','Verified Date','Field and Packaging Inspected Before Harvest','Inspection Date','Applicator'].join(',')];
+    const rows=[['Date','Location','Crop / Area','Acres Treated','Sprayer','GPA','Product','PCP #','Rate/ac','PHI','EAHD','Harvest Delayed Until EAHD','Verified Date','Field and Packaging Inspected Before Harvest','Inspection Date','Applicator'].join(',')];
     [...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).forEach(ev=>{
       (ev.products||[]).filter(p=>p.type!=='N').forEach(prod=>{
         const audit=ev.audit||{};
-        const cells=[ev.date,ev.loc,ev.acres,ev.gpa,prod.name,prodPCP(prod),rateDisplay(prod),(prodPHI(prod)??'—')+'d',prodEAHD(ev,prod),audit.phiVerified?'YES':'NO',audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',audit.preHarvestInspectionDate||'',ev.applicator||''];
+        const cn=appCertNote(ev.applicator||'');const appl=(ev.applicator||'')+(cn?' ('+cn+')':'');const cells=[ev.date,ev.loc,inferCrop(ev),ev.acres,sprayerForApplicator(ev.applicator),ev.gpa,prod.name,prodPCP(prod),rateDisplay(prod),(prodPHI(prod)??'—')+'d',prodEAHD(ev,prod),audit.phiVerified?'YES':'NO',audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',audit.preHarvestInspectionDate||'',appl];
         rows.push(cells.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(','));
       });
     });
@@ -1362,7 +1393,7 @@ function SprayBrain(){
         <div style=${{overflowX:'auto',border:'1.5px solid #e8e8e4',borderRadius:8}}>
           <table class="sp-gap-table">
             <thead><tr>
-              ${['Date','Location','Product','PCP #','Rate/ac','PHI','EAHD','Harvest delayed until EAHD','Field & packaging inspected before harvest','Applicator'].map(h=>html`<th key=${h}>${h}</th>`)}
+              ${['Date','Location','Crop / Area','Acres','Sprayer','Product','PCP #','Rate/ac','PHI','EAHD','Harvest delayed until EAHD','Field & packaging inspected before harvest','Applicator'].map(h=>html`<th key=${h}>${h}</th>`)}
             </tr></thead>
             <tbody>
               ${[...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).flatMap(ev=>
@@ -1371,7 +1402,10 @@ function SprayBrain(){
                   const eahd=prodEAHD(ev,prod);
                   return html`<tr key=${ev.id+'-'+i} style=${{background:audit.phiVerified&&audit.preHarvestInspection?'#f8fff8':'#fff'}}>
                     <td>${ev.date}</td>
-                    <td>${ev.loc}${ev.note?' — '+ev.note:''}<br/><span style=${{color:'#aaa'}}>${ev.acres}ac · ${ev.gpa} GPA</span></td>
+                    <td>${ev.loc}</td>
+                    <td>${inferCrop(ev)}</td>
+                    <td>${ev.acres} ac</td>
+                    <td style=${{fontSize:10}}>${sprayerForApplicator(ev.applicator)}</td>
                     <td>${prod.name}</td>
                     <td>${prodPCP(prod)}</td>
                     <td>${prod.rate?prod.rate+prod.unit+'/ac':'—'}</td>
