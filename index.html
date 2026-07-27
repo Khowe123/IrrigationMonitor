@@ -205,6 +205,7 @@ hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
 <script src="https://cdn.jsdelivr.net/npm/preact@10.23.0/hooks/dist/hooks.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 'use strict';
 const{h,render:prender}=preact;
@@ -574,15 +575,15 @@ const SPRAY_PROD_DB={
   // Strawberry fungicides — PCP/PHI/REI from Howe Farms audit sheet
   'Azoshy':        {frac:'11',  irac:null,type:'F',pcp:'32263',rateLabel:'0.45 L/ac',phi:1,rei:'12h'},
   'Bravo ZN':      {frac:'M',   irac:null,type:'F',pcp:'28900',rateLabel:'1.4 L/ac',phi:30,rei:'48h'},
-  'Captan Supra':  {frac:'M4',  irac:null,type:'F',pcp:'24613',rateLabel:'1 kg/ac',   phi:2,rei:'48h',notes:'Supra Captan 80 WDG — dry formulation (kg/g, not mL). Hand harvest REI ~6 days'},
-  'Captan':        {frac:'M4',  irac:null,type:'F',pcp:'24613',rateLabel:'1 kg/ac',   phi:2,rei:'48h',notes:'Supra Captan 80 WDG — dry formulation (kg/g). Hand harvest REI ~6 days'},
+  'Supra Captan 80 WDG':{frac:'M4',irac:null,type:'F',pcp:'24613',rateLabel:'1 kg/ac',phi:2,rei:'48h',reiHarvest:'6d',reiIrrigation:'9d',notes:'Dry formulation (kg/g). General REI 48h; hand harvest 6d; hand-set irrigation 9d'},
+  'Supra Captan':  {frac:'M4',  irac:null,type:'F',pcp:'24613',rateLabel:'1 kg/ac',   phi:2,rei:'48h',reiHarvest:'6d',reiIrrigation:'9d',notes:'Dry formulation (kg/g). General REI 48h; hand harvest 6d; hand-set irrigation 9d'},
   'Cueva':         {frac:'M1',  irac:null,type:'F',pcp:'31825',rateLabel:'1% v/v',phi:1,rei:'4h',noFrost:1},
   'Diplomat':      {frac:'19',  irac:null,type:'F',pcp:'32918',rateLabel:'281 mL/ac', phi:0,rei:'dry',notes:'Diplomat 5SC is a liquid — rate in mL not g'},
-  'Echo 720':      {frac:'M5',  irac:null,type:'F',pcp:'29356',rateLabel:'0.97 L/ac',phi:30,rei:'48h'},
-  'Echo 720 Ag':   {frac:'M5',  irac:null,type:'F',pcp:'29356',rateLabel:'0.97 L/ac',phi:30,rei:'48h',notes:'PCP 29356 = Echo 720 Agricultural Fungicide (not Echo NP which is PCP 33479)'},
+  'Echo 720 Agricultural Fungicide':{frac:'M5',irac:null,type:'F',pcp:'29355',rateLabel:'0.97 L/ac',phi:30,rei:'48h'},
+  'Echo 720 Agricultural Fungicide':{frac:'M5',irac:null,type:'F',pcp:'29355',rateLabel:'0.97 L/ac',phi:30,rei:'48h',notes:'PCP 29356 = Echo 720 Agricultural Fungicide (not Echo NP which is PCP 33479)'},
   'Elevate':       {frac:'17',  irac:null,type:'F',pcp:'25900',rateLabel:'0.69 kg/ac',phi:1,rei:'4h'},
   'Folpan':        {frac:'M4',  irac:null,type:'F',pcp:'27733',rateLabel:'1.01 kg/ac',phi:1,rei:'24h'},
-  'Fontelis':      {frac:'7',   irac:null,type:'F',pcp:'30331',rateLabel:'0.71 L/ac',phi:0,rei:'12h'},
+  'Fontelis':      {frac:'7',   irac:null,type:'F',pcp:'30331',rateLabel:'700 mL/ac',phi:0,rei:'12h',notes:'Max 1.75 L/ha = 708 mL/ac; use 700 mL/ac'},
   'Gatten':        {frac:'U13', irac:null,type:'F',pcp:'34297',rateLabel:'0.24 L/ac',phi:0,rei:'dry'},
   'Granuflo-T':    {frac:'M',   irac:null,type:'F',pcp:'30548',rateLabel:'—',phi:3,rei:'24h'},
   'Cevya':         {frac:'3',   irac:null,type:'F',pcp:'33405',rateLabel:'130 mL/ac',phi:0,rei:'12h',notes:'Strawberry powdery mildew — triazole'},
@@ -610,8 +611,8 @@ const SPRAY_PROD_DB={
   'Switch':        {frac:'9+12',irac:null,type:'F',pcp:'28189',rateLabel:'0.37 kg/ac',phi:1,rei:'12h'},
   'Tivano':        {frac:'NC',  irac:null,type:'F',pcp:'30468',rateLabel:'9.71 L/ac',phi:0,rei:'dry'},
   'Velum Prime':   {frac:'7',   irac:null,type:'F',pcp:'30334',rateLabel:'0.2 L/ac',phi:0,rei:'12h'},
-  'Milstop':       {frac:'NC',  irac:null,type:'F',pcp:'28095',rateLabel:'1.134 kg/ac',phi:0,rei:'4h'},
-  'Potassium Bicarbonate':{frac:'NC',irac:null,type:'F',pcp:'28095',rateLabel:'1.134 kg/ac',phi:0,rei:'4h'},
+  'MilStop':       {frac:'NC',  irac:null,type:'F',pcp:'28095',rateLabel:'1.134 kg/ac',phi:0,rei:'4h',notes:'Trade name MilStop; PCP 28095'},
+  'Potassium Bicarbonate':{frac:'NC',irac:null,type:'F',pcp:'28095',rateLabel:'1.134 kg/ac',phi:0,rei:'4h',notes:'Trade name: MilStop (PCP 28095)'},
   'Oxidate':       {frac:'NC',  irac:null,type:'F',pcp:'32907',rateLabel:'4.007 L/ac',phi:0,rei:'dry',noMix:1},
   'Sulfur':        {frac:'M2',  irac:null,type:'F',pcp:'—',rateLabel:'—',phi:0,rei:'—',isSulf:1},
   'Sulforix':      {frac:'M2',  irac:null,type:'F',pcp:'—',rateLabel:'—',phi:0,rei:'—',isSulf:1},
@@ -621,8 +622,8 @@ const SPRAY_PROD_DB={
   // Strawberry insecticides — PCP/PHI/REI from Howe Farms audit sheet
   'Actara':        {frac:null,irac:'4A',type:'I',pcp:'28408',rateLabel:'0.11 kg/ac',phi:3,rei:'12h'},
   'Admire 240':    {frac:null,irac:'4A',type:'I',pcp:'29094',rateLabel:'0.49 L/ac',phi:7,rei:'24h'},
-  'Agrimec':       {frac:null,irac:'6', type:'I',pcp:'31607',rateLabel:'100 mL/ac',phi:3,rei:'12h',prefOil:1},
-  'AgriMek':       {frac:null,irac:'6', type:'I',pcp:'31607',rateLabel:'100 mL/ac',phi:3,rei:'12h',prefOil:1},
+  'Agrimec':       {frac:null,irac:'6', type:'I',pcp:'31607',rateLabel:'91.1 mL/ac',phi:3,rei:'12h',prefOil:1,notes:'225 mL/ha ÷ 2.471 = 91.1 mL/ac'},
+  'AgriMek':       {frac:null,irac:'6', type:'I',pcp:'31607',rateLabel:'91.1 mL/ac',phi:3,rei:'12h',prefOil:1,notes:'225 mL/ha ÷ 2.471 = 91.1 mL/ac'},
   'Assail':        {frac:null,irac:'4A',type:'I',pcp:'27128',rateLabel:'0.08 kg/ac',phi:1,rei:'12h'},
   'Assail 70WP':   {frac:null,irac:'4A',type:'I',pcp:'27128',rateLabel:'0.08 kg/ac',phi:1,rei:'12h'},
   'Beleaf':        {frac:null,irac:'29',type:'I',pcp:'29796',rateLabel:'0.07 kg/ac',phi:0,rei:'12h'},
@@ -631,12 +632,12 @@ const SPRAY_PROD_DB={
   'Exirel':        {frac:null,irac:'28',type:'I',pcp:'30895',rateLabel:'0.6 L/ac',phi:1,rei:'12h',bioSafe:1},
   'Harvanta':      {frac:null,irac:'28',type:'I',pcp:'32889',rateLabel:'0.65 L/ac',phi:1,rei:'12h'},
   'Lagon':         {frac:null,irac:'1B',type:'I',pcp:'9382',rateLabel:'0.9 L/ac',phi:7,rei:'—'},
-  'Magister':      {frac:null,irac:'25',type:'I',pcp:'34544',rateLabel:'0.9 L/ac',phi:1, rei:'12h (7d hand harvest)',needsPH:1,notes:'PHI 1 day. General REI 12h but HAND HARVEST restricted 7 days — EAHD for harvest must use 7d'},
+  'Magister':      {frac:null,irac:'25',type:'I',pcp:'34544',rateLabel:'0.9 L/ac',phi:1, rei:'12h',reiHarvest:'7d',reiIrrigation:'2d',needsPH:1,notes:'PHI 1d. General REI 12h; hand harvest 7d; hand-set irrigation 2d'},
   'Mako':          {frac:null,irac:'3', type:'I',pcp:'30316',rateLabel:'101 mL/ac',phi:2,rei:'7h'},
   'Malathion':     {frac:null,irac:'1B',type:'I',pcp:'8372',rateLabel:'395 mL/ac',phi:3,rei:'12h'},
   'Matador':       {frac:null,irac:'3', type:'I',pcp:'24984',rateLabel:'0.04 L/ac',phi:7,rei:'24h'},
   'Nealta':        {frac:null,irac:'25',type:'I',pcp:'31284',rateLabel:'0.4 L/ac',phi:1,rei:'12h',needsOil:1},
-  'Nexter':        {frac:null,irac:'21',type:'I',pcp:'33433',rateLabel:'—',phi:10,rei:'12h',notes:'Nexter WP PCP 33433 — strawberry PHI 10 days'},
+  'Nexter WP':     {frac:null,irac:'21',type:'I',pcp:'25135',rateLabel:'—',phi:10,rei:'24h',notes:'Nexter WP PCP 25135 — strawberry PHI 10d, REI 24h — strawberry PHI 10 days'},
   'Oberon':        {frac:null,irac:'23',type:'I',pcp:'28905',rateLabel:'0.4 L/ac',phi:3,rei:'12h',noBloom:1},
   'Rimon':         {frac:null,irac:'15',type:'I',pcp:'28881',rateLabel:'0.34 L/ac',phi:1,rei:'12h'},
   'Sivanto':       {frac:null,irac:'4D',type:'I',pcp:'31452',rateLabel:'0.4 L/ac',phi:0,rei:'—'},
@@ -735,7 +736,7 @@ const FIELD_ZONES=[
 // 2026 seed data — all confirmed events with calculated rates
 const SPRAY_SEED=[
   {id:'ev-20260423',date:'2026-04-23',loc:'Field',gpa:40,acres:19,note:'',products:[
-    {name:'Echo NP',rate:947,unit:'mL',type:'F',frac:'M5'},{name:'Cueva',rate:1053,unit:'mL',type:'F',frac:'M1'},
+    {name:'Echo 720 Agricultural Fungicide',rate:947,unit:'mL',type:'F',frac:'M5'},{name:'Cueva',rate:1053,unit:'mL',type:'F',frac:'M1'},
     {name:'Sylvite Blue 15-30-15',rate:526,unit:'g',type:'N'},{name:'Etidot (Boron)',rate:263,unit:'mL',type:'N'},{name:'Nitric acid',rate:105,unit:'mL',type:'N'}]},
   {id:'ev-20260429',date:'2026-04-29',loc:'Tunnels',gpa:50,acres:10,note:'',products:[
     {name:'Switch',rate:406,unit:'g',type:'F',frac:'9+12'},{name:'Pristine',rate:719,unit:'g',type:'F',frac:'7+11'},{name:'SVite 30-10-10',rate:219,unit:'g',type:'N'}]},
@@ -743,25 +744,25 @@ const SPRAY_SEED=[
     {name:'Switch',rate:369,unit:'g',type:'F',frac:'9+12'},{name:'Malathion',rate:400,unit:'mL',type:'I',irac:'1B'},
     {name:'Phostrol',rate:1667,unit:'mL',type:'F',frac:'33'},{name:'Sylvite Blue 15-30-15',rate:605,unit:'g',type:'N'}]},
   {id:'ev-20260512',date:'2026-05-12',loc:'Field',gpa:35,acres:19,note:'',products:[
-    {name:'Agrimec',rate:105,unit:'mL',type:'I',irac:'6'},{name:'PureSpray Green Oil',rate:789,unit:'mL',type:'N'},
+    {name:'Agrimec',rate:91.1,unit:'mL',type:'I',irac:'6'},{name:'PureSpray Green Oil',rate:789,unit:'mL',type:'N'},
     {name:'Xiameter',rate:53,unit:'mL',type:'N'},{name:'Quadris Top',rate:421,unit:'mL',type:'F',frac:'11+3'}]},
   {id:'ev-20260518a',date:'2026-05-18',loc:'Field',gpa:40,acres:7.5,note:'Row cover 7.5 ac',products:[
     {name:'Elevate',rate:693,unit:'g',type:'F',frac:'17'},{name:'Folpan',rate:1000,unit:'g',type:'F',frac:'M4'},{name:'SVite 30-10-10',rate:667,unit:'g',type:'N'}]},
   {id:'ev-20260518b',date:'2026-05-18',loc:'Field',gpa:40,acres:11.5,note:'Late berries 11.5 ac',products:[
-    {name:'Echo 720',rate:1000,unit:'mL',type:'F',frac:'M5'},{name:'Cueva',rate:870,unit:'mL',type:'F',frac:'M1'},{name:'SVite 30-10-10',rate:435,unit:'g',type:'N'}]},
+    {name:'Echo 720 Agricultural Fungicide',rate:1000,unit:'mL',type:'F',frac:'M5'},{name:'Cueva',rate:870,unit:'mL',type:'F',frac:'M1'},{name:'SVite 30-10-10',rate:435,unit:'g',type:'N'}]},
   {id:'ev-20260518t',date:'2026-05-18',loc:'Tunnels',gpa:120,acres:10,note:'',products:[
-    {name:'Nexter',rate:180,unit:'g',type:'I',irac:'21'},{name:'PureSpray Green Oil',rate:4500,unit:'mL',type:'N'},{name:'Delegate',rate:90,unit:'g',type:'I',irac:'5'}]},
+    {name:'Nexter WP',rate:180,unit:'g',type:'I',irac:'21',phi:10,rei:'24h',eahd:'2026-05-28'},{name:'PureSpray Green Oil',rate:4500,unit:'mL',type:'N'},{name:'Delegate',rate:90,unit:'g',type:'I',irac:'5'}]},
   {id:'ev-20260525f',date:'2026-05-25',loc:'Field',gpa:30,acres:19.5,note:'',products:[
-    {name:'Switch',rate:359,unit:'g',type:'F',frac:'9+12'},{name:'Captan',rate:513,unit:'mL',type:'F',frac:'M4'},
+    {name:'Switch',rate:359,unit:'g',type:'F',frac:'9+12'},{name:'Supra Captan 80 WDG',rate:1000,unit:'g',type:'F',frac:'M4'},
     {name:'Beleaf',rate:120,unit:'g',type:'I',irac:'29'},{name:'Sylvite Blue 15-30-15',rate:465,unit:'g',type:'N'}]},
   {id:'ev-20260525t',date:'2026-05-25',loc:'Tunnels',gpa:120,acres:10,note:'',products:[
-    {name:'Agrimec',rate:90,unit:'mL',type:'I',irac:'6'},{name:'PureSpray Green Oil',rate:4500,unit:'mL',type:'N'},
+    {name:'Agrimec',rate:91.1,unit:'mL',type:'I',irac:'6'},{name:'PureSpray Green Oil',rate:4500,unit:'mL',type:'N'},
     {name:'Property',rate:150,unit:'mL',type:'F',frac:'U6'},{name:'Nitric acid',rate:225,unit:'mL',type:'N'},{name:'Inca',rate:375,unit:'mL',type:'N'}]},
   {id:'ev-20260603',date:'2026-06-03',loc:'Field',gpa:30,acres:19.5,note:'',products:[
     {name:'Luna Tranquility',rate:490,unit:'mL',type:'F',frac:'7+9'},{name:'Cormoran',rate:364,unit:'mL',type:'I',irac:'15,4'},
     {name:'MKP',rate:465,unit:'g',type:'N'},{name:'Epsotop (MgSO4)',rate:465,unit:'g',type:'N'},{name:'Etidot (Boron)',rate:233,unit:'g',type:'N'}]},
   {id:'ev-20260606a',date:'2026-06-06',loc:'Tunnels',gpa:100,acres:10,note:'Tank A',products:[
-    {name:'Potassium Bicarbonate',rate:2250,unit:'g',type:'F',frac:'NC'},{name:'Sulfur',rate:625,unit:'g',type:'F',frac:'M2'},{name:'Xiameter',rate:375,unit:'mL',type:'N'}]},
+    {name:'MilStop',rate:2250,unit:'g',type:'F',frac:'NC',pcp:'28095'},{name:'Sulfur',rate:625,unit:'g',type:'F',frac:'M2'},{name:'Xiameter',rate:375,unit:'mL',type:'N'}]},
   {id:'ev-20260613',date:'2026-06-13',loc:'Field',gpa:30,acres:19.5,note:'',products:[
     {name:'Switch',rate:369,unit:'g',type:'F',frac:'9+12'},{name:'Folpan',rate:974,unit:'g',type:'F',frac:'M4'},
     {name:'Cormoran',rate:1000,unit:'g',type:'I',irac:'15,4'},{name:'Xiameter',rate:67,unit:'mL',type:'N'}]},
@@ -783,6 +784,35 @@ const APPLICATOR_CERTS={
   'Julio':false,         // supervised by Kevin Howe while spraying
   'Glenn':true,'Glenn Howe':true,
 };
+function sprayerForApplicator(appl){
+  if(!appl)return'—';
+  if(appl.includes('Julio'))return'Hagie 120 gal';
+  if(appl.toLowerCase().includes('glenn'))return'Patriot 680 gal';
+  return'Hardi 750 gal';
+}
+function inferCrop(ev){
+  if(ev.crop)return ev.crop;
+  if(ev.loc==='Tunnels')return'Strawberry (Tunnels)';
+  if(ev.note&&ev.note.length>0&&!ev.note.startsWith('Zones:'))return ev.note;
+  const a=parseFloat(ev.acres)||0;
+  if(Math.abs(a-78.8)<0.5)  return'Watermelon';
+  if(Math.abs(a-149.9)<0.5) return'Pumpkin';
+  if(Math.abs(a-10.0)<0.5)  return'Caribbean Pumpkin';
+  if(Math.abs(a-87.0)<0.5)  return'Rye / Cover Crop';
+  if(Math.abs(a-7.5)<0.5)   return'Row Cover';
+  if(Math.abs(a-11.5)<0.5)  return'Field Berries';
+  if(Math.abs(a-7.4)<0.5)   return'Strawberry 2027';
+  if(Math.abs(a-9.92)<0.5||Math.abs(a-2.46)<0.3||Math.abs(a-4.33)<0.1||Math.abs(a-5.78)<0.1) return'Strawberry (Tunnels)';
+  if(Math.abs(a-19.5)<1.0)  return'Field Berries / All';
+  return ev.note||'—';
+}
+// REI/date helpers for xlsx export
+function reiToHrs(s){if(!s||s==='—'||s==='dry')return 0;const m=String(s).match(/(\d+(?:\.\d+)?)\s*(h|d)/i);if(!m)return 0;return parseFloat(m[1])*(m[2].toLowerCase()==='d'?24:1);}
+function dtAddHrs(date,time,hrs){if(hrs<=0)return date;const dt=new Date((date||'2026-01-01')+'T'+(time||'06:00')+':00');dt.setTime(dt.getTime()+hrs*3600000);return dt.toISOString().slice(0,10)+(time?' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0'):'');}
+function laterOf(d1,d2){return(d1||'')>(d2||'')?d1:d2;}
+function parseRateN(v,u){if(!v)return null;const n=parseFloat(v);const uu=(u||'').toLowerCase();if(uu==='l')return{v:n*1000,u:'mL'};if(uu==='kg')return{v:n*1000,u:'g'};return{v:n,u:uu};}
+function parseRateLbl(lbl){if(!lbl||lbl==='—')return null;const m=String(lbl).match(/([0-9.]+)\s*(kg|g|L|mL)/i);if(!m)return null;const v=parseFloat(m[1]),uu=m[2].toLowerCase();if(uu==='l')return{v:v*1000,u:'mL'};if(uu==='kg')return{v:v*1000,u:'g'};return{v,u:uu};}
+function rateChk(prod,info){const a=parseRateN(prod.rate,prod.unit),mx=parseRateLbl(info.rateLabel);if(!a||!mx||a.u!==mx.u)return'—';const r=(a.v/mx.v);const p=((r-1)*100);if(r>1.02)return'⚠ EXCEEDS +'+p.toFixed(1)+'%';if(r>1.0)return'Slight +'+p.toFixed(1)+'%';return'✓ '+Math.round(r*100)+'% of max';}
 function appCertNote(name){
   if(APPLICATOR_CERTS[name]===false)return'Supervised by Kevin Howe';
   if(APPLICATOR_CERTS[name]===true)return'Cert. holder';
@@ -810,6 +840,94 @@ function inferCrop(ev){
   if(Math.abs(a-19.5)<1.0)  return 'Field Berries / All';
   return ev.note||'—';
 }
+
+// ── XLSX AUDIT EXPORT (SheetJS) ───────────────────────────────────────────────
+function exportAuditXLSX(spEvents){
+  if(typeof XLSX==='undefined'){alert('Spreadsheet library loading — wait a moment and try again.');return;}
+  const wb=XLSX.utils.book_new();
+  const HDRS=['Event ID','Date','Location','Crop / Area','Block/Bay/Zone','Start Time',
+    'Target Pest','Bloom Status','Product','Type','PCP #',
+    'Actual Rate','Label Max Rate','Rate Compliance',
+    'PHI (days)','PHI Release Date',
+    'General REI','General REI Release',
+    'Hand Harvest REI','Hand Harvest Earliest',
+    'Hand-set Irrigation REI',
+    'Final Earliest Harvest Date',
+    'Harvest Delayed Verified','PHI Verified Date',
+    'Field & Pkg Inspected','Inspection Date',
+    'Applicator','Sprayer','GPA','Acres Treated'];
+
+  function buildRows(evs){
+    return evs.sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id))
+      .flatMap(ev=>(ev.products||[]).filter(p=>p.type!=='N').map(prod=>{
+        const info=sprayInfo(prod.name);
+        const phi=prod.phi!==undefined?prod.phi:(info.phi!==undefined?info.phi:null);
+        const phiDate=phi!=null?calcEAHD(ev.date,phi):'—';
+        const reiG=info.rei||'—';
+        const reiH=info.reiHarvest||reiG;
+        const reiI=info.reiIrrigation||'—';
+        const gRel=reiToHrs(reiG)>0?dtAddHrs(ev.date,ev.time,reiToHrs(reiG)):'—';
+        const hRel=reiToHrs(reiH)>0?dtAddHrs(ev.date,ev.time,reiToHrs(reiH)):'—';
+        const finalH=laterOf(phiDate,hRel==='—'?phiDate:hRel.slice(0,10));
+        const audit=ev.audit||{};
+        const cn=appCertNote(ev.applicator||'');
+        return[
+          ev.id,ev.date,ev.loc,inferCrop(ev),ev.note||'',ev.time||'',
+          ev.targetPest||'',ev.bloomStatus||'',
+          prod.name,
+          info.type==='F'?'Fungicide':info.type==='I'?'Insecticide':info.type==='H'?'Herbicide':'Adjuvant',
+          prodPCP(prod),
+          prod.rate?(prod.rate+' '+prod.unit+'/ac'):'—',
+          info.rateLabel||'—',
+          rateChk(prod,info),
+          phi!=null?phi:'—',phiDate,
+          reiG,gRel,reiH,hRel,reiI,finalH,
+          audit.phiVerified?'YES':'NO',audit.phiVerifiedDate||'',
+          audit.preHarvestInspection?'YES':'NO',audit.preHarvestInspectionDate||'',
+          (ev.applicator||'')+(cn?' ('+cn+')':''),
+          sprayerForApplicator(ev.applicator),
+          ev.gpa,parseFloat(ev.acres)||0
+        ];
+      }));
+  }
+
+  function ws(rows,hdrs){
+    if(!rows.length)return null;
+    const s=XLSX.utils.aoa_to_sheet([hdrs||HDRS,...rows]);
+    const cw=[12,12,10,20,22,10,22,12,28,12,10,14,14,18,6,14,10,18,14,20,14,22,8,14,8,16,28,14,6,12];
+    s['!cols']=cw.map(w=>({wch:w}));
+    return s;
+  }
+
+  const all=buildRows([...spEvents]);
+  const wAll=ws(all);if(wAll)XLSX.utils.book_append_sheet(wb,wAll,'All Applications');
+
+  const crops=[
+    ['Strawberry – Field',    e=>e.loc==='Field'&&(inferCrop(e).includes('Straw')||inferCrop(e).includes('Row')||inferCrop(e).includes('Berr'))],
+    ['Strawberry – Tunnels',  e=>e.loc==='Tunnels'],
+    ['Watermelon',            e=>inferCrop(e)==='Watermelon'],
+    ['Pumpkin',               e=>inferCrop(e).includes('Pumpkin')],
+    ['Sweet Corn',            e=>inferCrop(e)==='Sweetcorn'],
+  ];
+  for(const[name,fn] of crops){const r=buildRows(spEvents.filter(fn));const w=ws(r);if(w)XLSX.utils.book_append_sheet(wb,w,name);}
+
+  // Product Label Reference
+  const pH=['Product','Type','PCP #','FRAC/HRAC','IRAC','Label Rate','PHI','General REI','Hand Harvest REI','Hand-set Irrigation REI','Notes'];
+  const pR=Object.entries(SPRAY_PROD_DB).filter(([,i])=>i.type!=='N').map(([nm,i])=>[nm,
+    i.type==='F'?'Fungicide':i.type==='I'?'Insecticide':'Herbicide',
+    i.pcp||'—',i.frac||i.hrac||'—',i.irac||'—',i.rateLabel||'—',
+    i.phi!=null?i.phi+'d':'—',i.rei||'—',i.reiHarvest||i.rei||'—',i.reiIrrigation||'—',i.notes||'']);
+  const wP=ws(pR,pH);if(wP)XLSX.utils.book_append_sheet(wb,wP,'Product Label Reference');
+
+  // Compliance Exceptions
+  const eH=['Event ID','Date','Crop','Product','Issue','Actual','Label Max','Overage'];
+  const eR=buildRows([...spEvents]).filter(r=>r[13]&&r[13].toString().startsWith('⚠'));
+  const wE=ws(eR.length?eR:[['No rate exceedances found']],eH);
+  if(wE)XLSX.utils.book_append_sheet(wb,wE,'Compliance Exceptions');
+
+  XLSX.writeFile(wb,'Howe_Farms_spray_records_'+todayStr()+'.xlsx');
+}
+
 // ── SPRAY BRAIN HELPERS ───────────────────────────────────────────────────────
 function SprayPill({name, frac, irac, rate, unit}){
   const cls = name ? (
@@ -1050,6 +1168,8 @@ function SprayBrain(){
   const[bGap,setBGap]=useState([]);
   const[bWarn,setBW]=useState('');
   const[bCrop,setBCrop]=useState('');
+  const[bTargetPest,setBTargetPest]=useState('');
+  const[bBloomStatus,setBBloomStatus]=useState('No');
   const[aLoc,setAL]=useState('Tunnels');
   const[aStg,setAS]=useState('Green fruit');
   const[aTgt,setAT]=useState('Powdery mildew');
@@ -1229,14 +1349,14 @@ function SprayBrain(){
       ?(bZones.length<TUNNEL_ZONES.length?'Zones: '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'')
       :(fieldZoneObj.label!=='All field'?fieldZoneObj.label:'');
     LS.set('hff:spray:applicator',bApplicator);
-    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',crop:bCrop||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
+    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',crop:bCrop||undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
       products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null,pcp:null,phi:0};
         return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
     const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
     if(url&&key){setSync('syncing');sbSprayPush(event).then(r=>setSync(r.ok?'ok':'err'));}
-    setBJ(null);setBR(null);setBGap([]);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');setEditId(null);setBCrop('');
+    setBJ(null);setBR(null);setBGap([]);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');setEditId(null);setBCrop('');setBTargetPest('');setBBloomStatus('No');
     setSV('season');
   }
 
@@ -1387,8 +1507,9 @@ function SprayBrain(){
         <div class="sbox-title">CanadaGAP Spray Audit Report</div>
         <div class="sbox-hint">Use this report to show PCP #, PHI, EAHD, and your two manual harvest-release checks. Check the boxes only after harvest was delayed until the EAHD and the field/packaging inspection was completed before harvest started.</div>
         <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
-          <button class="btn btn-sm btn-out" onClick=${exportAuditCSV}>↓ Export audit CSV</button>
-          <button class="btn btn-sm btn-out" onClick=${()=>window.print()}>Print page</button>
+          <button class="btn btn-sm" onClick=${()=>exportAuditXLSX(spEvents)}>↓ Export .xlsx (8 tabs)</button>
+          <button class="btn btn-sm btn-out" onClick=${exportAuditCSV}>↓ Export CSV</button>
+          <button class="btn btn-sm btn-muted" onClick=${()=>window.print()}>Print</button>
         </div>
         <div style=${{overflowX:'auto',border:'1.5px solid #e8e8e4',borderRadius:8}}>
           <table class="sp-gap-table">
@@ -1475,6 +1596,22 @@ function SprayBrain(){
         bDate=${bDate} setBD=${setBD}
         bTime=${bTime} setBT=${setBT}/>
       <p class="sp-tinfo">${bLoc.split(' — ')[1]||''} · ${apt.toFixed(2)} ac/tank · ${(acres/apt).toFixed(1)} tanks for ${acres.toFixed(2)} ac</p>
+      <div class="sp-form-row" style=${{marginBottom:9}}>
+        <div><label class="sp-lbl">Target pest / disease</label>
+          <select class="sp-sel" value=${bTargetPest} onChange=${e=>setBTargetPest(e.target.value)}>
+            <option value="">— optional —</option>
+            <option>Botrytis</option><option>Powdery mildew</option><option>Angular leaf spot</option>
+            <option>Phytophthora</option><option>Downy mildew</option>
+            <option>Two-spotted spider mite</option><option>Cyclamen mite</option>
+            <option>Thrips</option><option>Tarnished plant bug</option><option>Leafhopper</option>
+            <option>Corn borer</option><option>Weeds — pre-emergent</option><option>Weeds — post-emergent</option>
+            <option>General preventative</option>
+          </select></div>
+        <div><label class="sp-lbl">Bloom status</label>
+          <select class="sp-sel" value=${bBloomStatus} onChange=${e=>setBBloomStatus(e.target.value)}>
+            <option>No</option><option>Pre-bloom</option><option>Bloom</option><option>Post-bloom</option>
+          </select></div>
+      </div>
       <div class="sp-form-row" style=${{marginBottom:9}}>
         <div><label class="sp-lbl">Applicator</label>
           <input type="text" class="sp-sel" value=${bApplicator} onInput=${e=>setBAp(e.target.value)} placeholder="e.g. Julio"/></div>
