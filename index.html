@@ -632,7 +632,7 @@ const SPRAY_PROD_DB={
   'Exirel':        {frac:null,irac:'28',type:'I',pcp:'30895',rateLabel:'0.6 L/ac',phi:1,rei:'12h',bioSafe:1},
   'Harvanta':      {frac:null,irac:'28',type:'I',pcp:'32889',rateLabel:'0.65 L/ac',phi:1,rei:'12h'},
   'Lagon':         {frac:null,irac:'1B',type:'I',pcp:'9382',rateLabel:'0.9 L/ac',phi:7,rei:'—'},
-  'Magister':      {frac:null,irac:'25',type:'I',pcp:'34544',rateLabel:'0.9 L/ac',phi:1, rei:'12h',reiHarvest:'7d',reiIrrigation:'2d',needsPH:1,notes:'PHI 1d. General REI 12h; hand harvest 7d; hand-set irrigation 2d'},
+  'Magister':      {frac:null,irac:'25',type:'I',pcp:'34544',rateLabel:'0.9 L/ac',phi:1, rei:'12h',reiHarvest:'1d',reiIrrigation:'2d',needsPH:1,notes:'PHI 1d. General REI 12h; hand harvest 7d; hand-set irrigation 2d'},
   'Mako':          {frac:null,irac:'3', type:'I',pcp:'30316',rateLabel:'101 mL/ac',phi:2,rei:'7h'},
   'Malathion':     {frac:null,irac:'1B',type:'I',pcp:'8372',rateLabel:'395 mL/ac',phi:3,rei:'12h'},
   'Matador':       {frac:null,irac:'3', type:'I',pcp:'24984',rateLabel:'0.04 L/ac',phi:7,rei:'24h'},
@@ -692,7 +692,13 @@ const SPRAY_PROD_DB={
   'Credit':           {frac:null,irac:null,hrac:'9',     type:'H',pcp:'29888',rateLabel:'1 L/ac',     phi:0,  rei:'—',   notes:'Rye — glyphosate'},
 }
 
-function sprayInfo(name){return SPRAY_PROD_DB[name]||{};}
+const PROD_ALIASES={
+  'Echo NP':'Echo 720 Agricultural Fungicide','Echo 720':'Echo 720 Agricultural Fungicide',
+  'Echo 720 Ag':'Echo 720 Agricultural Fungicide','Nexter':'Nexter WP',
+  'Captan':'Supra Captan 80 WDG','Supra Captan':'Supra Captan 80 WDG',
+  'Captan Supra':'Supra Captan 80 WDG','Potassium Bicarbonate':'MilStop','Milstop':'MilStop',
+};
+function sprayInfo(name){const canonical=PROD_ALIASES[name]||name;return SPRAY_PROD_DB[canonical]||{}};}
 function prodPCP(prod){const info=sprayInfo(prod.name);return prod.pcp||info.pcp||'—';}
 function prodPHI(prod){const info=sprayInfo(prod.name);return prod.phi!==undefined?prod.phi:(info.phi!==undefined?info.phi:null);}
 function prodREI(prod){const info=sprayInfo(prod.name);return prod.rei||info.rei||'—';}
@@ -1115,6 +1121,10 @@ function SprayJulioOut({bJulio, bRec, bGap, onSave}){
       <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#2e7d32'}}>CanadaGAP spray record</span>
       <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(gapFull).catch(()=>{})}>Copy all</button>
     </div>
+    <div style=${{background:'#fff8e1',border:'1px solid #ffe082',borderRadius:8,padding:'8px 12px',marginBottom:8,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+      <span style=${{fontSize:12,color:'#795548'}}>Tap checkboxes to mark. Then tap <strong>💾 Save audit</strong> to lock in — checkboxes save locally on each click but pressing Save also syncs to cloud.</span>
+      ${auditSaved?html`<span style=${{fontSize:12,fontWeight:600,color:auditSaved==='saved'?'#2e7d32':auditSaved==='err'?'#c62828':'#888',flexShrink:0}}>${auditSaved==='saved'?'✓ Saved':auditSaved==='err'?'⚠ Sync error':'Saving…'}</span>`:null}
+    </div>
     <div style=${{overflowX:'auto',marginTop:6,borderRadius:8,border:'1.5px solid #e8e8e4'}}>
       <table class="sp-gap-table">
         <thead><tr>${colHdrs.map(h=>html`<th key=${h}>${h}</th>`)}</tr></thead>
@@ -1168,6 +1178,7 @@ function SprayBrain(){
   const[bGap,setBGap]=useState([]);
   const[bWarn,setBW]=useState('');
   const[bCrop,setBCrop]=useState('');
+  const[auditSaved,setAuditSaved]=useState(null); // null | 'saving' | 'saved' | 'err'
   const[bTargetPest,setBTargetPest]=useState('');
   const[bBloomStatus,setBBloomStatus]=useState('No');
   const[aLoc,setAL]=useState('Tunnels');
@@ -1390,6 +1401,23 @@ function SprayBrain(){
   }
 
 
+  // Explicit save: persist all audit-marked events to localStorage + Supabase
+  async function saveAllAudit(){
+    setAuditSaved('saving');
+    LS.set('hff:spray:events',spEvents);
+    const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
+    if(url&&key){
+      // Push every event that has audit data to Supabase
+      const auditedEvents=spEvents.filter(e=>e.audit&&Object.keys(e.audit).some(k=>e.audit[k]));
+      const results=await Promise.all(auditedEvents.map(ev=>sbSprayPush(ev)));
+      const allOk=results.every(r=>r.ok);
+      setAuditSaved(allOk?'saved':'err');
+    } else {
+      setAuditSaved('saved'); // local-only save
+    }
+    setTimeout(()=>setAuditSaved(null),3000);
+  }
+
   function updateSprayAudit(eventId, patch){
     const upd=spEvents.map(ev=>{
       if(ev.id!==eventId)return ev;
@@ -1400,6 +1428,8 @@ function SprayBrain(){
       return updated;
     }).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);LS.set('hff:spray:events',upd);
+    // Visual confirmation that the click was saved locally
+    setAuditSaved('saved');setTimeout(()=>setAuditSaved(null),2000);
   }
 
   function maxEventEAHD(ev){
@@ -1506,9 +1536,13 @@ function SprayBrain(){
       <div class="sbox">
         <div class="sbox-title">CanadaGAP Spray Audit Report</div>
         <div class="sbox-hint">Use this report to show PCP #, PHI, EAHD, and your two manual harvest-release checks. Check the boxes only after harvest was delayed until the EAHD and the field/packaging inspection was completed before harvest started.</div>
-        <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
-          <button class="btn btn-sm" onClick=${()=>exportAuditXLSX(spEvents)}>↓ Export .xlsx (8 tabs)</button>
-          <button class="btn btn-sm btn-out" onClick=${exportAuditCSV}>↓ Export CSV</button>
+        <div style=${{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10,alignItems:'center'}}>
+          <button class=${'btn btn-sm'+(auditSaved==='saving'?' loading':auditSaved==='saved'?' saved':auditSaved==='err'?' btn-danger':'')}
+            onClick=${saveAllAudit} disabled=${auditSaved==='saving'}>
+            ${auditSaved==='saving'?'Saving…':auditSaved==='saved'?'✓ Audit saved':auditSaved==='err'?'⚠ Save failed':'💾 Save audit'}
+          </button>
+          <button class="btn btn-sm btn-out" onClick=${()=>exportAuditXLSX(spEvents)}>↓ Export .xlsx</button>
+          <button class="btn btn-sm btn-muted" onClick=${exportAuditCSV}>↓ CSV</button>
           <button class="btn btn-sm btn-muted" onClick=${()=>window.print()}>Print</button>
         </div>
         <div style=${{overflowX:'auto',border:'1.5px solid #e8e8e4',borderRadius:8}}>
