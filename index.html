@@ -698,7 +698,7 @@ const PROD_ALIASES={
   'Captan':'Supra Captan 80 WDG','Supra Captan':'Supra Captan 80 WDG',
   'Captan Supra':'Supra Captan 80 WDG','Potassium Bicarbonate':'MilStop','Milstop':'MilStop',
 };
-function sprayInfo(name){const canonical=PROD_ALIASES[name]||name;return SPRAY_PROD_DB[canonical]||{}};}
+function sprayInfo(name){const canonical=PROD_ALIASES[name]||name;return SPRAY_PROD_DB[canonical]||{}}
 function prodPCP(prod){const info=sprayInfo(prod.name);return prod.pcp||info.pcp||'—';}
 function prodPHI(prod){const info=sprayInfo(prod.name);return prod.phi!==undefined?prod.phi:(info.phi!==undefined?info.phi:null);}
 function prodREI(prod){const info=sprayInfo(prod.name);return prod.rei||info.rei||'—';}
