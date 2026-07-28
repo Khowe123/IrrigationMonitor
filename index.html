@@ -1121,10 +1121,6 @@ function SprayJulioOut({bJulio, bRec, bGap, onSave}){
       <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#2e7d32'}}>CanadaGAP spray record</span>
       <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(gapFull).catch(()=>{})}>Copy all</button>
     </div>
-    <div style=${{background:'#fff8e1',border:'1px solid #ffe082',borderRadius:8,padding:'8px 12px',marginBottom:8,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-      <span style=${{fontSize:12,color:'#795548'}}>Tap checkboxes to mark. Then tap <strong>💾 Save audit</strong> to lock in — checkboxes save locally on each click but pressing Save also syncs to cloud.</span>
-      ${auditSaved?html`<span style=${{fontSize:12,fontWeight:600,color:auditSaved==='saved'?'#2e7d32':auditSaved==='err'?'#c62828':'#888',flexShrink:0}}>${auditSaved==='saved'?'✓ Saved':auditSaved==='err'?'⚠ Sync error':'Saving…'}</span>`:null}
-    </div>
     <div style=${{overflowX:'auto',marginTop:6,borderRadius:8,border:'1.5px solid #e8e8e4'}}>
       <table class="sp-gap-table">
         <thead><tr>${colHdrs.map(h=>html`<th key=${h}>${h}</th>`)}</tr></thead>
