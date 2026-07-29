@@ -1,4 +1,4 @@
-const CACHE='hff-v8';
+const CACHE='hff-v9';
 const CORE=['./','./index.html','./manifest.json','./icon.svg',
   'https://cdn.jsdelivr.net/npm/preact@10.23.0/dist/preact.umd.js',
   'https://cdn.jsdelivr.net/npm/preact@10.23.0/hooks/dist/hooks.umd.js',
