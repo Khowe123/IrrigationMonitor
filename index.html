@@ -128,6 +128,22 @@ textarea{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px
 .stage-ref-val{font-size:12px;font-weight:600;color:#1a2b1a}
 .storage-note{font-size:11px;color:#bbb;margin-top:6px}
 hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
+.fert-sub-tabs{display:flex;gap:4px;margin-bottom:12px}
+.fert-sub-tab{flex:1;padding:7px 2px;border-radius:8px;border:1.5px solid #ddd;background:transparent;font-size:11px;font-weight:600;color:#888;text-align:center;cursor:pointer;font-family:inherit}
+.fert-ingredient{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid #f2f2f2;cursor:pointer}
+.fert-ingredient:last-child{border-bottom:none}
+.fert-ing-qty{font-size:14px;font-weight:700;color:#2e7d32;min-width:70px;flex-shrink:0;margin-top:1px}
+.fert-ing-name{font-size:14px;font-weight:500}
+.fert-ing-note{font-size:11px;color:#bbb;margin-top:2px}
+.fert-zone-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #f5f5f5;cursor:pointer}
+.fert-zone-row:last-child{border-bottom:none}
+.fert-zone-name{flex:1;font-size:14px;font-weight:600}
+.fert-litres{font-size:15px;font-weight:700;min-width:68px;text-align:right}
+.fert-check{width:20px;height:20px;cursor:pointer;accent-color:#2e7d32;flex-shrink:0}
+.fert-confirm-btn{width:100%;padding:13px;border:none;border-radius:10px;font-size:15px;font-weight:700;margin-top:10px;cursor:pointer;font-family:inherit;transition:background .2s}
+.fert-log-item{border-radius:8px;padding:9px 12px;margin-bottom:6px;border:1px solid}
+.fert-schedule-row{display:flex;align-items:center;gap:10px;background:#f7faf7;border-radius:8px;padding:9px 12px;margin-bottom:6px}
+
 .sync-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:12px;white-space:nowrap}
 .sync-idle{background:rgba(255,255,255,.08);color:rgba(255,255,255,.4)}
 .sync-ing{background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);animation:spin .8s linear infinite}
@@ -932,6 +948,471 @@ function exportAuditXLSX(spEvents){
   if(wE)XLSX.utils.book_append_sheet(wb,wE,'Compliance Exceptions');
 
   XLSX.writeFile(wb,'Howe_Farms_spray_records_'+todayStr()+'.xlsx');
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// FERT MODULE — Fertigation programme, mix logs, application logs
+// ════════════════════════════════════════════════════════════════════════
+
+const FERT_PHASES={
+  watermelon:[
+    {id:'wm_s1_3',name:'Stages 1–3: Transplant to Bloom',shortName:'Stg 1–3',
+     mmddStart:'05-18',mmddEnd:'07-08',
+     recipe:{batchL:1900,bluePerAcre:10,caPerAcre:8,bluePerWeek:2,caPerWeek:3,
+       caNote:'Add 2 kg Iron DTPA per 1000 L Ca tote',
+       notes:'Switch to Sizing blend on July 9. Bloom June 25–July 8 — maintain Ca 3×/week.',
+       ingredients:[
+         {name:'Potassium Nitrate',qty:8, unit:'bags',note:'55 lb / 25 kg bags'},
+         {name:'15-30-15 Blue',    qty:20,unit:'bags',note:'25 lb bags'},
+         {name:'Epsom Salt',       qty:2, unit:'bags',note:'50 lb bags'},
+         {name:'Boron',            qty:2, unit:'bags',note:''},
+         {name:'MKP',              qty:1, unit:'bags', note:'55 lb bag'},
+         {name:'MnSO4',            qty:4, unit:'kg',   note:'Add to batch'},
+         {name:'28% UAN',          qty:90,unit:'L',    note:'Liquid — measure carefully'},
+       ]}},
+    {id:'wm_s4_5',name:'Stages 4–5: Sizing to Harvest',shortName:'Stg 4–5',
+     mmddStart:'07-09',mmddEnd:'08-07',
+     recipe:{batchL:1900,bluePerAcre:12.6,caPerAcre:8,bluePerWeek:2,caPerWeek:4,
+       caNote:'Add 2 kg Iron DTPA per 1000 L Ca tote',
+       notes:'K-dominant — no UAN. Ca 4×/week for skin integrity and Brix.',
+       ingredients:[
+         {name:'Potassium Nitrate',qty:10,unit:'bags',note:'55 lb / 25 kg bags'},
+         {name:'15-30-15 Blue',    qty:5, unit:'bags',note:'25 lb bags'},
+         {name:'Epsom Salt',       qty:2, unit:'bags',note:'50 lb bags'},
+         {name:'Boron',            qty:2, unit:'bags',note:''},
+         {name:'MKP',              qty:1, unit:'bags',note:'55 lb bag'},
+         {name:'MnSO4',            qty:4, unit:'kg',  note:'Add to batch'},
+       ]}},
+  ],
+  strawberry:[
+    {id:'str_spring',name:'Spring Bearing',shortName:'Spring',
+     mmddStart:'05-01',mmddEnd:'06-10',
+     recipe:{batchL:1900,bluePerAcre:10,caPerAcre:8,bluePerWeek:2,caPerWeek:3,
+       caNote:'Add 2 kg Iron DTPA per 1000 L Ca tote',
+       notes:'Bearing period. Keep Ca 3× for fruit quality.',
+       ingredients:[
+         {name:'Potassium Nitrate',qty:4, unit:'bags',note:'55 lb bags'},
+         {name:'15-30-15 Blue',    qty:20,unit:'bags',note:'25 lb bags'},
+         {name:'Epsom Salt',       qty:2, unit:'bags',note:'50 lb bags'},
+         {name:'Boron',            qty:1, unit:'bags',note:''},
+         {name:'MKP',              qty:1, unit:'bags',note:'55 lb bag'},
+         {name:'MnSO4',            qty:4, unit:'kg',  note:'Add to batch'},
+         {name:'28% UAN',          qty:50,unit:'L',   note:''},
+       ]}},
+    {id:'str_june',name:'June (Harvest End / Pre-Renovation)',shortName:'June',
+     mmddStart:'06-10',mmddEnd:'07-05',
+     recipe:{batchL:1900,bluePerAcre:10,caPerAcre:8,bluePerWeek:2,caPerWeek:3,
+       caNote:'Add 2 kg Iron DTPA per 1000 L Ca tote',
+       notes:'Low NH4 — no UAN. Pre-renovation hardening.',
+       ingredients:[
+         {name:'Potassium Nitrate',qty:10,unit:'bags',note:'55 lb bags'},
+         {name:'15-30-15 Blue',    qty:5, unit:'bags',note:'25 lb bags'},
+         {name:'Epsom Salt',       qty:2, unit:'bags',note:'50 lb bags'},
+         {name:'Boron',            qty:2, unit:'bags',note:''},
+         {name:'MKP',              qty:1, unit:'bags',note:'55 lb bag'},
+         {name:'MnSO4',            qty:4, unit:'kg',  note:'Add to batch'},
+       ]}},
+    {id:'str_renovation',name:'July Renovation',shortName:'Renovation',
+     mmddStart:'07-05',mmddEnd:'08-01',
+     recipe:{batchL:1900,bluePerAcre:15,caPerAcre:12,bluePerWeek:2,caPerWeek:4,
+       caNote:'Add 2 kg Iron DTPA per 1000 L Ca tote',
+       notes:'Renovation burst — target ~50 lbs N total. Ca 4×/week at 12 L/acre. High NH4 drives rapid runner establishment.',
+       ingredients:[
+         {name:'Potassium Nitrate',qty:4,  unit:'bags',note:'55 lb bags'},
+         {name:'15-30-15 Blue',    qty:20, unit:'bags',note:'25 lb bags'},
+         {name:'Epsom Salt',       qty:2,  unit:'bags',note:'50 lb bags'},
+         {name:'Boron',            qty:1,  unit:'bags',note:''},
+         {name:'MKP',              qty:1,  unit:'bags',note:'55 lb bag'},
+         {name:'MnSO4',            qty:4,  unit:'kg',  note:'Add to batch'},
+         {name:'28% UAN',          qty:100,unit:'L',   note:''},
+       ]}},
+    {id:'str_august',name:'August (Initiation Trigger)',shortName:'August',
+     mmddStart:'08-01',mmddEnd:'09-10',
+     recipe:{batchL:1900,bluePerAcre:10,caPerAcre:8,bluePerWeek:0,caPerWeek:1,
+       caNote:'Add 2 kg Iron DTPA per 1000 L Ca tote',
+       notes:'⚠ HOLD BLUE — 0 applications. Ca 1×/week only. Restricting N triggers earlier flower bud initiation.',
+       ingredients:[
+         {name:'Potassium Nitrate',qty:10,unit:'bags',note:'55 lb bags (batch on standby)'},
+         {name:'15-30-15 Blue',    qty:5, unit:'bags',note:'25 lb bags (batch on standby)'},
+         {name:'Epsom Salt',       qty:2, unit:'bags',note:'50 lb bags'},
+         {name:'Boron',            qty:2, unit:'bags',note:''},
+         {name:'MKP',              qty:1, unit:'bags',note:'55 lb bag'},
+         {name:'MnSO4',            qty:4, unit:'kg',  note:'Add to batch'},
+       ]}},
+    {id:'str_sept',name:'Sept–Oct (Crown Push)',shortName:'Sept–Oct',
+     mmddStart:'09-10',mmddEnd:'11-01',
+     recipe:{batchL:1900,bluePerAcre:10,caPerAcre:8,bluePerWeek:2,caPerWeek:4,
+       caNote:'Add 2 kg Iron DTPA per 1000 L Ca tote',
+       notes:'Target 7–10 lbs N/acre/week. Ca 4×/week builds crown Ca reserves entering dormancy.',
+       ingredients:[
+         {name:'Potassium Nitrate',qty:5, unit:'bags',note:'55 lb bags'},
+         {name:'15-30-15 Blue',    qty:15,unit:'bags',note:'25 lb bags'},
+         {name:'Epsom Salt',       qty:2, unit:'bags',note:'50 lb bags'},
+         {name:'Boron',            qty:2, unit:'bags',note:''},
+         {name:'MKP',              qty:1, unit:'bags',note:'55 lb bag'},
+         {name:'MnSO4',            qty:4, unit:'kg',  note:'Add to batch'},
+       ]}},
+  ],
+};
+
+const FERT_ZONES_DEFAULT=[
+  {id:'fzwm1',name:'Dekraemers',acres:16.2,crop:'watermelon',active:true},
+  {id:'fzwm2',name:'Boszo',     acres:25.3,crop:'watermelon',active:true},
+  {id:'fzwm3',name:'Versnick',  acres:23.0,crop:'watermelon',active:true},
+  {id:'fzwm4',name:'Caribbean', acres:10.0,crop:'watermelon',active:true},
+  {id:'fzst1',name:'Keith Barn Zone 1',acres:3.14,crop:'strawberry',active:true},
+  {id:'fzst2',name:'Keith Barn Zone 2',acres:3.14,crop:'strawberry',active:true},
+  {id:'fzst3',name:'Reska New',         acres:8.28,crop:'strawberry',active:true},
+  {id:'fzst4',name:'Dekraemers (Berries)',acres:16.2,crop:'strawberry',active:true},
+  {id:'fzst5',name:'Boszo (Berries)',    acres:25.3,crop:'strawberry',active:true},
+  {id:'fzst6',name:'Versnick (Berries)', acres:23.0,crop:'strawberry',active:true},
+];
+
+function FertBrain(){
+  const[fertCrop,setFertCrop]=useState(()=>LS.get('hff:fert:crop','watermelon'));
+  const[fertView,setFertView]=useState('today');
+  const[applyType,setApplyType]=useState('blue');
+  const[zones,setZones]=useState(()=>LS.get('hff:fert:zones',FERT_ZONES_DEFAULT));
+  const[mixChecked,setMixChecked]=useState({});
+  const[applyChecked,setApplyChecked]=useState({});
+  const[mixLog,setMixLog]=useState(()=>LS.get('hff:fert:mixlog',[]));
+  const[applyLog,setApplyLog]=useState(()=>LS.get('hff:fert:applylog',[]));
+  const[phaseOverride,setPhaseOverride]=useState(()=>LS.get('hff:fert:ovr:'+fertCrop,null));
+  const[mixerName,setMixerName]=useState(()=>LS.get('hff:fert:mixer',''));
+  const[applyName,setApplyName]=useState(()=>LS.get('hff:fert:applicator','Bob'));
+  const[applyTime,setApplyTime]=useState(()=>{const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');});
+  const[flash,setFlash]=useState(null);
+  const[editZone,setEditZone]=useState(null);
+  const[zoneDraft,setZoneDraft]=useState(null);
+
+  function switchCrop(c){setFertCrop(c);LS.set('hff:fert:crop',c);setPhaseOverride(LS.get('hff:fert:ovr:'+c,null));setMixChecked({});setApplyChecked({});}
+
+  // Auto-detect phase
+  const phase=(()=>{
+    const phases=FERT_PHASES[fertCrop]||[];
+    if(phaseOverride)return phases.find(p=>p.id===phaseOverride)||null;
+    const[,m,d]=todayStr().split('-');const mmdd=m+'-'+d;
+    return phases.find(p=>mmdd>=p.mmddStart&&mmdd<p.mmddEnd)||phases[phases.length-1];
+  })();
+  const recipe=phase?.recipe;
+  const cropZones=zones.filter(z=>z.crop===fertCrop&&z.active);
+
+  const daysLeft=(()=>{
+    if(!phase)return null;
+    const[y]=todayStr().split('-');
+    const diff=Math.ceil((new Date(y+'-'+phase.mmddEnd+'T12:00:00')-new Date(todayStr()+'T12:00:00'))/86400000);
+    return diff;
+  })();
+
+  const totalChecked=(recipe?.ingredients||[]).filter((_,i)=>mixChecked[i]).length;
+  const allMixDone=recipe?.ingredients?.length>0&&totalChecked===recipe.ingredients.length;
+  const anyApply=Object.values(applyChecked).some(Boolean);
+
+  function doFlash(t){setFlash(t);setTimeout(()=>setFlash(null),3000);}
+
+  function confirmMix(){
+    const entry={id:'mx_'+Date.now(),date:todayStr(),time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
+      phaseId:phase?.id,phaseName:phase?.name,crop:fertCrop,mixer:mixerName||'Unknown',
+      ingredients:(recipe?.ingredients||[]).map((ing,i)=>({...ing,checked:!!mixChecked[i]}))};
+    const upd=[entry,...mixLog].slice(0,60);setMixLog(upd);LS.set('hff:fert:mixlog',upd);
+    setMixChecked({});doFlash('mix');
+  }
+
+  function confirmApply(){
+    const lpa=applyType==='blue'?(recipe?.bluePerAcre||0):(recipe?.caPerAcre||8);
+    const entry={id:'ap_'+Date.now(),date:todayStr(),time:applyTime,type:applyType,
+      phaseId:phase?.id,phaseName:phase?.shortName,crop:fertCrop,applicator:applyName||'Unknown',
+      zones:cropZones.filter(z=>applyChecked[z.id]).map(z=>({id:z.id,name:z.name,acres:z.acres,litres:Math.round(z.acres*lpa)}))};
+    const upd=[entry,...applyLog].slice(0,120);setApplyLog(upd);LS.set('hff:fert:applylog',upd);
+    setApplyChecked({});doFlash('apply');
+  }
+
+  const FERT_C={watermelon:'#c0392b',strawberry:'#2e7d32'};
+  const fc=FERT_C[fertCrop];
+  const SUBTABS=[{id:'today',lbl:'📅 Today'},{id:'mix',lbl:'🧪 Mix'},{id:'apply',lbl:'🚿 Apply'},{id:'zones',lbl:'⚙️ Zones'}];
+
+  return html`<div>
+    <!-- Crop selector -->
+    <div style=${{display:'flex',gap:7,marginBottom:11}}>
+      ${['watermelon','strawberry'].map(c=>html`
+      <button key=${c} onClick=${()=>switchCrop(c)}
+        style=${{flex:1,padding:'9px',border:'2px solid '+(fertCrop===c?FERT_C[c]:'#ddd'),borderRadius:9,
+          background:fertCrop===c?FERT_C[c]:'#fff',color:fertCrop===c?'#fff':'#666',
+          fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
+        ${c==='watermelon'?'🍉 Watermelon':'🍓 Strawberry'}
+      </button>`)}
+    </div>
+
+    <!-- Sub-tabs -->
+    <div class="fert-sub-tabs">
+      ${SUBTABS.map(t=>html`
+      <button key=${t.id} class=${'fert-sub-tab'+(fertView===t.id?' active':'')}
+        style=${fertView===t.id?{borderColor:fc,background:fc,color:'#fff'}:{}}
+        onClick=${()=>setFertView(t.id)}>${t.lbl}</button>`)}
+    </div>
+
+    <!-- ── TODAY ── -->
+    ${fertView==='today'?html`<div>
+      <div style=${{background:'linear-gradient(135deg,#1a3a2a,#2c5e3e)',borderRadius:12,padding:'14px 16px',marginBottom:11,color:'#fff'}}>
+        <div style=${{fontSize:10,fontWeight:700,letterSpacing:'.09em',opacity:.65,textTransform:'uppercase',marginBottom:3}}>Active Phase</div>
+        <div style=${{fontSize:16,fontWeight:700,lineHeight:1.3}}>${phase?.name||'No phase active'}</div>
+        <div style=${{display:'flex',gap:7,marginTop:7,flexWrap:'wrap',alignItems:'center'}}>
+          ${daysLeft!=null?html`<span style=${{background:'rgba(255,255,255,.14)',borderRadius:6,padding:'3px 9px',fontSize:11,fontWeight:600}}>${daysLeft>0?daysLeft+' days remaining':'Ends today'}</span>`:null}
+          ${phaseOverride?html`<span style=${{background:'rgba(255,200,0,.25)',color:'#ffe082',borderRadius:6,padding:'3px 9px',fontSize:11,fontWeight:600}}>⚠ Manual override</span>`:null}
+        </div>
+      </div>
+      ${recipe?.notes?html`<div style=${{background:'#fffde7',border:'1px solid #ffe082',borderRadius:8,padding:'9px 12px',marginBottom:11,fontSize:12,color:'#795548'}}>${recipe.notes}</div>`:null}
+
+      <!-- Weekly schedule -->
+      <div class="card" style=${{marginBottom:10}}>
+        <div style=${{padding:'10px 14px 6px',fontWeight:700,fontSize:12,color:'#555',letterSpacing:'.04em',textTransform:'uppercase',borderBottom:'1px solid #f0f0f0'}}>Weekly Schedule</div>
+        <div style=${{padding:'8px 14px'}}>
+          <div class="fert-schedule-row">
+            <span style=${{fontSize:20}}>🚿</span>
+            <div style=${{flex:1}}>
+              <div style=${{fontWeight:700,fontSize:13}}>Blue Fertilizer</div>
+              <div style=${{fontSize:12,color:'#777'}}>${recipe?.bluePerWeek||0}× per week · ${recipe?.bluePerAcre||0} L/acre/app</div>
+            </div>
+            ${(recipe?.bluePerWeek||0)===0?html`<span style=${{background:'#ffebee',color:'#c62828',borderRadius:6,padding:'3px 9px',fontSize:11,fontWeight:700}}>HOLD</span>`:null}
+          </div>
+          <div class="fert-schedule-row">
+            <span style=${{fontSize:20}}>💧</span>
+            <div style=${{flex:1}}>
+              <div style=${{fontWeight:700,fontSize:13}}>Calcium Nitrate</div>
+              <div style=${{fontSize:12,color:'#777'}}>${recipe?.caPerWeek||0}× per week · ${recipe?.caPerAcre||8} L/acre/app</div>
+            </div>
+          </div>
+          ${recipe?.caNote?html`<div style=${{fontSize:11,color:'#e65100',fontWeight:600,marginTop:2,paddingLeft:2}}>⚠ ${recipe.caNote}</div>`:null}
+        </div>
+      </div>
+
+      <!-- Blue rates -->
+      ${recipe&&(recipe.bluePerWeek||0)>0&&cropZones.length>0?html`
+      <div class="card" style=${{marginBottom:10}}>
+        <div style=${{padding:'9px 14px',borderBottom:'1px solid #f0f0f0',display:'flex',justifyContent:'space-between'}}>
+          <span style=${{fontWeight:700,fontSize:12,color:'#2e7d32',textTransform:'uppercase',letterSpacing:'.05em'}}>🚿 Blue — L per application</span>
+          <span style=${{fontSize:11,color:'#aaa'}}>${recipe.bluePerAcre} L/ac</span>
+        </div>
+        <div style=${{padding:'4px 14px 8px'}}>
+          ${cropZones.map(z=>html`
+          <div key=${z.id} class="fert-zone-row" style=${{cursor:'default'}}>
+            <span class="fert-zone-name">${z.name}</span>
+            <span style=${{fontSize:11,color:'#bbb'}}>${z.acres} ac</span>
+            <span class="fert-litres" style=${{color:'#2e7d32'}}>${Math.round(z.acres*(recipe.bluePerAcre||0))} L</span>
+          </div>`)}
+        </div>
+      </div>`:null}
+
+      <!-- Ca rates -->
+      ${cropZones.length>0?html`
+      <div class="card" style=${{marginBottom:10}}>
+        <div style=${{padding:'9px 14px',borderBottom:'1px solid #f0f0f0',display:'flex',justifyContent:'space-between'}}>
+          <span style=${{fontWeight:700,fontSize:12,color:'#1565c0',textTransform:'uppercase',letterSpacing:'.05em'}}>💧 Calcium — L per application</span>
+          <span style=${{fontSize:11,color:'#aaa'}}>${recipe?.caPerAcre||8} L/ac</span>
+        </div>
+        <div style=${{padding:'4px 14px 8px'}}>
+          ${cropZones.map(z=>html`
+          <div key=${z.id} class="fert-zone-row" style=${{cursor:'default'}}>
+            <span class="fert-zone-name">${z.name}</span>
+            <span style=${{fontSize:11,color:'#bbb'}}>${z.acres} ac</span>
+            <span class="fert-litres" style=${{color:'#1565c0'}}>${Math.round(z.acres*(recipe?.caPerAcre||8))} L</span>
+          </div>`)}
+        </div>
+      </div>`:null}
+    </div>`:null}
+
+    <!-- ── MIX ── -->
+    ${fertView==='mix'?html`<div>
+      <div class="card" style=${{marginBottom:12}}>
+        <div style=${{padding:'12px 14px',borderBottom:'1px solid #f0f0f0',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style=${{fontWeight:700,fontSize:14}}>Batch — ${phase?.shortName}</div>
+            <div style=${{fontSize:11,color:'#aaa',marginTop:1}}>1900 L / 500 gal tank · tick each as it goes in</div>
+          </div>
+          <div style=${{fontSize:13,fontWeight:700,color:allMixDone?'#2e7d32':'#bbb'}}>${totalChecked}/${recipe?.ingredients?.length||0}</div>
+        </div>
+
+        <!-- Progress bar -->
+        <div style=${{height:4,background:'#f0f0f0',borderRadius:0}}>
+          <div style=${{height:4,background:'#2e7d32',borderRadius:0,transition:'width .3s',width:(recipe?.ingredients?.length?totalChecked/recipe.ingredients.length*100:0)+'%'}}></div>
+        </div>
+
+        <div style=${{padding:'2px 14px'}}>
+          ${(recipe?.ingredients||[]).map((ing,i)=>html`
+          <div key=${i} class="fert-ingredient" onClick=${()=>setMixChecked(c=>({...c,[i]:!c[i]}))}>
+            <input type="checkbox" class="fert-check" checked=${!!mixChecked[i]} onChange=${e=>{e.stopPropagation();setMixChecked(c=>({...c,[i]:!c[i]}));}}/>
+            <span class="fert-ing-qty" style=${mixChecked[i]?{color:'#bbb'}:{}}>${ing.qty} ${ing.unit}</span>
+            <div>
+              <div class="fert-ing-name" style=${mixChecked[i]?{textDecoration:'line-through',color:'#bbb'}:{}}>${ing.name}</div>
+              ${ing.note?html`<div class="fert-ing-note">${ing.note}</div>`:null}
+            </div>
+          </div>`)}
+        </div>
+
+        ${recipe?.caNote?html`
+        <div style=${{margin:'4px 14px 12px',background:'#fff8e1',border:'1px solid #ffe082',borderRadius:8,padding:'9px 11px'}}>
+          <div style=${{fontSize:11,fontWeight:700,color:'#f57f17',marginBottom:2}}>Ca Tote Note</div>
+          <div style=${{fontSize:13,color:'#795548'}}>${recipe.caNote}</div>
+        </div>`:null}
+
+        <div style=${{padding:'0 14px 14px'}}>
+          <input class="ti" type="text" value=${mixerName}
+            onInput=${e=>{setMixerName(e.target.value);LS.set('hff:fert:mixer',e.target.value);}}
+            placeholder="Mixer name (Nero, Vishnu…)" style=${{marginBottom:9}}/>
+          <button class="fert-confirm-btn" disabled=${!allMixDone||!mixerName.trim()} onClick=${confirmMix}
+            style=${{background:allMixDone&&mixerName.trim()?'#2e7d32':'#e0e0e0',color:allMixDone&&mixerName.trim()?'#fff':'#aaa',cursor:allMixDone&&mixerName.trim()?'pointer':'default'}}>
+            ${flash==='mix'?'✓ Batch Logged':'✓ Confirm Batch Mixed'}
+          </button>
+          ${!allMixDone?html`<p style=${{fontSize:11,color:'#bbb',textAlign:'center',marginTop:6}}>Tick all ${recipe?.ingredients?.length||0} ingredients to enable</p>`:null}
+        </div>
+      </div>
+
+      <div style=${{fontSize:11,fontWeight:700,color:'#aaa',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:7}}>Mix History</div>
+      ${mixLog.filter(l=>l.crop===fertCrop).slice(0,6).map(l=>html`
+      <div key=${l.id} class="fert-log-item" style=${{background:'#f8fff8',borderColor:'#c8e6c9'}}>
+        <div style=${{fontSize:12,fontWeight:700,color:'#2e7d32'}}>✓ ${l.phaseName}</div>
+        <div style=${{fontSize:11,color:'#888',marginTop:2}}>${l.date} ${l.time} · ${l.mixer}</div>
+      </div>`)}
+      ${mixLog.filter(l=>l.crop===fertCrop).length===0?html`<p style=${{fontSize:13,color:'#ccc',textAlign:'center',padding:'24px 0'}}>No mix records yet</p>`:null}
+    </div>`:null}
+
+    <!-- ── APPLY ── -->
+    ${fertView==='apply'?html`<div>
+      <div style=${{display:'flex',gap:6,marginBottom:11}}>
+        ${[['blue','🚿 Blue'],['calcium','💧 Calcium']].map(([t,lbl])=>html`
+        <button key=${t} onClick=${()=>{setApplyType(t);setApplyChecked({});}}
+          style=${{flex:1,padding:'9px',border:'2px solid '+(applyType===t?(t==='blue'?'#2e7d32':'#1565c0'):'#ddd'),
+            borderRadius:9,background:applyType===t?(t==='blue'?'#2e7d32':'#1565c0'):'#fff',
+            color:applyType===t?'#fff':'#777',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
+          ${lbl}
+        </button>`)}
+      </div>
+
+      <div class="card" style=${{marginBottom:12}}>
+        <div style=${{padding:'10px 14px',borderBottom:'1px solid #f0f0f0'}}>
+          <div style=${{display:'flex',gap:8,marginBottom:8}}>
+            <div style=${{flex:1}}>
+              <div class="fl" style=${{fontSize:11}}>Date</div>
+              <div style=${{padding:'7px 10px',border:'1.5px solid #eee',borderRadius:7,fontSize:13,background:'#fafaf8',color:'#555'}}>${todayStr()}</div>
+            </div>
+            <div style=${{flex:1}}>
+              <div class="fl" style=${{fontSize:11}}>Time</div>
+              <input type="time" value=${applyTime} onInput=${e=>setApplyTime(e.target.value)}
+                style=${{width:'100%',padding:'7px 10px',border:'1.5px solid #ddd',borderRadius:7,fontSize:13,fontFamily:'inherit',outline:'none',background:'#fafaf8',boxSizing:'border-box'}}/>
+            </div>
+          </div>
+          <input class="ti" type="text" value=${applyName}
+            onInput=${e=>{setApplyName(e.target.value);LS.set('hff:fert:applicator',e.target.value);}}
+            placeholder="Applicator name…"/>
+        </div>
+
+        <div style=${{padding:'8px 14px 0'}}>
+          <div style=${{fontSize:11,fontWeight:700,color:applyType==='blue'?'#2e7d32':'#1565c0',marginBottom:6}}>
+            ${applyType==='blue'?`Blue at ${recipe?.bluePerAcre||0} L/acre`:`Calcium at ${recipe?.caPerAcre||8} L/acre`}
+            ${applyType==='blue'&&(recipe?.bluePerWeek||0)===0?html` — <span style=${{color:'#c62828'}}>HOLD this period</span>`:null}
+          </div>
+          ${cropZones.map(z=>{
+            const lpa=applyType==='blue'?(recipe?.bluePerAcre||0):(recipe?.caPerAcre||8);
+            return html`
+            <div key=${z.id} class="fert-zone-row" onClick=${()=>setApplyChecked(c=>({...c,[z.id]:!c[z.id]}))}>
+              <input type="checkbox" class="fert-check" checked=${!!applyChecked[z.id]} onChange=${()=>{}} onClick=${e=>e.stopPropagation()}/>
+              <span class="fert-zone-name">${z.name}</span>
+              <span style=${{fontSize:11,color:'#bbb'}}>${z.acres} ac</span>
+              <span class="fert-litres" style=${{color:applyType==='blue'?'#2e7d32':'#1565c0'}}>${Math.round(z.acres*lpa)} L</span>
+            </div>`;
+          })}
+          <button onClick=${()=>{const a={};cropZones.forEach(z=>{a[z.id]=true;});setApplyChecked(a);}}
+            style=${{width:'100%',padding:'7px',border:'1px dashed #ddd',borderRadius:7,background:'transparent',fontSize:12,color:'#aaa',cursor:'pointer',marginTop:5,fontFamily:'inherit'}}>
+            Select all zones
+          </button>
+        </div>
+
+        <div style=${{padding:'10px 14px 14px'}}>
+          <button class="fert-confirm-btn" disabled=${!anyApply||!applyName.trim()} onClick=${confirmApply}
+            style=${{background:anyApply&&applyName.trim()?(applyType==='blue'?'#2e7d32':'#1565c0'):'#e0e0e0',
+              color:anyApply&&applyName.trim()?'#fff':'#aaa',cursor:anyApply&&applyName.trim()?'pointer':'default'}}>
+            ${flash==='apply'?'✓ Application Logged':'Log Application ✓'}
+          </button>
+        </div>
+      </div>
+
+      <div style=${{fontSize:11,fontWeight:700,color:'#aaa',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:7}}>Application History</div>
+      ${applyLog.filter(l=>l.crop===fertCrop).slice(0,8).map(l=>html`
+      <div key=${l.id} class="fert-log-item"
+        style=${{background:l.type==='blue'?'#f8fff8':'#f3f8ff',borderColor:l.type==='blue'?'#a5d6a7':'#90caf9'}}>
+        <div style=${{fontSize:12,fontWeight:700,color:l.type==='blue'?'#2e7d32':'#1565c0'}}>
+          ${l.type==='blue'?'🚿':'💧'} ${l.type==='blue'?'Blue':'Calcium'} · ${l.phaseName} · ${l.applicator}
+        </div>
+        <div style=${{fontSize:11,color:'#888',marginTop:2}}>
+          ${l.date} ${l.time} · ${(l.zones||[]).length} zone${(l.zones||[]).length!==1?'s':''}: ${(l.zones||[]).map(z=>z.name).join(', ')}
+        </div>
+      </div>`)}
+      ${applyLog.filter(l=>l.crop===fertCrop).length===0?html`<p style=${{fontSize:13,color:'#ccc',textAlign:'center',padding:'24px 0'}}>No application records yet</p>`:null}
+    </div>`:null}
+
+    <!-- ── ZONES & PHASES ── -->
+    ${fertView==='zones'?html`<div>
+      <!-- Phase override -->
+      <div class="sbox" style=${{marginBottom:14}}>
+        <div class="sbox-title">Phase Override</div>
+        <div class="sbox-hint" style=${{marginBottom:8}}>Phase auto-detects from today's date. Override to switch early or late.</div>
+        <select style=${{width:'100%',padding:'9px 12px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,fontFamily:'inherit',outline:'none',background:'#fafaf8',cursor:'pointer',marginBottom:8}}
+          value=${phaseOverride||'auto'} onChange=${e=>{
+            const v=e.target.value==='auto'?null:e.target.value;
+            setPhaseOverride(v);LS.set('hff:fert:ovr:'+fertCrop,v||'');
+          }}>
+          <option value="auto">🔄 Auto — detected by date (${phase?.shortName||'none'})</option>
+          ${(FERT_PHASES[fertCrop]||[]).map(p=>html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
+        </select>
+        ${phaseOverride?html`<button class="btn btn-sm btn-muted" style=${{width:'100%'}} onClick=${()=>{setPhaseOverride(null);LS.del('hff:fert:ovr:'+fertCrop);}}>Clear override</button>`:null}
+      </div>
+
+      <!-- Zone editor -->
+      <div style=${{fontSize:12,fontWeight:700,color:'#555',letterSpacing:'.04em',textTransform:'uppercase',marginBottom:8}}>
+        ${fertCrop==='watermelon'?'🍉':'🍓'} ${fertCrop.charAt(0).toUpperCase()+fertCrop.slice(1)} Zones
+      </div>
+      ${zones.filter(z=>z.crop===fertCrop).map(z=>html`
+      <div key=${z.id} class="card" style=${{marginBottom:7}}>
+        ${editZone===z.id?html`
+        <div style=${{padding:'11px 13px'}}>
+          <div style=${{display:'flex',gap:8,marginBottom:8}}>
+            <div style=${{flex:2}}><label class="fl" style=${{fontSize:11}}>Name</label>
+              <input class="ti" type="text" value=${zoneDraft?.name||''} onInput=${e=>setZoneDraft(d=>({...d,name:e.target.value}))}/>
+            </div>
+            <div style=${{flex:1}}><label class="fl" style=${{fontSize:11}}>Acres</label>
+              <input type="number" step="0.1" value=${zoneDraft?.acres||0}
+                onInput=${e=>setZoneDraft(d=>({...d,acres:parseFloat(e.target.value)||0}))}
+                style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,outline:'none',boxSizing:'border-box'}}/>
+            </div>
+          </div>
+          <div style=${{display:'flex',gap:6}}>
+            <button class="btn btn-sm" onClick=${()=>{
+              setZones(prev=>{const upd=prev.map(zz=>zz.id===z.id?{...zz,...zoneDraft}:zz);LS.set('hff:fert:zones',upd);return upd;});
+              setEditZone(null);}}>Save</button>
+            <button class="btn btn-sm btn-muted" onClick=${()=>setEditZone(null)}>Cancel</button>
+            <button class="btn btn-sm btn-danger" style=${{marginLeft:'auto'}} onClick=${()=>{
+              if(!confirm('Remove '+z.name+'?'))return;
+              setZones(prev=>{const upd=prev.filter(zz=>zz.id!==z.id);LS.set('hff:fert:zones',upd);return upd;});
+              setEditZone(null);}}>Remove</button>
+          </div>
+        </div>`:html`
+        <div style=${{padding:'10px 13px',display:'flex',alignItems:'center',gap:9}}>
+          <input type="checkbox" checked=${z.active} onChange=${e=>{
+            setZones(prev=>{const upd=prev.map(zz=>zz.id===z.id?{...zz,active:e.target.checked}:zz);LS.set('hff:fert:zones',upd);return upd;});
+          }} style=${{width:17,height:17,cursor:'pointer',accentColor:fc}}/>
+          <span style=${{flex:1,fontWeight:600,fontSize:14,color:z.active?'#222':'#bbb'}}>${z.name}</span>
+          <span style=${{fontSize:12,color:'#bbb'}}>${z.acres} ac</span>
+          <button class="btn btn-sm btn-out" onClick=${()=>{setEditZone(z.id);setZoneDraft({name:z.name,acres:z.acres});}}>Edit</button>
+        </div>`}
+      </div>`)}
+      <button class="btn btn-sm btn-out" style=${{width:'100%',marginTop:4}} onClick=${()=>{
+        const nz={id:'fz_'+Date.now(),name:'New Zone',acres:0,crop:fertCrop,active:true};
+        const upd=[...zones,nz];setZones(upd);LS.set('hff:fert:zones',upd);
+        setEditZone(nz.id);setZoneDraft({name:'',acres:0});
+      }}>+ Add zone</button>
+    </div>`:null}
+  </div>`;
 }
 
 // ── SPRAY BRAIN HELPERS ───────────────────────────────────────────────────────
@@ -2323,7 +2804,7 @@ function App(){
   const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
 
   const{bg,acc,act,actTxt}=crop;
-  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'spray',lbl:'Spray'},{id:'settings',lbl:'Settings'}];
+  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'settings',lbl:'Settings'}];
 
   const FlagBox=({level,items})=>items.length===0?null:html`
   <div class=${'flag-box '+level}>
@@ -2418,6 +2899,7 @@ function App(){
 
       ${view==='zones'?html`<${ZoneEditor} zones=${zones} onSave=${saveZones}/>`:null}
 
+      ${view==='fert'?html`<${FertBrain}/>`:null}
       ${view==='settings'?html`
       <${SettingsView} strat=${strat} defaultStage=${defaultStage} onSaveStrat=${saveStrat}
         onSaveStage=${saveDefStage} cropLabel=${crop.label} isStraw=${isStraw}
