@@ -1155,7 +1155,7 @@ function FertBrain(){
 
   const FERT_C={watermelon:'#c0392b',strawberry:'#2e7d32'};
   const fc=FERT_C[fertCrop];
-  const SUBTABS=[{id:'today',lbl:'📅 Today'},{id:'mix',lbl:'🧪 Mix'},{id:'apply',lbl:'🚿 Apply'},{id:'zones',lbl:'⚙️ Zones'}];
+  const SUBTABS=[{id:'today',lbl:'📅 Today'},{id:'mix',lbl:'🧪 Mix'},{id:'apply',lbl:'🚿 Apply'},{id:'history',lbl:'📊 History'},{id:'zones',lbl:'⚙️ Zones'}];
 
   return html`<div>
     <!-- Crop selector -->
@@ -1407,6 +1407,9 @@ function FertBrain(){
       ${applyLog.filter(l=>l.crop===fertCrop).length===0?html`<p style=${{fontSize:13,color:'#ccc',textAlign:'center',padding:'24px 0'}}>No application records yet</p>`:null}
     </div>`:null}
 
+    <!-- ── HISTORY ── -->
+    ${fertView==='history'?html`<div><${FertHistory} applyLog=${applyLog} crop=${fertCrop} phases=${FERT_PHASES[fertCrop]}/></div>`:null}
+
     <!-- ── ZONES & PHASES ── -->
     ${fertView==='zones'?html`<div>
       <!-- Phase override -->
@@ -1468,6 +1471,171 @@ function FertBrain(){
         setEditZone(nz.id);setZoneDraft({name:'',acres:0});
       }}>+ Add zone</button>
     </div>`:null}
+  </div>`;
+}
+
+
+// ── FERT HISTORY HELPERS ──────────────────────────────────────────────────────
+function calcFertNutrients(entry, phases){
+  // Returns lbs of N, P, K, Mg, Ca for one application log entry
+  const phase = (phases||[]).find(p=>p.id===entry.phaseId);
+  const recipe = phase?.recipe;
+  const totalL = (entry.zones||[]).reduce((s,z)=>s+(z.litres||0), 0);
+  if(!totalL) return {N:0,P:0,K:0,Mg:0,Ca:0};
+
+  if(entry.type==='calcium'){
+    // 4L = 1 lb N; Ca:N ratio in Ca(NO3)2 = 40:28
+    const N = totalL * 0.25;
+    return {N, P:0, K:0, Mg:0, Ca: N * (40/28)};
+  }
+
+  // Blue batch — compute per-batch totals then scale by litres applied
+  let bN=0, bP=0, bK=0, bMg=0;
+  (recipe?.ingredients||[]).forEach(ing=>{
+    const q=ing.qty||0;
+    if(ing.name==='Potassium Nitrate'){ bN+=q*55*0.13; bK+=q*55*(0.46/1.205); }
+    if(ing.name==='15-30-15 Blue'){     bN+=q*25*0.15; bP+=q*25*(0.30/2.291);
+                                        bK+=q*25*(0.15/1.205); bMg+=q*25*0.01; }
+    if(ing.name==='Epsom Salt'){         bMg+=q*50*0.0986; }
+    if(ing.name==='MKP'){                bP+=q*55*0.227; bK+=q*55*0.287; }
+    if(ing.name==='28% UAN'){            bN+=q*1.3*0.28*2.205; } // kg→lbs
+  });
+  const bL = recipe?.batchL||1900;
+  return { N:(bN/bL)*totalL, P:(bP/bL)*totalL, K:(bK/bL)*totalL, Mg:(bMg/bL)*totalL, Ca:0 };
+}
+
+function fertWeekKey(dateStr){
+  // Returns Monday date of the week as 'YYYY-MM-DD' for grouping
+  const d=new Date(dateStr+'T12:00:00');
+  const dy=d.getDay();const diff=dy===0?-6:1-dy;
+  d.setDate(d.getDate()+diff);
+  return d.toISOString().slice(0,10);
+}
+function fertWeekLabel(wk){
+  const d=new Date(wk+'T12:00:00');
+  return d.toLocaleDateString('en-CA',{month:'short',day:'numeric'});
+}
+
+function FertHistory({applyLog,crop,phases}){
+  const canvasRef=useRef(null);
+  const chartRef=useRef(null);
+
+  // Compute per-entry nutrients and aggregate
+  const cropLog=[...applyLog].filter(l=>l.crop===crop).sort((a,b)=>a.date.localeCompare(b.date));
+  let totN=0,totP=0,totK=0,totMg=0,totCa=0;
+  const byWeek={};
+  cropLog.forEach(entry=>{
+    const n=calcFertNutrients(entry,phases);
+    totN+=n.N; totP+=n.P; totK+=n.K; totMg+=n.Mg; totCa+=n.Ca;
+    const wk=fertWeekKey(entry.date);
+    if(!byWeek[wk])byWeek[wk]={wk,N:0,K:0,Ca:0,Mg:0,P:0};
+    byWeek[wk].N+=n.N; byWeek[wk].K+=n.K; byWeek[wk].Ca+=n.Ca;
+    byWeek[wk].Mg+=n.Mg; byWeek[wk].P+=n.P;
+  });
+  const weeks=Object.values(byWeek).sort((a,b)=>a.wk.localeCompare(b.wk));
+
+  useEffect(()=>{
+    if(!canvasRef.current||typeof Chart==='undefined'||!weeks.length) return;
+    if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}
+    chartRef.current=new Chart(canvasRef.current,{
+      type:'bar',
+      data:{
+        labels:weeks.map(w=>fertWeekLabel(w.wk)),
+        datasets:[
+          {label:'N',data:weeks.map(w=>+w.N.toFixed(1)),backgroundColor:'#66bb6a',borderRadius:3},
+          {label:'K',data:weeks.map(w=>+w.K.toFixed(1)),backgroundColor:'#42a5f5',borderRadius:3},
+          {label:'Ca',data:weeks.map(w=>+w.Ca.toFixed(1)),backgroundColor:'#ff8a65',borderRadius:3},
+          {label:'Mg',data:weeks.map(w=>+w.Mg.toFixed(1)),backgroundColor:'#ce93d8',borderRadius:3},
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}},
+        scales:{
+          x:{ticks:{font:{size:10}},grid:{color:'rgba(0,0,0,.03)'}},
+          y:{title:{display:true,text:'lbs applied',font:{size:10}},grid:{color:'rgba(0,0,0,.05)'},
+             ticks:{font:{size:10}}},
+        }
+      }
+    });
+    return()=>{if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}};
+  },[weeks.length,crop]);
+
+  const hasData=cropLog.length>0;
+  const STATS=[
+    {lbl:'N',val:totN,color:'#2e7d32',note:'Nitrogen'},
+    {lbl:'P',val:totP,color:'#6a1599',note:'Phosphorus'},
+    {lbl:'K',val:totK,color:'#1565c0',note:'Potassium'},
+    {lbl:'Mg',val:totMg,color:'#e65100',note:'Magnesium'},
+    {lbl:'Ca',val:totCa,color:'#c62828',note:'Calcium'},
+  ];
+
+  return html`<div>
+    <!-- Season totals -->
+    <div style=${{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:12}}>
+      ${STATS.map(s=>html`
+      <div key=${s.lbl} style=${{background:'#fff',border:'1.5px solid #e8e8e8',borderRadius:10,padding:'9px 6px',textAlign:'center'}}>
+        <div style=${{fontSize:10,fontWeight:700,color:'#bbb',letterSpacing:'.06em',textTransform:'uppercase'}}>${s.lbl}</div>
+        <div style=${{fontSize:18,fontWeight:700,color:s.color,marginTop:1,lineHeight:1}}>${hasData?s.val.toFixed(0):'-'}</div>
+        <div style=${{fontSize:9,color:'#ccc',marginTop:1}}>lbs</div>
+      </div>`)}
+    </div>
+
+    <!-- N:K:Ca ratio card -->
+    ${hasData&&totN>0?html`
+    <div style=${{background:'#f8faf6',border:'1px solid #c8e6c9',borderRadius:9,padding:'9px 13px',marginBottom:12}}>
+      <span style=${{fontSize:11,fontWeight:700,color:'#555'}}>Season N : K : Ca ratio</span>
+      <span style=${{marginLeft:8,fontSize:13,fontWeight:700,color:'#2e7d32'}}>
+        1 : ${(totK/totN).toFixed(2)} : ${(totCa/totN).toFixed(2)}
+      </span>
+      <div style=${{fontSize:10,color:'#aaa',marginTop:3}}>
+        Reference — fruit sizing target: 1 : 3.2 : 1.4 · bearing strawberry: 1 : 1.0 : 1.4
+      </div>
+    </div>`:null}
+
+    <!-- Weekly chart -->
+    <div style=${{background:'#fff',border:'1.5px solid #e8e8e8',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
+      <p style=${{fontSize:11,fontWeight:700,color:'#555',letterSpacing:'.05em',textTransform:'uppercase',margin:'0 0 8px'}}>Weekly Nutrient Application (lbs)</p>
+      ${hasData?html`
+      <div style=${{position:'relative',height:220}}><canvas ref=${canvasRef}></canvas></div>
+      <p style=${{fontSize:9,color:'#ccc',textAlign:'center',marginTop:4}}>Tap legend labels to show/hide nutrients</p>
+      `:html`<p style=${{textAlign:'center',color:'#ccc',padding:'40px 0',fontSize:13}}>No applications logged yet</p>`}
+    </div>
+
+    <!-- Field observation notes prompt -->
+    <div style=${{background:'#fffde7',border:'1px solid #ffe082',borderRadius:9,padding:'10px 13px',marginBottom:12}}>
+      <div style=${{fontSize:11,fontWeight:700,color:'#f57f17',marginBottom:4}}>🔍 Field Scouting Reference</div>
+      <div style=${{fontSize:11,color:'#795548',lineHeight:1.6}}>
+        <b>Excess N (canopy jungle):</b> Compare total N to K — if N:K ratio >1:1 during sizing, reduce Blue apps.<br/>
+        <b>Low Brix / thin skin:</b> Check cumulative K — should be ≥ 3× N by harvest for watermelon.<br/>
+        <b>Fruit abortion / poor set:</b> Ca during bloom phase — check Ca total for that period.<br/>
+        <b>Yellowing (interveinal):</b> Mg or Fe — check Mg total and note if Ca tote had Iron DTPA added.<br/>
+        <b>Stunted growth:</b> Compare N/week to phase plan — gaps show missed applications.
+      </div>
+    </div>
+
+    <!-- Recent application nutrient breakdown -->
+    <div style=${{fontSize:11,fontWeight:700,color:'#aaa',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:7}}>Recent Applications</div>
+    ${cropLog.slice().reverse().slice(0,8).map(entry=>{
+      const n=calcFertNutrients(entry,phases);
+      const totalL=(entry.zones||[]).reduce((s,z)=>s+(z.litres||0),0);
+      return html`
+      <div key=${entry.id} style=${{background:'#fff',border:'1px solid #e8e8e8',borderRadius:8,padding:'9px 12px',marginBottom:5}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:3}}>
+          <span style=${{fontWeight:600,fontSize:13,color:entry.type==='blue'?'#2e7d32':'#1565c0'}}>
+            ${entry.type==='blue'?'🚿 Blue':'💧 Calcium'} · ${entry.applicator}
+          </span>
+          <span style=${{fontSize:10,color:'#bbb'}}>${entry.date} · ${totalL} L</span>
+        </div>
+        <div style=${{display:'flex',gap:10,fontSize:11,color:'#888',flexWrap:'wrap'}}>
+          ${n.N>0?html`<span><b style=${{color:'#2e7d32'}}>N</b> ${n.N.toFixed(1)} lbs</span>`:null}
+          ${n.P>0?html`<span><b style=${{color:'#6a1599'}}>P</b> ${n.P.toFixed(1)} lbs</span>`:null}
+          ${n.K>0?html`<span><b style=${{color:'#1565c0'}}>K</b> ${n.K.toFixed(1)} lbs</span>`:null}
+          ${n.Mg>0?html`<span><b style=${{color:'#e65100'}}>Mg</b> ${n.Mg.toFixed(1)} lbs</span>`:null}
+          ${n.Ca>0?html`<span><b style=${{color:'#c62828'}}>Ca</b> ${n.Ca.toFixed(1)} lbs</span>`:null}
+        </div>
+      </div>`;
+    })}
   </div>`;
 }
 
