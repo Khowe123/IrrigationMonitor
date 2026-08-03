@@ -128,6 +128,26 @@ textarea{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px
 .stage-ref-val{font-size:12px;font-weight:600;color:#1a2b1a}
 .storage-note{font-size:11px;color:#bbb;margin-top:6px}
 hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
+@media print{
+  .hdr,.vtabs,.exp-row,.sbtns,.fert-sub-tabs,.hv-sub-tabs,.ai-box,
+  button:not(.audit-chk-lbl),.drow,.crop-tabs{display:none!important}
+  body{font-size:8pt;background:#fff}
+  .card{border:1px solid #ccc;border-radius:0;page-break-inside:avoid}
+  .audit-tbl th,.audit-tbl td{font-size:7.5pt!important;padding:3px 5px!important}
+  .audit-tbl{width:100%;border-collapse:collapse}
+  @page{size:landscape;margin:1cm}
+}
+.audit-tbl,.sp-gap-table{width:100%;border-collapse:collapse;font-size:11px}
+.audit-tbl th,.sp-gap-table th{background:#f5f5f0;font-size:10px;font-weight:700;padding:6px 8px;
+  text-align:left;white-space:nowrap;border-bottom:2px solid #ddd;color:#555;
+  letter-spacing:.02em}
+.audit-tbl td,.sp-gap-table td{padding:6px 8px;border-bottom:1px solid #f0f0f0;vertical-align:top;
+  font-size:11px;white-space:nowrap}
+.audit-tbl tr:hover td,.sp-gap-table tr:hover td{background:#fafaf8}
+.audit-chk-cell{text-align:center}
+.audit-date-input{border:none;background:transparent;font-size:10px;color:#555;
+  cursor:pointer;width:90px;font-family:inherit;outline:none}
+
 .fert-sub-tabs{display:flex;gap:4px;margin-bottom:12px}
 .fert-sub-tab{flex:1;padding:7px 2px;border-radius:8px;border:1.5px solid #ddd;background:transparent;font-size:11px;font-weight:600;color:#888;text-align:center;cursor:pointer;font-family:inherit}
 .fert-ingredient{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid #f2f2f2;cursor:pointer}
@@ -591,12 +611,18 @@ const SPRAY_PROD_DB={
   // Strawberry fungicides — PCP/PHI/REI from Howe Farms audit sheet
   'Azoshy':        {frac:'11',  irac:null,type:'F',pcp:'32263',rateLabel:'0.45 L/ac',phi:1,rei:'12h'},
   'Bravo ZN':      {frac:'M',   irac:null,type:'F',pcp:'28900',rateLabel:'1.4 L/ac',phi:30,rei:'48h'},
+  // Echo NP — liquid chlorothalonil FRAC M5. PCP 33479.
+  // PHI: 30d strawberry | 1d cucurbits. REI 48h all crops.
+  // For cucurbits, EAHD = max(PHI+1d, REI+0d) = date + 2 (REI is binding constraint)
+  'Echo NP':        {frac:'M5',  irac:null,type:'F',pcp:'33479',rateLabel:'0.97 L/ac',
+    phi:30, phiCrop:{watermelon:1,pumpkin:1},
+    rei:'48h', reiHarvest:'2d',
+    notes:'PCP 33479 liquid. PHI 30d strawberry; PHI 1d cucurbits. REI 48h — EAHD cucurbit = date+2'},
   'Supra Captan 80 WDG':{frac:'M4',irac:null,type:'F',pcp:'24613',rateLabel:'1 kg/ac',phi:2,rei:'48h',reiHarvest:'6d',reiIrrigation:'9d',notes:'Dry formulation (kg/g). General REI 48h; hand harvest 6d; hand-set irrigation 9d'},
   'Supra Captan':  {frac:'M4',  irac:null,type:'F',pcp:'24613',rateLabel:'1 kg/ac',   phi:2,rei:'48h',reiHarvest:'6d',reiIrrigation:'9d',notes:'Dry formulation (kg/g). General REI 48h; hand harvest 6d; hand-set irrigation 9d'},
   'Cueva':         {frac:'M1',  irac:null,type:'F',pcp:'31825',rateLabel:'1% v/v',phi:1,rei:'4h',noFrost:1},
   'Diplomat':      {frac:'19',  irac:null,type:'F',pcp:'32918',rateLabel:'281 mL/ac', phi:0,rei:'dry',notes:'Diplomat 5SC is a liquid — rate in mL not g'},
-  'Echo 720 Agricultural Fungicide':{frac:'M5',irac:null,type:'F',pcp:'29355',rateLabel:'0.97 L/ac',phi:30,rei:'48h'},
-  'Echo 720 Agricultural Fungicide':{frac:'M5',irac:null,type:'F',pcp:'29355',rateLabel:'0.97 L/ac',phi:30,rei:'48h',notes:'PCP 29356 = Echo 720 Agricultural Fungicide (not Echo NP which is PCP 33479)'},
+'Echo 720 Agricultural Fungicide':{frac:'M5',irac:null,type:'F',pcp:'29355',rateLabel:'0.97 L/ac',phi:30,rei:'48h',notes:'PCP 29356 = Echo 720 Agricultural Fungicide (not Echo NP which is PCP 33479)'},
   'Elevate':       {frac:'17',  irac:null,type:'F',pcp:'25900',rateLabel:'0.69 kg/ac',phi:1,rei:'4h'},
   'Folpan':        {frac:'M4',  irac:null,type:'F',pcp:'27733',rateLabel:'1.01 kg/ac',phi:1,rei:'24h'},
   'Fontelis':      {frac:'7',   irac:null,type:'F',pcp:'30331',rateLabel:'700 mL/ac',phi:0,rei:'12h',notes:'Max 1.75 L/ha = 708 mL/ac; use 700 mL/ac'},
@@ -709,18 +735,39 @@ const SPRAY_PROD_DB={
 }
 
 const PROD_ALIASES={
-  'Echo NP':'Echo 720 Agricultural Fungicide','Echo 720':'Echo 720 Agricultural Fungicide',
-  'Echo 720 Ag':'Echo 720 Agricultural Fungicide','Nexter':'Nexter WP',
+  // Echo NP (PCP 33479) is the actual product applied. Echo 720 variants alias TO Echo NP.
+  'Echo 720':'Echo NP','Echo 720 Ag':'Echo NP',
+  'Echo 720 Agricultural Fungicide':'Echo NP','Nexter':'Nexter WP',
   'Captan':'Supra Captan 80 WDG','Supra Captan':'Supra Captan 80 WDG',
   'Captan Supra':'Supra Captan 80 WDG','Potassium Bicarbonate':'MilStop','Milstop':'MilStop',
 };
 function sprayInfo(name){const canonical=PROD_ALIASES[name]||name;return SPRAY_PROD_DB[canonical]||{}}
 function prodPCP(prod){const info=sprayInfo(prod.name);return prod.pcp||info.pcp||'—';}
-function prodPHI(prod){const info=sprayInfo(prod.name);return prod.phi!==undefined?prod.phi:(info.phi!==undefined?info.phi:null);}
+function prodPHI(prod,evtCrop){
+  const info=sprayInfo(prod.name);
+  if(prod.phi!==undefined)return prod.phi;
+  if(evtCrop&&info.phiCrop&&info.phiCrop[evtCrop]!==undefined)return info.phiCrop[evtCrop];
+  return info.phi!==undefined?info.phi:null;
+}
 function prodREI(prod){const info=sprayInfo(prod.name);return prod.rei||info.rei||'—';}
-function prodEAHD(ev,prod){const phi=prodPHI(prod);return prod.eahd||calcEAHD(ev.date,phi||0);}
+function prodEAHD(ev,prod){
+  const crop=ev.crop||ev.loc;
+  const phi=prodPHI(prod,crop);
+  const info=sprayInfo(prod.name);
+  const phiDate=prod.eahd||calcEAHD(ev.date,phi||0);
+  // Check if REI exceeds PHI (e.g. Echo NP on cucurbits: PHI 1d but REI 48h=2d)
+  const reiH=info.reiHarvest;
+  if(reiH&&typeof reiToHrs==='function'){
+    const reiDays=reiToHrs(reiH)/24;
+    if(reiDays>(phi||0)){
+      const reiDate=dtAddHrs(ev.date,ev.time||'06:00',reiToHrs(reiH)).slice(0,10);
+      return reiDate>phiDate?reiDate:phiDate;
+    }
+  }
+  return phiDate;
+}
 const SPRAY_TANK_VOL={
-  hagie:  120,  // Julio — tunnels (was 160, corrected)
+  hagie:  400,  // Julio — new 400 gal tanks installed 2026
   hardi:  750,  // Jose  — field berries, cucurbit fungicides/insecticides
   patriot:680,  // Glenn — herbicides, sweetcorn
 };
@@ -808,7 +855,7 @@ const APPLICATOR_CERTS={
 };
 function sprayerForApplicator(appl){
   if(!appl)return'—';
-  if(appl.includes('Julio'))return'Hagie 120 gal';
+  if(appl.includes('Julio'))return'Hagie 400 gal';
   if(appl.toLowerCase().includes('glenn'))return'Patriot 680 gal';
   return'Hardi 750 gal';
 }
@@ -842,7 +889,7 @@ function appCertNote(name){
 }
 function sprayerForApplicator(appl){
   if(!appl)return'—';
-  if(appl.includes('Julio'))return'Hagie 120 gal';
+  if(appl.includes('Julio'))return'Hagie 400 gal';
   if(appl.toLowerCase().includes('glenn'))return'Patriot 680 gal';
   return'Hardi 750 gal';
 }
@@ -883,7 +930,7 @@ function exportAuditXLSX(spEvents){
     return evs.sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id))
       .flatMap(ev=>(ev.products||[]).filter(p=>p.type!=='N').map(prod=>{
         const info=sprayInfo(prod.name);
-        const phi=prod.phi!==undefined?prod.phi:(info.phi!==undefined?info.phi:null);
+        const phi=prodPHI(prod,ev.crop||ev.loc);
         const phiDate=phi!=null?calcEAHD(ev.date,phi):'—';
         const reiG=info.rei||'—';
         const reiH=info.reiHarvest||reiG;
@@ -1833,7 +1880,9 @@ function SprayJulioOut({bJulio, bRec, bGap, onSave}){
           ${(bGap||[]).map((row,i)=>{
             const cells=row.split('\t');
             return html`<tr key=${i} style=${{background:i%2?'#fafaf8':'#fff'}}>
-              ${cells.map((c,j)=>html`<td key=${j}>${c}</td>`)}
+              ${cells.map((c,j)=>html`<td key=${j}>${c}</td>
+                    <td style=${{textAlign:'center',color:'#555'}}>${ev.gpa}</td>
+                    <td style=${{textAlign:'right',color:'#555'}}>${ev.acres}</td>`)}
             </tr>`;
           })}
         </tbody>
@@ -1865,7 +1914,7 @@ function SprayBrain(){
   const[spSync,setSync]=useState('idle');
   const[bZones,setBZ]=useState(()=>TUNNEL_ZONES.map(z=>z.id));
   const[bFieldZone,setBFZ]=useState('melon');
-  const[bLoc,setBL]=useState('Tunnels — Hagie 120 gal (Julio)');
+  const[bLoc,setBL]=useState('Tunnels — Hagie 400 gal (Julio)');
   const[bGpa,setBG]=useState('100');
   const[bAcres,setBA]=useState('19.5');
   const[bDate,setBD]=useState(todayStr());
@@ -2024,7 +2073,10 @@ function SprayBrain(){
       const tankAmt=fill?fill.amt:p.amt;
       const tankUnit=fill?fill.unit:p.unit;
       lines.push(p.name+' — '+tankAmt+tankUnit+' per tank');
-      const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const rt=(n/apt).toFixed(1);
+      const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);// Snap to label rate if within 5% — avoids 300.3 vs 300 compliance false-positives
+    const _cr=n/apt;
+    const _lbl=typeof parseRateLbl==='function'?parseRateLbl(sprayInfo(p.name).rateLabel):null;
+    const rt=(_lbl&&_lbl.u===p.unit&&Math.abs(_cr-_lbl.v)/_lbl.v<0.05)?String(_lbl.v):_cr.toFixed(1);
       const info=SPRAY_PROD_DB[p.name]||{type:'N'};
       const entry=p.name+' '+rt+d+'/ac';
       if(info.type==='F'){rF.push(entry);if(info.frac)ff.add(info.frac);}
@@ -2063,7 +2115,7 @@ function SprayBrain(){
     LS.set('hff:spray:applicator',bApplicator);
     const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',crop:bCrop||undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
       products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null,pcp:null,phi:0};
-        return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
+        return{name:p.name,rate:(()=>{const _cr=n/apt;const _lb=parseRateLbl(sprayInfo(p.name).rateLabel);return(_lb&&_lb.u===p.unit&&Math.abs(_cr-_lb.v)/_lb.v<0.05)?_lb.v:+_cr.toFixed(1);})(),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
     const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
@@ -2080,7 +2132,7 @@ function SprayBrain(){
     setEditId(ev.id);
     setSV('build');
     // Re-map stored loc to current sprayer options
-    setBL(ev.loc==='Tunnels'?'Tunnels — Hagie 120 gal (Julio)':
+    setBL(ev.loc==='Tunnels'?'Tunnels — Hagie 400 gal (Julio)':
           (ev.applicator&&ev.applicator.includes('Glenn'))?'Field — Patriot 680 gal (Glenn)':
           'Field — Hardi 750 gal (Jose)');
     setBG(String(ev.gpa||100));
@@ -2143,11 +2195,11 @@ function SprayBrain(){
   }
 
   function exportAuditCSV(){
-    const rows=[['Date','Location','Crop / Area','Acres Treated','Sprayer','GPA','Product','PCP #','Rate/ac','PHI','EAHD','Harvest Delayed Until EAHD','Verified Date','Field and Packaging Inspected Before Harvest','Inspection Date','Applicator'].join(',')];
+    const rows=[['Date','Crop / Area','Block/Bay/Zone','Product','Type','PCP #','Actual Rate','PHI (days)','Final Earliest Harvest Date','PHI Verified Date','Field & Pkg Inspected','Applicator','Sprayer','GPA','Acres Treated'].join(',')];
     [...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).forEach(ev=>{
       (ev.products||[]).filter(p=>p.type!=='N').forEach(prod=>{
         const audit=ev.audit||{};
-        const cn=appCertNote(ev.applicator||'');const appl=(ev.applicator||'')+(cn?' ('+cn+')':'');const cells=[ev.date,ev.loc,inferCrop(ev),ev.acres,sprayerForApplicator(ev.applicator),ev.gpa,prod.name,prodPCP(prod),rateDisplay(prod),(prodPHI(prod)??'—')+'d',prodEAHD(ev,prod),audit.phiVerified?'YES':'NO',audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',audit.preHarvestInspectionDate||'',appl];
+        const cn=appCertNote(ev.applicator||'');const appl=(ev.applicator||'')+(cn?' ('+cn+')':'');const pT3=sprayInfo(prod.name).type;const tL3=pT3==='F'?'Fungicide':pT3==='I'?'Insecticide':pT3==='H'?'Herbicide':'Adjuvant';const cells=[ev.date,inferCrop(ev),ev.note||'All',prod.name,tL3,prodPCP(prod),prod.rate?prod.rate+' '+prod.unit+'/ac':'—',String(prodPHI(prod,ev.crop||ev.loc)??'—'),prodEAHD(ev,prod),audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',appl,sprayerForApplicator(ev.applicator),ev.gpa,ev.acres];
         rows.push(cells.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(','));
       });
     });
@@ -2249,24 +2301,29 @@ function SprayBrain(){
         <div style=${{overflowX:'auto',border:'1.5px solid #e8e8e4',borderRadius:8}}>
           <table class="sp-gap-table">
             <thead><tr>
-              ${['Date','Location','Crop / Area','Acres','Sprayer','Product','PCP #','Rate/ac','PHI','EAHD','Harvest delayed until EAHD','Field & packaging inspected before harvest','Applicator'].map(h=>html`<th key=${h}>${h}</th>`)}
+              <th>Date</th><th>Crop / Area</th><th>Block/Bay/Zone</th>
+              <th>Product</th><th>Type</th><th>PCP #</th><th>Actual Rate</th>
+              <th>PHI<br/>(days)</th><th>Final Earliest<br/>Harvest Date</th>
+              <th>PHI Verified<br/>Date</th><th>Field &amp; Pkg<br/>Inspected</th>
+              <th>Applicator</th><th>Sprayer</th><th>GPA</th><th>Acres</th><th>GPA</th><th>Acres</th>
             </tr></thead>
             <tbody>
               ${[...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).flatMap(ev=>
                 (ev.products||[]).filter(p=>p.type!=='N').map((prod,i)=>{
                   const audit=ev.audit||{};
                   const eahd=prodEAHD(ev,prod);
-                  return html`<tr key=${ev.id+'-'+i} style=${{background:audit.phiVerified&&audit.preHarvestInspection?'#f8fff8':'#fff'}}>
+                  const prodType=sprayInfo(prod.name).type;
+                  const typeLabel=prodType==='F'?'Fungicide':prodType==='I'?'Insecticide':prodType==='H'?'Herbicide':'Adjuvant';
+                  return html`<tr key=${ev.id+'-'+i} style=${{background:audit.phiVerified&&audit.preHarvestInspection?'#f0fff4':'#fff'}}>
                     <td>${ev.date}</td>
-                    <td>${ev.loc}</td>
                     <td>${inferCrop(ev)}</td>
-                    <td>${ev.acres} ac</td>
-                    <td style=${{fontSize:10}}>${sprayerForApplicator(ev.applicator)}</td>
-                    <td>${prod.name}</td>
-                    <td>${prodPCP(prod)}</td>
-                    <td>${prod.rate?prod.rate+prod.unit+'/ac':'—'}</td>
-                    <td>${prodPHI(prod)!==null?prodPHI(prod)+'d':'—'}</td>
-                    <td><strong>${eahd}</strong></td>
+                    <td style=${{color:'#888',fontSize:10}}>${ev.note||'All'}</td>
+                    <td style=${{fontWeight:600}}>${prod.name}</td>
+                    <td style=${{fontSize:10,color:'#777'}}>${typeLabel}</td>
+                    <td style=${{fontFamily:'monospace',fontSize:10}}>${prodPCP(prod)}</td>
+                    <td>${prod.rate?prod.rate+' '+prod.unit+'/ac':'—'}</td>
+                    <td style=${{textAlign:'center'}}>${prodPHI(prod,ev.crop||ev.loc)!==null?prodPHI(prod,ev.crop||ev.loc):'—'}</td>
+                    <td><strong style=${{color:eahd>todayStr()?'#c62828':'#2e7d32'}}>${eahd}</strong></td>
                     <td>
                       <label style=${{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
                         <input type="checkbox" checked=${!!audit.phiVerified} onChange=${e=>updateSprayAudit(ev.id,{phiVerified:e.target.checked,phiVerifiedDate:e.target.checked?todayStr():''})}/>
@@ -2275,8 +2332,11 @@ function SprayBrain(){
                     </td>
                     <td>
                       <label style=${{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
-                        <input type="checkbox" checked=${!!audit.preHarvestInspection} onChange=${e=>updateSprayAudit(ev.id,{preHarvestInspection:e.target.checked,preHarvestInspectionDate:e.target.checked?todayStr():''})}/>
-                        <span>${audit.preHarvestInspection?'✓ '+(audit.preHarvestInspectionDate||'inspected'):'Not inspected'}</span>
+                        <input type="checkbox" checked=${!!audit.preHarvestInspection} onChange=${e=>updateSprayAudit(ev.id,{preHarvestInspection:e.target.checked,preHarvestInspectionDate:e.target.checked?todayStr():''})}
+                          style=${{width:14,height:14,accentColor:'#2e7d32',cursor:'pointer'}}/>
+                        <span style=${{fontSize:11,fontWeight:700,color:audit.preHarvestInspection?'#2e7d32':'#ccc'}}>
+                          ${audit.preHarvestInspection?'YES':'—'}
+                        </span>
                       </label>
                     </td>
                     <td>${ev.applicator||''}</td>
@@ -2317,7 +2377,7 @@ function SprayBrain(){
       <div class="sp-form-row">
         <div><label class="sp-lbl">Location</label>
           <select class="sp-sel" value=${bLoc} onChange=${e=>handleLocChange(e.target.value)}>
-            <option>Tunnels — Hagie 120 gal (Julio)</option>
+            <option>Tunnels — Hagie 400 gal (Julio)</option>
             <option>Field — Hardi 750 gal (Jose)</option>
             <option>Field — Patriot 680 gal (Glenn)</option>
           </select></div>
