@@ -1917,6 +1917,7 @@ function SprayBrain(){
   const[bFieldZone,setBFZ]=useState('melon');
   const[bLoc,setBL]=useState('Tunnels — Hagie 400 gal (Julio)');
   const[bGpa,setBG]=useState('100');
+  const[bTankVol,setBTankVol]=useState(()=>SPRAY_TANK_VOL.hagie);
   const[bAcres,setBA]=useState('19.5');
   const[bDate,setBD]=useState(todayStr());
   const[bTime,setBT]=useState('');
@@ -1960,7 +1961,7 @@ function SprayBrain(){
   },[]);
 
   const isTunnels=bLoc.includes('Hagie');
-  const tvol=tvolForLoc(bLoc);
+  const tvol=bTankVol||tvolForLoc(bLoc);
   const gpa=parseFloat(bGpa)||100;
   const apt=tvol/gpa;
   const fieldZoneObj=FIELD_ZONES.find(z=>z.id===bFieldZone)||FIELD_ZONES[0];
@@ -2038,10 +2039,11 @@ function SprayBrain(){
   function handleGpaChange(v){
     setBG(v);
     const newGpa=parseFloat(v)||100;
-    recalcProductsForApt(tvolForLoc(bLoc)/newGpa);
+    recalcProductsForApt((bTankVol||tvolForLoc(bLoc))/newGpa);
   }
   function handleLocChange(v){
     setBL(v);
+    setBTankVol(tvolForLoc(v)); // auto-fill tank vol from sprayer selection
     if(v.includes('Hagie'))setBCrop('Strawberry (Tunnels)');
     else setBCrop('');
     // Auto-assign applicator to the sprayer's usual operator
@@ -2058,7 +2060,6 @@ function SprayBrain(){
   }
 
   function genJulio(){
-    try{
     const vp=bProds.filter(p=>p.name&&parseFloat(p.amt)>0);
     if(!vp.length){alert('Add at least one product with a quantity');return;}
     const certNote=appCertNote(bApplicator);
@@ -2076,12 +2077,7 @@ function SprayBrain(){
       const tankUnit=fill?fill.unit:p.unit;
       lines.push(p.name+' — '+tankAmt+tankUnit+' per tank');
       const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);    // Snap to label rate if within 5% (avoids 300.3 vs 300 compliance artefacts)
-    const _cr=n/apt;
-    const _rls=sprayInfo(p.name).rateLabel;
-    const _rlm=_rls?String(_rls).match(/([0-9.]+)\s*(kg|g|L|mL)/i):null;
-    const _rlv=_rlm?parseFloat(_rlm[1]):null;
-    const _rlu=_rlm?(_rlm[2]||'').toLowerCase():null;
-    const rt=(_rlv&&_rlu&&_rlu===(p.unit||'g').toLowerCase()&&Math.abs(_cr-_rlv)/_rlv<0.05)?String(_rlv):_cr.toFixed(1);
+    const rt=(n/apt).toFixed(1);
     const info=sprayInfo(p.name)||{type:'N'};
       const entry=p.name+' '+rt+d+'/ac';
       if(info.type==='F'){rF.push(entry);if(info.frac)ff.add(info.frac);}
@@ -2109,7 +2105,6 @@ function SprayBrain(){
       const cn=appCertNote(bApplicator);const appl=bApplicator+(cn?' ('+cn+')':'');return[p.name,info.pcp||'—',info.phi!==undefined?info.phi+'d':'—',eahd,rate,locLabel,bDate+' '+bTime,appl].join('\t');
     });
     setBGap(gapRows);
-    }catch(err){alert('Generate error: '+err.message+'\n\nStack: '+err.stack.split('\n').slice(0,4).join(' | '));}
   }
 
   function saveEv(){
@@ -2119,9 +2114,9 @@ function SprayBrain(){
       ?(bZones.length<TUNNEL_ZONES.length?'Zones: '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'')
       :(fieldZoneObj.label!=='All field'?fieldZoneObj.label:'');
     LS.set('hff:spray:applicator',bApplicator);
-    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',crop:bCrop||undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
+    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',tankVol:bTankVol||tvol,crop:bCrop||undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
       products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=sprayInfo(p.name)||{type:'N',frac:null,irac:null,pcp:null,phi:0};
-        return{name:p.name,rate:(()=>{const _cr=n/apt;const _rs=sprayInfo(p.name).rateLabel;const _rm=_rs?String(_rs).match(/([0-9.]+)\s*(kg|g|L|mL)/i):null;const _rv=_rm?parseFloat(_rm[1]):null;const _ru=_rm?_rm[2].toLowerCase():null;return(_rv&&_ru&&_ru===(p.unit||'g').toLowerCase()&&Math.abs(_cr-_rv)/_rv<0.05)?_rv:+_cr.toFixed(1);})(),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
+        return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
     const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
@@ -2137,6 +2132,8 @@ function SprayBrain(){
     const eventApt=tankVol/eventGpa;
     setEditId(ev.id);
     setSV('build');
+    // Restore original tank volume — use stored value or infer from location
+    setBTankVol(ev.tankVol || (ev.loc==='Tunnels'?120:680)); // default historical tunnel=120
     // Re-map stored loc to current sprayer options
     setBL(ev.loc==='Tunnels'?'Tunnels — Hagie 400 gal (Julio)':
           (ev.applicator&&ev.applicator.includes('Glenn'))?'Field — Patriot 680 gal (Glenn)':
@@ -2390,6 +2387,10 @@ function SprayBrain(){
           </select></div>
         <div><label class="sp-lbl">GPA</label>
           <input type="number" class="sp-sel" value=${bGpa} onInput=${e=>handleGpaChange(e.target.value)} min="10" max="200"/></div>
+        <div><label class="sp-lbl">Tank vol (gal)</label>
+          <input type="number" class="sp-sel" value=${bTankVol}
+            onInput=${e=>{const v=parseFloat(e.target.value)||tvol;setBTankVol(v);recalcProductsForApt(v/(parseFloat(bGpa)||100));}}
+            min="10" max="2000" placeholder="e.g. 120"/></div>
       </div>
       <${SprayZonePicker} isTunnels=${isTunnels}
         bZones=${bZones} setBZ=${setBZ}
@@ -2397,7 +2398,7 @@ function SprayBrain(){
         bAcres=${bAcres} setBA=${setBA}
         bDate=${bDate} setBD=${setBD}
         bTime=${bTime} setBT=${setBT}/>
-      <p class="sp-tinfo">${bLoc.split(' — ')[1]||''} · ${apt.toFixed(2)} ac/tank · ${(acres/apt).toFixed(1)} tanks for ${acres.toFixed(2)} ac</p>
+      <p class="sp-tinfo">${bLoc.split(' — ')[0]||''} · ${bTankVol} gal · ${apt.toFixed(2)} ac/tank · ${(acres/apt).toFixed(1)} tanks for ${acres.toFixed(2)} ac</p>
       <div class="sp-form-row" style=${{marginBottom:9}}>
         <div><label class="sp-lbl">Target pest / disease</label>
           <select class="sp-sel" value=${bTargetPest} onChange=${e=>setBTargetPest(e.target.value)}>
