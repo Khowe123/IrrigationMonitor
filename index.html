@@ -916,7 +916,7 @@ function exportAuditXLSX(spEvents){
   const wb=XLSX.utils.book_new();
   const HDRS=['Event ID','Date','Location','Crop / Area','Block/Bay/Zone','Start Time',
     'Target Pest','Bloom Status','Product','Type','PCP #',
-    'Actual Rate','Label Max Rate','Rate Compliance',
+    'Actual Rate','Total Product','Label Max Rate','Rate Compliance',
     'PHI (days)','PHI Release Date',
     'General REI','General REI Release',
     'Hand Harvest REI','Hand Harvest Earliest',
@@ -947,6 +947,7 @@ function exportAuditXLSX(spEvents){
           info.type==='F'?'Fungicide':info.type==='I'?'Insecticide':info.type==='H'?'Herbicide':'Adjuvant',
           prodPCP(prod),
           prod.rate?(prod.rate+' '+prod.unit+'/ac'):'—',
+          prod.rate&&ev.acres?((prod.rate*parseFloat(ev.acres)).toFixed(1))+' '+prod.unit:'—',
           info.rateLabel||'—',
           rateChk(prod,info),
           phi!=null?phi:'—',phiDate,
@@ -2195,11 +2196,11 @@ function SprayBrain(){
   }
 
   function exportAuditCSV(){
-    const rows=[['Date','Crop / Area','Block/Bay/Zone','Product','Type','PCP #','Actual Rate','PHI (days)','Final Earliest Harvest Date','PHI Verified Date','Field & Pkg Inspected','Applicator','Sprayer','GPA','Acres Treated'].join(',')];
+    const rows=[['Date','Crop / Area','Block/Bay/Zone','Product','Type','PCP #','Actual Rate','Total Product','PHI (days)','Final Earliest Harvest Date','PHI Verified Date','Field & Pkg Inspected','Applicator','Sprayer','GPA','Acres Treated'].join(',')];
     [...spEvents].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).forEach(ev=>{
       (ev.products||[]).filter(p=>p.type!=='N').forEach(prod=>{
         const audit=ev.audit||{};
-        const cn=appCertNote(ev.applicator||'');const appl=(ev.applicator||'')+(cn?' ('+cn+')':'');const pT3=sprayInfo(prod.name).type;const tL3=pT3==='F'?'Fungicide':pT3==='I'?'Insecticide':pT3==='H'?'Herbicide':'Adjuvant';const cells=[ev.date,inferCrop(ev),ev.note||'All',prod.name,tL3,prodPCP(prod),prod.rate?prod.rate+' '+prod.unit+'/ac':'—',String(prodPHI(prod,ev.crop||ev.loc)??'—'),prodEAHD(ev,prod),audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',appl,sprayerForApplicator(ev.applicator),ev.gpa,ev.acres];
+        const cn=appCertNote(ev.applicator||'');const appl=(ev.applicator||'')+(cn?' ('+cn+')':'');const pT3=sprayInfo(prod.name).type;const tL3=pT3==='F'?'Fungicide':pT3==='I'?'Insecticide':pT3==='H'?'Herbicide':'Adjuvant';const cells=[ev.date,inferCrop(ev),ev.note||'All',prod.name,tL3,prodPCP(prod),prod.rate?prod.rate+' '+prod.unit+'/ac':'—',prod.rate&&ev.acres?((prod.rate*parseFloat(ev.acres)).toFixed(1))+' '+prod.unit:'—',String(prodPHI(prod,ev.crop||ev.loc)??'—'),prodEAHD(ev,prod),audit.phiVerifiedDate||'',audit.preHarvestInspection?'YES':'NO',appl,sprayerForApplicator(ev.applicator),ev.gpa,ev.acres];
         rows.push(cells.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(','));
       });
     });
@@ -2302,7 +2303,7 @@ function SprayBrain(){
           <table class="sp-gap-table">
             <thead><tr>
               <th>Date</th><th>Crop / Area</th><th>Block/Bay/Zone</th>
-              <th>Product</th><th>Type</th><th>PCP #</th><th>Actual Rate</th>
+              <th>Product</th><th>Type</th><th>PCP #</th><th>Actual Rate</th><th>Total Product</th>
               <th>PHI<br/>(days)</th><th>Final Earliest<br/>Harvest Date</th>
               <th>PHI Verified<br/>Date</th><th>Field &amp; Pkg<br/>Inspected</th>
               <th>Applicator</th><th>Sprayer</th><th>GPA</th><th>Acres</th><th>GPA</th><th>Acres</th>
@@ -2322,6 +2323,7 @@ function SprayBrain(){
                     <td style=${{fontSize:10,color:'#777'}}>${typeLabel}</td>
                     <td style=${{fontFamily:'monospace',fontSize:10}}>${prodPCP(prod)}</td>
                     <td>${prod.rate?prod.rate+' '+prod.unit+'/ac':'—'}</td>
+                    <td style=${{fontWeight:600}}>${prod.rate&&ev.acres?((prod.rate*parseFloat(ev.acres)).toFixed(1))+' '+prod.unit:'—'}</td>
                     <td style=${{textAlign:'center'}}>${prodPHI(prod,ev.crop||ev.loc)!==null?prodPHI(prod,ev.crop||ev.loc):'—'}</td>
                     <td><strong style=${{color:eahd>todayStr()?'#c62828':'#2e7d32'}}>${eahd}</strong></td>
                     <td>
