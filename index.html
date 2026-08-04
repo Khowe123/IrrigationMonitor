@@ -2074,11 +2074,14 @@ function SprayBrain(){
       const tankAmt=fill?fill.amt:p.amt;
       const tankUnit=fill?fill.unit:p.unit;
       lines.push(p.name+' — '+tankAmt+tankUnit+' per tank');
-      const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);// Snap to label rate if within 5% — avoids 300.3 vs 300 compliance false-positives
+      const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);    // Snap to label rate if within 5% (avoids 300.3 vs 300 compliance artefacts)
     const _cr=n/apt;
-    const _lbl=typeof parseRateLbl==='function'?parseRateLbl(sprayInfo(p.name).rateLabel):null;
-    const rt=(_lbl&&_lbl.u===p.unit&&Math.abs(_cr-_lbl.v)/_lbl.v<0.05)?String(_lbl.v):_cr.toFixed(1);
-      const info=SPRAY_PROD_DB[p.name]||{type:'N'};
+    const _rls=sprayInfo(p.name).rateLabel;
+    const _rlm=_rls?String(_rls).match(/([0-9.]+)\s*(kg|g|L|mL)/i):null;
+    const _rlv=_rlm?parseFloat(_rlm[1]):null;
+    const _rlu=_rlm?(_rlm[2]||'').toLowerCase():null;
+    const rt=(_rlv&&_rlu&&_rlu===p.unit.toLowerCase()&&Math.abs(_cr-_rlv)/_rlv<0.05)?String(_rlv):_cr.toFixed(1);
+    const info=SPRAY_PROD_DB[p.name]||{type:'N'};
       const entry=p.name+' '+rt+d+'/ac';
       if(info.type==='F'){rF.push(entry);if(info.frac)ff.add(info.frac);}
       else if(info.type==='I'){rI.push(entry);if(info.irac)fi.add(info.irac);}
@@ -2116,7 +2119,7 @@ function SprayBrain(){
     LS.set('hff:spray:applicator',bApplicator);
     const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',crop:bCrop||undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
       products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=SPRAY_PROD_DB[p.name]||{type:'N',frac:null,irac:null,pcp:null,phi:0};
-        return{name:p.name,rate:(()=>{const _cr=n/apt;const _lb=parseRateLbl(sprayInfo(p.name).rateLabel);return(_lb&&_lb.u===p.unit&&Math.abs(_cr-_lb.v)/_lb.v<0.05)?_lb.v:+_cr.toFixed(1);})(),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
+        return{name:p.name,rate:(()=>{const _cr=n/apt;const _rs=sprayInfo(p.name).rateLabel;const _rm=_rs?String(_rs).match(/([0-9.]+)\s*(kg|g|L|mL)/i):null;const _rv=_rm?parseFloat(_rm[1]):null;const _ru=_rm?_rm[2].toLowerCase():null;return(_rv&&_ru&&_ru===p.unit.toLowerCase()&&Math.abs(_cr-_rv)/_rv<0.05)?_rv:+_cr.toFixed(1);})(),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
     const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
