@@ -1,4 +1,5 @@
-<!DOCTYPE html>
+<!DOCT
+      ${view==='orders'?html`<${OrderBrain}/>`:null}YPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1684,6 +1685,492 @@ function FertHistory({applyLog,crop,phases}){
         </div>
       </div>`;
     })}
+  </div>`;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// ORDER MANAGER MODULE
+// ════════════════════════════════════════════════════════════════════════
+
+const ORDER_SKUS = {
+  pumpkin:[
+    // Seedless
+    {id:'sdls_80',  label:'80ct SDLS',            group:'Seedless'},
+    {id:'sdls_60',  label:'60ct SDLS',            group:'Seedless'},
+    {id:'sdls_45',  label:'45ct SDLS',            group:'Seedless'},
+    {id:'sdls_36',  label:'36ct SDLS',            group:'Seedless'},
+    // Standard
+    {id:'std_1820', label:'18/20ct',              group:'Standard'},
+    {id:'std_25lbl',label:'25ct Labelled',        group:'Standard'},
+    {id:'std_25nl', label:'25ct No Label',        group:'Standard'},
+    {id:'std_30lbl',label:'30ct 3130 Label',      group:'Standard'},
+    {id:'std_3035', label:'30/35ct',              group:'Standard'},
+    {id:'std_40',   label:'40ct 4735',            group:'Standard'},
+    {id:'std_4045', label:'40/45ct',              group:'Standard'},
+    {id:'std_50',   label:'50ct',                 group:'Standard'},
+    {id:'std_6070', label:'60/70ct',              group:'Standard'},
+    {id:'std_60p',  label:'60ct+',                group:'Standard'},
+    // Specialty
+    {id:'spc_pie',  label:'Pie Pumpkin',          group:'Specialty'},
+    {id:'spc_blan', label:'Blanco',               group:'Specialty'},
+    {id:'spc_wart', label:'Warty',                group:'Specialty'},
+    {id:'spc_sq',   label:'Mixed Squash',         group:'Specialty'},
+    {id:'spc_v3635',label:'Varietal 36" 35ct',    group:'Specialty'},
+    {id:'spc_v2430',label:'Varietal 24" 30ct',    group:'Specialty'},
+    {id:'spc_v2440',label:'Varietal 24" 40-45ct', group:'Specialty'},
+    {id:'spc_v2460',label:'Varietal 24" 60ct',    group:'Specialty'},
+    {id:'spc_w40',  label:'White 24" 40ct',       group:'Specialty'},
+    {id:'spc_w60',  label:'White 24" 60ct',       group:'Specialty'},
+    {id:'spc_wlg',  label:'White 36" 20 Lg',      group:'Specialty'},
+    // Caribbean
+    {id:'car_36',   label:'Caribbean 36"',        group:'Caribbean'},
+    {id:'car_24',   label:'Caribbean 24"',        group:'Caribbean'},
+    {id:'car_ft',   label:'Field Trip',           group:'Caribbean'},
+  ],
+  watermelon:[
+    {id:'wm_sdls',  label:'Seedless',             group:'Watermelon'},
+    {id:'wm_prem',  label:'Premium',              group:'Watermelon'},
+    {id:'wm_sang',  label:'Sangria',              group:'Watermelon'},
+    {id:'wm_ysd',   label:'Yellow Seeded',        group:'Watermelon'},
+    {id:'wm_ysdls', label:'Yellow Seedless',      group:'Watermelon'},
+  ]
+};
+
+const ORDER_CUSTOMERS_DEFAULT = [
+  'Heemans','Aaron','Wonderland','Oakridge','Annas Flowers','Baseline Nurseries',
+  'Frank Sleus Listowel','Canadale','Markets','Clovermead','Benjamin Tree Farm',
+  'Loblaws','Strathroy','Richard','Mike',
+];
+
+// Supabase sync
+async function sbOrderPush(order){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  if(!u||!k)return{ok:false};
+  const row={id:order.id,team_id:t,entry_data:{...order,_type:'order'},updated_at:new Date().toISOString()};
+  try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok};}
+  catch(e){return{ok:false};}
+}
+async function sbOrderPull(){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  if(!u||!k)return null;
+  try{const r=await sbReq('GET','harvest_logs?team_id=eq.'+encodeURIComponent(t)+'&select=entry_data,updated_at&order=updated_at.desc&limit=2000',null,u,k);
+    if(!r.ok)return null;const rows=await r.json();
+    return rows.filter(r=>r.entry_data?._type==='order').map(r=>r.entry_data);}
+  catch(e){return null;}
+}
+
+function exportCustomerHistory(customer, orders, skus, crop){
+  if(typeof XLSX==='undefined'){alert('Spreadsheet library loading — refresh and try again.');return;}
+  const wb=XLSX.utils.book_new();
+  const cOrders=orders.filter(o=>o.crop===crop&&o.customer===customer).sort((a,b)=>a.shipDate.localeCompare(b.shipDate));
+  if(!cOrders.length){alert('No orders found for '+customer);return;}
+
+  // Summary sheet
+  const skuList=skus[crop]||[];
+  const hdrs=['Ship Date','PO','Status','Notes',...skuList.map(s=>s.label),'Total Bins'];
+  const rows=cOrders.map(o=>{
+    const total=skuList.reduce((s,sk)=>s+(o.skus[sk.id]||0),0);
+    return[o.shipDate,o.po||'',o.shipped?'Shipped':'Pending',o.notes||'',...skuList.map(sk=>o.skus[sk.id]||0),total];
+  });
+  // Totals row
+  const totals=['TOTAL','','','', ...skuList.map(sk=>cOrders.reduce((s,o)=>s+(o.skus[sk.id]||0),0)), cOrders.reduce((s,o)=>s+skuList.reduce((t,sk)=>t+(o.skus[sk.id]||0),0),0)];
+  const ws=XLSX.utils.aoa_to_sheet([hdrs,...rows,totals]);
+  ws['!cols']=[{wch:12},{wch:10},{wch:10},{wch:25},...skuList.map(()=>({wch:12})),{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws,'Order History');
+
+  // By SKU summary
+  const skuHdrs=['SKU','Total Bins Ordered','# Shipments'];
+  const skuRows=skuList.filter(sk=>cOrders.some(o=>o.skus[sk.id]>0)).map(sk=>[
+    sk.label,
+    cOrders.reduce((s,o)=>s+(o.skus[sk.id]||0),0),
+    cOrders.filter(o=>o.skus[sk.id]>0).length
+  ]);
+  const ws2=XLSX.utils.aoa_to_sheet([skuHdrs,...skuRows]);
+  ws2['!cols']=[{wch:24},{wch:18},{wch:14}];
+  XLSX.utils.book_append_sheet(wb,ws2,'By SKU');
+
+  const fn=customer.replace(/[^a-zA-Z0-9]/g,'_')+'_order_history_'+todayStr()+'.xlsx';
+  XLSX.writeFile(wb,fn);
+}
+
+function OrderBrain(){
+  const[crop,setCrop]=useState(()=>LS.get('hff:ord:crop','pumpkin'));
+  const[view,setView]=useState('orders');
+  const[orders,setOrders]=useState(()=>LS.get('hff:ord:list',[]));
+  const[inventory,setInventory]=useState(()=>LS.get('hff:ord:inv',{}));
+  const[customers,setCustomers]=useState(()=>LS.get('hff:ord:customers',ORDER_CUSTOMERS_DEFAULT));
+  const[syncSt,setSyncSt]=useState('idle');
+
+  // Add/edit state
+  const[adding,setAdding]=useState(false);
+  const[editId,setEditId]=useState(null);
+  const[draftDate,setDraftDate]=useState(todayStr);
+  const[draftCust,setDraftCust]=useState('');
+  const[draftPO,setDraftPO]=useState('');
+  const[draftNotes,setDraftNotes]=useState('');
+  const[draftSkus,setDraftSkus]=useState({});
+  const[custFilter,setCustFilter]=useState('');
+
+  // Customer history
+  const[histCust,setHistCust]=useState(null);
+  const[showHistFor,setShowHistFor]=useState(null);
+
+  const skuList=ORDER_SKUS[crop]||[];
+  const cropOrders=orders.filter(o=>o.crop===crop);
+  const ORD_C={pumpkin:'#e65100',watermelon:'#c0392b'};
+  const oc=ORD_C[crop];
+
+  // ── helpers ────────────────────────────────────────────────────────────
+  function switchCrop(c){setCrop(c);LS.set('hff:ord:crop',c);}
+
+  function addCustIfNew(name){
+    const n=name.trim();if(!n)return;
+    if(!customers.includes(n)){const u=[...customers,n].sort();setCustomers(u);LS.set('hff:ord:customers',u);}
+  }
+
+  function startAdd(){
+    setAdding(true);setEditId(null);
+    setDraftDate(todayStr());setDraftCust('');setDraftPO('');setDraftNotes('');setDraftSkus({});
+  }
+
+  function startEdit(o){
+    setAdding(true);setEditId(o.id);
+    setDraftDate(o.shipDate);setDraftCust(o.customer);setDraftPO(o.po||'');
+    setDraftNotes(o.notes||'');setDraftSkus({...o.skus});
+  }
+
+  async function saveOrder(){
+    if(!draftCust.trim()){alert('Customer name required');return;}
+    addCustIfNew(draftCust);
+    const id=editId||('ord_'+Date.now());
+    const order={id,crop,shipDate:draftDate,customer:draftCust.trim(),po:draftPO.trim(),
+      notes:draftNotes,skus:{...draftSkus},shipped:false,shippedAt:null,
+      createdAt:editId?undefined:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    const upd=editId?orders.map(o=>o.id===editId?order:o):[order,...orders];
+    setOrders(upd);LS.set('hff:ord:list',upd);
+    setAdding(false);setEditId(null);
+    setSyncSt('syncing');const r=await sbOrderPush(order);setSyncSt(r.ok?'ok':'err');setTimeout(()=>setSyncSt('idle'),3000);
+  }
+
+  async function toggleShipped(id){
+    const upd=orders.map(o=>{
+      if(o.id!==id)return o;
+      const updated={...o,shipped:!o.shipped,shippedAt:!o.shipped?new Date().toISOString():null,updatedAt:new Date().toISOString()};
+      sbOrderPush(updated);return updated;
+    });
+    setOrders(upd);LS.set('hff:ord:list',upd);
+  }
+
+  function deleteOrder(id){if(!confirm('Delete this order?'))return;const upd=orders.filter(o=>o.id!==id);setOrders(upd);LS.set('hff:ord:list',upd);}
+
+  function updateInv(skuId,val){
+    const k=crop;
+    const upd={...inventory,[k]:{...inventory[k],[skuId]:parseInt(val)||0}};
+    setInventory(upd);LS.set('hff:ord:inv',upd);
+  }
+
+  async function syncNow(){
+    setSyncSt('syncing');
+    const remote=await sbOrderPull();
+    if(remote){
+      const map={};orders.forEach(o=>{map[o.id]=o;});
+      remote.forEach(o=>{if(!map[o.id]||o.updatedAt>map[o.id].updatedAt)map[o.id]=o;});
+      const merged=Object.values(map).sort((a,b)=>b.shipDate.localeCompare(a.shipDate)||b.updatedAt.localeCompare(a.updatedAt));
+      setOrders(merged);LS.set('hff:ord:list',merged);setSyncSt('ok');
+    }else setSyncSt('err');
+    setTimeout(()=>setSyncSt('idle'),3000);
+  }
+
+  // ── Pick list calculations ────────────────────────────────────────────
+  function getShipDates(n=4){
+    const dates=[];const t=new Date();
+    for(let i=0;i<n;i++){const d=new Date(t);d.setDate(t.getDate()+i);dates.push(d.toISOString().slice(0,10));}
+    return dates;
+  }
+
+  function calcNeed(date,skuId){
+    return cropOrders.filter(o=>!o.shipped&&o.shipDate===date).reduce((s,o)=>s+(o.skus[skuId]||0),0);
+  }
+
+  function getInv(skuId){return(inventory[crop]||{})[skuId]||0;}
+
+  // ── RENDER ────────────────────────────────────────────────────────────
+  const shipDates=getShipDates(4);
+  const TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'},{id:'orders',lbl:'📦 Orders'}];
+
+  // Add/Edit form
+  if(adding) return html`<div>
+    <div style=${{background:oc,borderRadius:'0 0 12px 12px',padding:'12px 16px',color:'#fff',marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <span style=${{fontWeight:700,fontSize:15}}>${editId?'Edit Order':'New Order'} — ${crop.charAt(0).toUpperCase()+crop.slice(1)}</span>
+      <button onClick=${()=>setAdding(false)} style=${{background:'rgba(255,255,255,.2)',border:'none',color:'#fff',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>✕ Cancel</button>
+    </div>
+    <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+      <div style=${{display:'flex',gap:8,marginBottom:9}}>
+        <div style=${{flex:1}}>
+          <label class="fl" style=${{fontSize:11}}>Ship Date</label>
+          <input type="date" value=${draftDate} onInput=${e=>setDraftDate(e.target.value)}
+            style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,fontFamily:'inherit',outline:'none',boxSizing:'border-box'}}/>
+        </div>
+        <div style=${{flex:1}}>
+          <label class="fl" style=${{fontSize:11}}>PO #</label>
+          <input class="ti" type="text" value=${draftPO} onInput=${e=>setDraftPO(e.target.value)} placeholder="Optional"/>
+        </div>
+      </div>
+      <div style=${{marginBottom:9}}>
+        <label class="fl" style=${{fontSize:11}}>Customer</label>
+        <input class="ti" type="text" value=${draftCust} onInput=${e=>setDraftCust(e.target.value)} placeholder="Type name or select..." list="ord-cust-list"/>
+        <datalist id="ord-cust-list">${customers.map(c=>html`<option key=${c} value=${c}/>`)}</datalist>
+      </div>
+      <div style=${{marginBottom:9}}>
+        <label class="fl" style=${{fontSize:11}}>Notes</label>
+        <input class="ti" type="text" value=${draftNotes} onInput=${e=>setDraftNotes(e.target.value)} placeholder="Delivery notes, special instructions…"/>
+      </div>
+    </div>
+    <!-- SKU quantities grouped by category -->
+    ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+    <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
+      <div style=${{fontSize:11,fontWeight:700,color:'#888',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8}}>${grp}</div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
+        ${skuList.filter(s=>s.group===grp).map(sk=>html`
+        <div key=${sk.id} style=${{display:'flex',alignItems:'center',gap:6}}>
+          <span style=${{fontSize:12,flex:1,color:'#555'}}>${sk.label}</span>
+          <input type="number" min="0" value=${draftSkus[sk.id]||''}
+            onInput=${e=>setDraftSkus(p=>({...p,[sk.id]:parseInt(e.target.value)||0}))}
+            placeholder="0"
+            style=${{width:56,padding:'5px',border:'1.5px solid #ddd',borderRadius:7,fontSize:14,fontWeight:700,textAlign:'center',outline:'none',color:oc,fontFamily:'inherit',MozAppearance:'textfield',appearance:'textfield'}}/>
+        </div>`)}
+      </div>
+    </div>`)}
+    <div style=${{background:'#f8f8f8',borderRadius:10,padding:'10px 14px',marginBottom:12,display:'flex',justifyContent:'space-between'}}>
+      <span style=${{fontSize:13,color:'#888'}}>Total bins</span>
+      <span style=${{fontSize:16,fontWeight:700,color:oc}}>${skuList.reduce((s,sk)=>s+(draftSkus[sk.id]||0),0)}</span>
+    </div>
+    <button onClick=${saveOrder}
+      style=${{width:'100%',padding:13,border:'none',borderRadius:10,background:oc,color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',fontFamily:'inherit'}}>
+      ${editId?'Update Order':'Save Order ✓'}
+    </button>
+  </div>`;
+
+  return html`<div>
+    <!-- Crop selector -->
+    <div style=${{display:'flex',gap:7,marginBottom:11}}>
+      ${['pumpkin','watermelon'].map(c=>html`
+      <button key=${c} onClick=${()=>switchCrop(c)}
+        style=${{flex:1,padding:'9px',border:'2px solid '+(crop===c?ORD_C[c]:'#ddd'),borderRadius:9,
+          background:crop===c?ORD_C[c]:'#fff',color:crop===c?'#fff':'#666',
+          fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
+        ${c==='pumpkin'?'🎃 Pumpkin':'🍉 Watermelon'}
+      </button>`)}
+    </div>
+
+    <!-- Sub-tabs -->
+    <div style=${{display:'flex',gap:4,marginBottom:12,overflowX:'auto'}}>
+      ${TABS.map(t=>html`
+      <button key=${t.id} onClick=${()=>setView(t.id)}
+        style=${{flex:1,minWidth:80,padding:'7px 4px',borderRadius:8,border:'1.5px solid '+(view===t.id?oc:'#ddd'),
+          background:view===t.id?oc:'transparent',color:view===t.id?'#fff':'#888',
+          fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+        ${t.lbl}
+      </button>`)}
+    </div>
+
+    <!-- ── ORDERS VIEW ── -->
+    ${view==='orders'?html`<div>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+        <span style=${{fontSize:12,color:'#888'}}>${cropOrders.length} orders · ${cropOrders.filter(o=>!o.shipped).length} pending</span>
+        <div style=${{display:'flex',gap:6,alignItems:'center'}}>
+          <span style=${{fontSize:11,color:syncSt==='ok'?'#2e7d32':syncSt==='err'?'#c62828':'#aaa',fontWeight:600}}>
+            ${syncSt==='syncing'?'⟳':syncSt==='ok'?'☁ synced':syncSt==='err'?'⚠ err':''}</span>
+          <button class="btn btn-sm btn-out" onClick=${syncNow} disabled=${syncSt==='syncing'}>↓ Sync</button>
+          <button onClick=${startAdd}
+            style=${{padding:'7px 14px',border:'none',borderRadius:8,background:oc,color:'#fff',fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+            + Add Order
+          </button>
+        </div>
+      </div>
+
+      ${shipDates.map(date=>{
+        const dayOrders=cropOrders.filter(o=>o.shipDate===date);
+        if(!dayOrders.length)return null;
+        const pending=dayOrders.filter(o=>!o.shipped);
+        const shipped=dayOrders.filter(o=>o.shipped);
+        const dayTotal=pending.reduce((s,o)=>s+skuList.reduce((t,sk)=>t+(o.skus[sk.id]||0),0),0);
+        const d=new Date(date+'T12:00:00');
+        const dayLbl=d.toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
+        return html`
+        <div key=${date} style=${{marginBottom:14}}>
+          <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:7}}>
+            <span style=${{fontWeight:700,fontSize:14,color:oc}}>${dayLbl}</span>
+            ${date===todayStr()?html`<span style=${{background:oc,color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10,fontWeight:700}}>TODAY</span>`:null}
+            ${dayTotal>0?html`<span style=${{background:'#fff3e0',color:'#e65100',borderRadius:5,padding:'2px 7px',fontSize:11,fontWeight:700}}>${dayTotal} bins needed</span>`:null}
+          </div>
+          ${pending.map(o=>html`
+          <div key=${o.id} style=${{background:'#fff',border:'1.5px solid #e8e8e8',borderRadius:10,padding:'10px 13px',marginBottom:6}}>
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:5}}>
+              <div>
+                <span style=${{fontWeight:700,fontSize:14}}>${o.customer}</span>
+                ${o.po?html`<span style=${{fontSize:11,color:'#aaa',marginLeft:6}}>PO ${o.po}</span>`:null}
+              </div>
+              <span style=${{fontWeight:700,fontSize:14,color:oc}}>${skuList.reduce((s,sk)=>s+(o.skus[sk.id]||0),0)} bins</span>
+            </div>
+            <div style=${{display:'flex',flexWrap:'wrap',gap:5,marginBottom:5}}>
+              ${skuList.filter(sk=>(o.skus[sk.id]||0)>0).map(sk=>html`
+              <span key=${sk.id} style=${{background:'#f5f5f0',color:'#333',fontSize:11,fontWeight:600,padding:'2px 7px',borderRadius:5}}>
+                ${sk.label}: ${o.skus[sk.id]}
+              </span>`)}
+            </div>
+            ${o.notes?html`<div style=${{fontSize:11,color:'#888',marginBottom:5}}>📝 ${o.notes}</div>`:null}
+            <div style=${{display:'flex',gap:6,justifyContent:'flex-end'}}>
+              <button onClick=${()=>startEdit(o)} class="btn btn-sm btn-out">Edit</button>
+              <button onClick=${()=>deleteOrder(o.id)} class="btn btn-sm btn-danger">Delete</button>
+              <button onClick=${()=>toggleShipped(o.id)}
+                style=${{padding:'5px 12px',border:'none',borderRadius:7,background:'#2e7d32',color:'#fff',fontWeight:700,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                ✓ Mark Shipped
+              </button>
+            </div>
+          </div>`)}
+          ${shipped.length>0?html`
+          <details style=${{marginTop:4}}>
+            <summary style=${{fontSize:11,color:'#bbb',cursor:'pointer',listStyle:'none',padding:'4px 0'}}>${shipped.length} shipped ▸</summary>
+            ${shipped.map(o=>html`
+            <div key=${o.id} style=${{background:'#f8f8f8',border:'1px solid #e0e0e0',borderRadius:8,padding:'8px 12px',marginTop:4,opacity:0.65}}>
+              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style=${{fontWeight:600,fontSize:13,textDecoration:'line-through',color:'#aaa'}}>${o.customer}${o.po?' PO '+o.po:''}</span>
+                <div style=${{display:'flex',gap:5}}>
+                  <span style=${{fontSize:11,color:'#bbb'}}>✓ Shipped</span>
+                  <button onClick=${()=>toggleShipped(o.id)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#888',fontFamily:'inherit'}}>Undo</button>
+                </div>
+              </div>
+            </div>`)}
+          </details>`:null}
+        </div>`;
+      })}
+    </div>`:null}
+
+    <!-- ── PICK LIST VIEW ── -->
+    ${view==='picklist'?html`<div>
+      <div style=${{background:'linear-gradient(135deg,#2c1810,#5c2d0a)',borderRadius:12,padding:'12px 16px',marginBottom:12,color:'#fff'}}>
+        <div style=${{fontSize:11,opacity:.65,fontWeight:600,letterSpacing:'.07em',textTransform:'uppercase',marginBottom:2}}>Harvest Planning</div>
+        <div style=${{fontSize:15,fontWeight:700}}>Pick List — Next 4 Days</div>
+        <div style=${{fontSize:11,opacity:.7,marginTop:3}}>Excludes shipped orders · Update barn inventory below</div>
+      </div>
+      <!-- Per-SKU: Need across all days, Have, To Pick -->
+      ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+      <div key=${grp} class="card" style=${{marginBottom:8}}>
+        <div style=${{padding:'8px 14px',borderBottom:'1px solid #f0f0f0',fontWeight:700,fontSize:11,color:'#888',textTransform:'uppercase',letterSpacing:'.05em'}}>${grp}</div>
+        <div style=${{padding:'6px 14px 10px'}}>
+          <!-- Day headers -->
+          <div style=${{display:'grid',gridTemplateColumns:'1fr repeat(4,36px) 42px 42px 48px',gap:4,marginBottom:4,fontSize:9,fontWeight:700,color:'#aaa',textAlign:'center'}}>
+            <span></span>
+            ${shipDates.map(d=>html`<span key=${d}>${new Date(d+'T12:00:00').toLocaleDateString('en-CA',{month:'numeric',day:'numeric'})}</span>`)}
+            <span style=${{color:'#555'}}>NEED</span>
+            <span style=${{color:'#2e7d32'}}>HAVE</span>
+            <span style=${{color:oc}}>PICK</span>
+          </div>
+          ${skuList.filter(s=>s.group===grp).map(sk=>{
+            const needs=shipDates.map(d=>calcNeed(d,sk.id));
+            const totalNeed=needs.reduce((s,n)=>s+n,0);
+            const have=getInv(sk.id);
+            const pick=Math.max(0,totalNeed-have);
+            if(totalNeed===0&&have===0)return null;
+            return html`
+            <div key=${sk.id} style=${{display:'grid',gridTemplateColumns:'1fr repeat(4,36px) 42px 42px 48px',gap:4,padding:'4px 0',borderBottom:'1px solid #f9f9f9',alignItems:'center'}}>
+              <span style=${{fontSize:12}}>${sk.label}</span>
+              ${needs.map((n,i)=>html`<span key=${i} style=${{textAlign:'center',fontSize:12,fontWeight:n>0?700:400,color:n>0?oc:'#ccc'}}>${n>0?n:'—'}</span>`)}
+              <span style=${{textAlign:'center',fontWeight:700,fontSize:12,color:'#333'}}>${totalNeed||'—'}</span>
+              <span style=${{textAlign:'center',fontSize:12,color:'#2e7d32',fontWeight:600}}>${have||'—'}</span>
+              <span style=${{textAlign:'center',fontWeight:700,fontSize:13,
+                color:pick>0?'#c62828':'#2e7d32',
+                background:pick>0?'#ffebee':'#e8f5e9',
+                borderRadius:5,padding:'2px 4px'}}>${pick>0?pick:'✓'}</span>
+            </div>`;
+          })}
+        </div>
+      </div>`)}
+      <p style=${{fontSize:11,color:'#aaa',textAlign:'center',marginTop:6}}>
+        Red = must pick · ✓ = inventory covers orders · Update barn counts in Inventory tab
+      </p>
+    </div>`:null}
+
+    <!-- ── INVENTORY VIEW ── -->
+    ${view==='inventory'?html`<div>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+        <span style=${{fontWeight:700,fontSize:14}}>Barn Inventory — ${crop.charAt(0).toUpperCase()+crop.slice(1)}</span>
+        <span style=${{fontSize:11,color:'#aaa'}}>Last updated ${new Date().toLocaleDateString()}</span>
+      </div>
+      ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+      <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
+        <div style=${{fontSize:11,fontWeight:700,color:'#888',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8}}>${grp}</div>
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          ${skuList.filter(s=>s.group===grp).map(sk=>html`
+          <div key=${sk.id} style=${{display:'flex',alignItems:'center',gap:6}}>
+            <span style=${{fontSize:12,flex:1,color:'#555'}}>${sk.label}</span>
+            <input type="number" min="0" value=${getInv(sk.id)||''}
+              onInput=${e=>updateInv(sk.id,e.target.value)}
+              placeholder="0"
+              style=${{width:60,padding:'5px',border:'1.5px solid #ddd',borderRadius:7,fontSize:14,fontWeight:700,
+                textAlign:'center',outline:'none',color:'#2e7d32',fontFamily:'inherit',
+                MozAppearance:'textfield',appearance:'textfield'}}/>
+          </div>`)}
+        </div>
+      </div>`)}
+      <p style=${{fontSize:11,color:'#bbb',textAlign:'center',marginTop:6}}>Enter current bin count in barn/cooler. Updates Pick List automatically.</p>
+    </div>`:null}
+
+    <!-- ── CUSTOMERS VIEW ── -->
+    ${view==='customers'?html`<div>
+      ${showHistFor?html`
+      <!-- Customer history detail -->
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div>
+          <div style=${{fontWeight:700,fontSize:15}}>${showHistFor}</div>
+          <div style=${{fontSize:11,color:'#aaa'}}>${cropOrders.filter(o=>o.customer===showHistFor).length} orders · ${cropOrders.filter(o=>o.customer===showHistFor).reduce((s,o)=>s+skuList.reduce((t,sk)=>t+(o.skus[sk.id]||0),0),0)} total bins</div>
+        </div>
+        <div style=${{display:'flex',gap:6}}>
+          <button class="btn btn-sm btn-out" onClick=${()=>exportCustomerHistory(showHistFor,orders,ORDER_SKUS,crop)}>↓ Export</button>
+          <button class="btn btn-sm btn-muted" onClick=${()=>setShowHistFor(null)}>← Back</button>
+        </div>
+      </div>
+      ${[...new Set(cropOrders.filter(o=>o.customer===showHistFor).map(o=>o.shipDate))].sort().reverse().map(date=>html`
+      <div key=${date} class="card" style=${{marginBottom:7,padding:'10px 13px'}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:4}}>
+          <span style=${{fontWeight:600,fontSize:13}}>${new Date(date+'T12:00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}</span>
+          ${cropOrders.filter(o=>o.customer===showHistFor&&o.shipDate===date).map(o=>html`
+          <span style=${{fontSize:11,color:o.shipped?'#2e7d32':'#e65100',fontWeight:600}}>${o.shipped?'✓ Shipped':'Pending'}${o.po?' · PO '+o.po:''}</span>`)}
+        </div>
+        ${cropOrders.filter(o=>o.customer===showHistFor&&o.shipDate===date).flatMap(o=>
+          skuList.filter(sk=>(o.skus[sk.id]||0)>0).map(sk=>html`
+          <span key=${sk.id} style=${{display:'inline-block',background:'#f5f5f0',borderRadius:5,padding:'2px 7px',fontSize:11,fontWeight:600,marginRight:4,marginBottom:3}}>
+            ${sk.label}: ${o.skus[sk.id]}
+          </span>`)
+        )}
+      </div>`)}
+      `:html`
+      <!-- Customer list -->
+      <div style=${{marginBottom:10,display:'flex',gap:8,alignItems:'center'}}>
+        <input class="ti" type="text" value=${custFilter} onInput=${e=>setCustFilter(e.target.value)} placeholder="Search customers…" style=${{flex:1}}/>
+        <button class="btn btn-sm btn-out" onClick=${()=>{const n=prompt('New customer name:');if(n&&n.trim())addCustIfNew(n.trim());}}>+ Add</button>
+      </div>
+      ${customers.filter(c=>c.toLowerCase().includes(custFilter.toLowerCase())).map(c=>{
+        const cOrders=cropOrders.filter(o=>o.customer===c);
+        const totalBins=cOrders.reduce((s,o)=>s+skuList.reduce((t,sk)=>t+(o.skus[sk.id]||0),0),0);
+        return html`
+        <div key=${c} class="card" style=${{marginBottom:6}}>
+          <div style=${{padding:'10px 13px',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer'}} onClick=${()=>setShowHistFor(c)}>
+            <div>
+              <span style=${{fontWeight:600,fontSize:14}}>${c}</span>
+              ${cOrders.length>0?html`<div style=${{fontSize:11,color:'#aaa',marginTop:1}}>${cOrders.length} orders · ${totalBins} bins</div>`:html`<div style=${{fontSize:11,color:'#ddd',marginTop:1}}>No orders yet</div>`}
+            </div>
+            <div style=${{display:'flex',gap:6,alignItems:'center'}}>
+              ${cOrders.length>0?html`<button class="btn btn-sm btn-out" onClick=${e=>{e.stopPropagation();exportCustomerHistory(c,orders,ORDER_SKUS,crop);}}>↓ Export</button>`:null}
+              <span style=${{color:'#ccc',fontSize:16}}>›</span>
+            </div>
+          </div>
+        </div>`;
+      })}
+      `}
+    </div>`:null}
   </div>`;
 }
 
