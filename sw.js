@@ -1,5 +1,5 @@
-// hff-v22 — only pre-cache app shell; CDN libs cached on first use
-const CACHE='hff-v22';
+// hff-v23 — app shell cache with network-first HTML updates
+const CACHE='hff-v23';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
@@ -22,16 +22,35 @@ self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
   if(e.request.url.includes('api.anthropic.com'))return;
   if(e.request.url.includes('supabase.co'))return;
+
+  const url=new URL(e.request.url);
+  const isHtml=e.request.mode==='navigate'||url.pathname.endsWith('/index.html')||url.pathname.endsWith('/');
+
+  if(isHtml){
+    e.respondWith(
+      fetch(e.request)
+        .then(res=>{
+          if(res.ok){
+            const copy=res.clone();
+            caches.open(CACHE).then(c=>c.put(e.request,copy));
+          }
+          return res;
+        })
+        .catch(()=>caches.match(e.request).then(hit=>hit||caches.match('./index.html')))
+    );
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then(hit=>{
       if(hit)return hit;
       return fetch(e.request).then(res=>{
         if(res.ok){
-          const c=res.clone();
-          caches.open(CACHE).then(ch=>ch.put(e.request,c));
+          const copy=res.clone();
+          caches.open(CACHE).then(c=>c.put(e.request,copy));
         }
         return res;
-      }).catch(()=>caches.match('./index.html'));
+      });
     })
   );
 });
