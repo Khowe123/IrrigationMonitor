@@ -1,5 +1,4 @@
-<!DOCT
-      ${view==='orders'?html`<${OrderBrain}/>`:null}YPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1897,7 +1896,7 @@ function OrderBrain(){
 
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(4);
-  const TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'},{id:'orders',lbl:'📦 Orders'}];
+  const TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'}];
 
   // Add/Edit form
   if(adding) return html`<div>
@@ -3583,7 +3582,7 @@ function App(){
   const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
 
   const{bg,acc,act,actTxt}=crop;
-  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'settings',lbl:'Settings'}];
+  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'Orders 📦'},{id:'settings',lbl:'Settings'}];
 
   const FlagBox=({level,items})=>items.length===0?null:html`
   <div class=${'flag-box '+level}>
@@ -3679,6 +3678,7 @@ function App(){
       ${view==='zones'?html`<${ZoneEditor} zones=${zones} onSave=${saveZones}/>`:null}
 
       ${view==='fert'?html`<${FertBrain}/>`:null}
+      ${view==='orders'?html`<${OrderBrain}/>`:null}
       ${view==='settings'?html`
       <${SettingsView} strat=${strat} defaultStage=${defaultStage} onSaveStrat=${saveStrat}
         onSaveStage=${saveDefStage} cropLabel=${crop.label} isStraw=${isStraw}
