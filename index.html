@@ -2613,23 +2613,29 @@ function SprayBrain(){
 
   function editSprayEvent(ev){
     const locIsTunnels=ev.loc==='Tunnels';
-    const tankVol=locIsTunnels?SPRAY_TANK_VOL.tunnels:SPRAY_TANK_VOL.field;
+    // ── Determine the correct sprayer string ──
+    const newLoc=locIsTunnels?'Tunnels — Hagie 400 gal (Julio)':
+      (ev.applicator&&ev.applicator.toLowerCase().includes('glenn'))?'Field — Patriot 680 gal (Glenn)':
+      'Field — Hardi 750 gal (Jose)';
+    // ── Use stored tankVol, or fall back to sprayer default ──
+    const restoredVol=ev.tankVol||tvolForLoc(newLoc)||(locIsTunnels?120:680);
     const eventGpa=parseFloat(ev.gpa)||100;
-    const eventApt=tankVol/eventGpa;
+    const eventApt=restoredVol/eventGpa;
     setEditId(ev.id);
     setSV('build');
-    // Restore original tank volume — use stored value or infer from location
-    setBTankVol(ev.tankVol || (ev.loc==='Tunnels'?120:680)); // default historical tunnel=120
-    // Re-map stored loc to current sprayer options
-    setBL(ev.loc==='Tunnels'?'Tunnels — Hagie 400 gal (Julio)':
-          (ev.applicator&&ev.applicator.includes('Glenn'))?'Field — Patriot 680 gal (Glenn)':
-          'Field — Hardi 750 gal (Jose)');
-    setBG(String(ev.gpa||100));
-    setBD(ev.date||todayStr());
-    setBT(ev.time||'');
-    setBA(String(ev.acres||''));
-    setBAp(ev.applicator||LS.get('hff:spray:applicator','Julio'));
-    setBJ(null);setBR(null);setBGap([]);setBW('');
+    setBTankVol(restoredVol);
+    setBL(newLoc);
+    setBG(String(eventGpa));
+    // ── Restore field zone (fixes the audit bug where zone reverted to Watermelon) ──
+    if(!locIsTunnels){
+      const savedFZ=FIELD_ZONES.find(z=>z.label===ev.note||(ev.crop&&z.label.toLowerCase().includes(ev.crop)));
+      const inferredFZ=FIELD_ZONES.find(z=>Math.abs((z.acres||0)-parseFloat(ev.acres))<1.0);
+      const fzId=(savedFZ||inferredFZ)?.id||'fcust';
+      setBFZ(fzId);
+    }
+    setBCrop(ev.crop||'');
+    setBTargetPest(ev.targetPest||'');
+    setBBloomStatus(ev.bloomStatus||'No');
     setBP((ev.products||[]).map((p,i)=>({id:i+1,name:p.name||'',amt:p.rate?String(+(p.rate*eventApt).toFixed(2)):'',unit:p.unit||'g'})));
     setBC((ev.products||[]).length||1);
   }
