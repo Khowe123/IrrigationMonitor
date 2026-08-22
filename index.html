@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang
+    if(info.pctOfTank && tvolGal){const tvolL=tvolGal*3.785;const mL=Math.round(tvolL*info.pctOfTank/100*10000)/10;return{amt:String(mL),unit:'mL'};}="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -689,7 +690,7 @@ const SPRAY_PROD_DB={
 
   // Non-pesticide tank partners / nutrients / adjuvants
   'PureSpray Green Oil':{frac:null,irac:null,type:'N',pcp:'27666',rateLabel:'1.06 L/ac',phi:0,rei:'0h',isOil:1},
-  'Xiameter':      {frac:null,irac:null,type:'N',pcp:null,rateLabel:'—',phi:0,rei:'—',noFrost:1,notes:'Silicone surfactant — rate as % of TANK VOLUME. Standard: 0.01% (e.g. 150 mL per 1500L tank). Hot/sensitive conditions: 0.005% (~75 mL per 1500L). Enter mL in build screen.'},
+  'Xiameter':      {frac:null,irac:null,type:'N',pcp:null,rateLabel:'—',phi:0,rei:'—',noFrost:1,pctOfTank:0.1,pctAlt:0.05,notes:'Silicone surfactant. Auto-fills at 0.1% of tank volume (reduce to 0.05% in hot/sensitive conditions). Rate shown per tank in mL.'},
   'InCa':          {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',noFrost:1},
   'Inca':          {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',noFrost:1},
   'SVite 30-10-10':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
@@ -2512,7 +2513,7 @@ function SprayBrain(){
     if(!m)return null;
     return {rate:parseFloat(m[1]),unit:m[2]};
   }
-  function tankAmountFromRateLabelForApt(name, aptVal){
+  function tankAmountFromRateLabelForApt(name, aptVal, tvolGal){
     const info=sprayInfo(name)||{};
     const parsed=parseRateLabel(info.rateLabel);
     if(!parsed||!aptVal)return null;
@@ -2521,7 +2522,7 @@ function SprayBrain(){
     return {amt:String(rounded),unit:parsed.unit};
   }
   function tankAmountFromRateLabel(name){
-    return tankAmountFromRateLabelForApt(name, apt);
+    return tankAmountFromRateLabelForApt(name, apt, tvol);
   }
   function recalcProductsForApt(aptVal){
     setBP(prev=>{
@@ -2571,7 +2572,7 @@ function SprayBrain(){
       // Use the label-rate calculation at the current GPA/tank size for Julio text,
       // even if React has not finished updating the visible input value yet.
       // Example: 160 gal ÷ 50 GPA = 3.2 ac/tank, then rate/ac × 3.2 = product/tank.
-      const fill=tankAmountFromRateLabelForApt(p.name, apt);
+      const fill=tankAmountFromRateLabelForApt(p.name, apt, tvol);
       const tankAmt=fill?fill.amt:p.amt;
       const tankUnit=fill?fill.unit:p.unit;
       lines.push(p.name+' — '+tankAmt+tankUnit+' per tank');
@@ -2595,7 +2596,7 @@ function SprayBrain(){
     const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):fieldZoneObj.label;
     const gapRows=vp.filter(p=>sprayInfo(p.name).type!=='N').map(p=>{
       const info=sprayInfo(p.name)||{};
-      const fill=tankAmountFromRateLabelForApt(p.name, apt);
+      const fill=tankAmountFromRateLabelForApt(p.name, apt, tvol);
       const tankAmt=fill?fill.amt:p.amt;
       const tankUnit=fill?fill.unit:p.unit;
       const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);
@@ -2614,7 +2615,7 @@ function SprayBrain(){
       :(fieldZoneObj.label!=='All field'?fieldZoneObj.label:'');
     LS.set('hff:spray:applicator',bApplicator);
     const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',tankVol:bTankVol||tvol,crop:bCrop||undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
-      products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=sprayInfo(p.name)||{type:'N',frac:null,irac:null,pcp:null,phi:0};
+      products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt, tvol);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=sprayInfo(p.name)||{type:'N',frac:null,irac:null,pcp:null,phi:0};
         return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
