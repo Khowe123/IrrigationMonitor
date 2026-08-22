@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang
-    if(info.pctOfTank && tvolGal){const tvolL=tvolGal*3.785;const mL=Math.round(tvolL*info.pctOfTank/100*10000)/10;return{amt:String(mL),unit:'mL'};}="en">
+    ="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -2486,8 +2486,15 @@ function SprayBrain(){
         // When a product is selected, auto-fill the per-tank amount from the label rate table.
         // Example: Delegate 0.105 kg/ac at 1.6 ac/tank -> 0.17 kg per tank.
         if(f==='name'){
-          const fill=tankAmountFromRateLabel(v);
-          if(fill){nr={...nr,amt:fill.amt,unit:fill.unit};}
+          const _inf=sprayInfo(v);
+          if(_inf.pctOfTank){
+            const _tL=(bTankVol||tvolForLoc(bLoc))*3.785;
+            const _mL=Math.round(_tL*_inf.pctOfTank/100*10000)/10;
+            nr={...nr,amt:String(_mL),unit:'mL'};
+          } else {
+            const fill=tankAmountFromRateLabel(v);
+            if(fill){nr={...nr,amt:fill.amt,unit:fill.unit};}
+          }
         }
         return nr;
       });
@@ -2513,7 +2520,7 @@ function SprayBrain(){
     if(!m)return null;
     return {rate:parseFloat(m[1]),unit:m[2]};
   }
-  function tankAmountFromRateLabelForApt(name, aptVal, tvolGal){
+  function tankAmountFromRateLabelForApt(name, aptVal){
     const info=sprayInfo(name)||{};
     const parsed=parseRateLabel(info.rateLabel);
     if(!parsed||!aptVal)return null;
@@ -2522,7 +2529,7 @@ function SprayBrain(){
     return {amt:String(rounded),unit:parsed.unit};
   }
   function tankAmountFromRateLabel(name){
-    return tankAmountFromRateLabelForApt(name, apt, tvol);
+    return tankAmountFromRateLabelForApt(name, apt);
   }
   function recalcProductsForApt(aptVal){
     setBP(prev=>{
@@ -2572,7 +2579,7 @@ function SprayBrain(){
       // Use the label-rate calculation at the current GPA/tank size for Julio text,
       // even if React has not finished updating the visible input value yet.
       // Example: 160 gal ÷ 50 GPA = 3.2 ac/tank, then rate/ac × 3.2 = product/tank.
-      const fill=tankAmountFromRateLabelForApt(p.name, apt, tvol);
+      const fill=tankAmountFromRateLabelForApt(p.name, apt);
       const tankAmt=fill?fill.amt:p.amt;
       const tankUnit=fill?fill.unit:p.unit;
       lines.push(p.name+' — '+tankAmt+tankUnit+' per tank');
@@ -2596,7 +2603,7 @@ function SprayBrain(){
     const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):fieldZoneObj.label;
     const gapRows=vp.filter(p=>sprayInfo(p.name).type!=='N').map(p=>{
       const info=sprayInfo(p.name)||{};
-      const fill=tankAmountFromRateLabelForApt(p.name, apt, tvol);
+      const fill=tankAmountFromRateLabelForApt(p.name, apt);
       const tankAmt=fill?fill.amt:p.amt;
       const tankUnit=fill?fill.unit:p.unit;
       const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);
@@ -2615,7 +2622,7 @@ function SprayBrain(){
       :(fieldZoneObj.label!=='All field'?fieldZoneObj.label:'');
     LS.set('hff:spray:applicator',bApplicator);
     const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',tankVol:bTankVol||tvol,crop:bCrop||undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
-      products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt, tvol);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=sprayInfo(p.name)||{type:'N',frac:null,irac:null,pcp:null,phi:0};
+      products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=sprayInfo(p.name)||{type:'N',frac:null,irac:null,pcp:null,phi:0};
         return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
