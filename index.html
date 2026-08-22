@@ -689,12 +689,12 @@ const SPRAY_PROD_DB={
 
   // Non-pesticide tank partners / nutrients / adjuvants
   'PureSpray Green Oil':{frac:null,irac:null,type:'N',pcp:'27666',rateLabel:'1.06 L/ac',phi:0,rei:'0h',isOil:1},
-  'Xiameter':      {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',noFrost:1},
+  'Xiameter':      {frac:null,irac:null,type:'N',pcp:null,rateLabel:'—',phi:0,rei:'—',noFrost:1,notes:'Silicone surfactant — rate as % of TANK VOLUME. Standard: 0.01% (e.g. 150 mL per 1500L tank). Hot/sensitive conditions: 0.005% (~75 mL per 1500L). Enter mL in build screen.'},
   'InCa':          {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',noFrost:1},
   'Inca':          {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',noFrost:1},
   'SVite 30-10-10':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
   'Sylvite Blue 15-30-15':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
-  'Spear-T':       {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—',isOil:1},
+  'Spear-T':       {frac:null,irac:'6',  type:'I',pcp:'31517',rateLabel:'5 L/ac',phi:3,rei:'12h',isOil:1,notes:'Abamectin oil — 5 L/acre. Do not mix with sulfur (oil+sulfur incompatible).'},
   'Nitric acid':   {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
   'MKP':           {frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
   'Epsotop (MgSO4)':{frac:null,irac:null,type:'N',pcp:null,phi:0,rei:'—'},
@@ -1809,6 +1809,7 @@ function OrderBrain(){
   const[draftPO,setDraftPO]=useState('');
   const[draftNotes,setDraftNotes]=useState('');
   const[draftSkus,setDraftSkus]=useState({});
+  const[draftCrop,setDraftCrop]=useState('pumpkin');
   const[custFilter,setCustFilter]=useState('');
 
   // Customer history
@@ -1816,7 +1817,8 @@ function OrderBrain(){
   const[showHistFor,setShowHistFor]=useState(null);
 
   const skuList=ORDER_SKUS[crop]||[];
-  const cropOrders=orders.filter(o=>o.crop===crop);
+  const allOrders=orders;  // all crops combined
+  const cropOrders=orders;  // for counts: show all
   const ORD_C={pumpkin:'#e65100',watermelon:'#c0392b'};
   const oc=ORD_C[crop];
 
@@ -1836,14 +1838,14 @@ function OrderBrain(){
   function startEdit(o){
     setAdding(true);setEditId(o.id);
     setDraftDate(o.shipDate);setDraftCust(o.customer);setDraftPO(o.po||'');
-    setDraftNotes(o.notes||'');setDraftSkus({...o.skus});
+    setDraftNotes(o.notes||'');setDraftSkus({...o.skus});setDraftCrop(o.crop||'pumpkin');
   }
 
   async function saveOrder(){
     if(!draftCust.trim()){alert('Customer name required');return;}
     addCustIfNew(draftCust);
     const id=editId||('ord_'+Date.now());
-    const order={id,crop,shipDate:draftDate,customer:draftCust.trim(),po:draftPO.trim(),
+    const order={id,crop:draftCrop,shipDate:draftDate,customer:draftCust.trim(),po:draftPO.trim(),
       notes:draftNotes,skus:{...draftSkus},shipped:false,shippedAt:null,
       createdAt:editId?undefined:new Date().toISOString(),updatedAt:new Date().toISOString()};
     const upd=editId?orders.map(o=>o.id===editId?order:o):[order,...orders];
@@ -1917,6 +1919,16 @@ function OrderBrain(){
         </div>
       </div>
       <div style=${{marginBottom:9}}>
+        <div style=${{display:'flex',gap:6,marginBottom:9}}>
+          ${['pumpkin','watermelon'].map(c=>html`
+          <button key=${c} onClick=${()=>setDraftCrop(c)}
+            style=${{flex:1,padding:'7px',border:'2px solid '+(draftCrop===c?ORD_C[c]:'#ddd'),
+              borderRadius:8,background:draftCrop===c?ORD_C[c]:'#fff',
+              color:draftCrop===c?'#fff':'#888',fontWeight:700,fontSize:13,
+              cursor:'pointer',fontFamily:'inherit'}}>
+            ${c==='pumpkin'?'🎃 Pumpkin':'🍉 Watermelon'}
+          </button>`)}
+        </div>
         <label class="fl" style=${{fontSize:11}}>Customer</label>
         <input class="ti" type="text" value=${draftCust} onInput=${e=>setDraftCust(e.target.value)} placeholder="Type name or select..." list="ord-cust-list"/>
         <datalist id="ord-cust-list">${customers.map(c=>html`<option key=${c} value=${c}/>`)}</datalist>
@@ -1927,7 +1939,7 @@ function OrderBrain(){
       </div>
     </div>
     <!-- SKU quantities grouped by category -->
-    ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+    ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>(ORDER_SKUS[draftCrop]||[]).some(s=>s.group===g)).map(grp=>html`
     <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <div style=${{fontSize:11,fontWeight:700,color:'#888',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8}}>${grp}</div>
       <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
@@ -1952,15 +1964,13 @@ function OrderBrain(){
   </div>`;
 
   return html`<div>
-    <!-- Crop selector -->
-    <div style=${{display:'flex',gap:7,marginBottom:11}}>
-      ${['pumpkin','watermelon'].map(c=>html`
-      <button key=${c} onClick=${()=>switchCrop(c)}
-        style=${{flex:1,padding:'9px',border:'2px solid '+(crop===c?ORD_C[c]:'#ddd'),borderRadius:9,
-          background:crop===c?ORD_C[c]:'#fff',color:crop===c?'#fff':'#666',
-          fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
-        ${c==='pumpkin'?'🎃 Pumpkin':'🍉 Watermelon'}
-      </button>`)}
+    <!-- Combined header: no crop toggle needed — all orders shown together -->
+    <div style=${{background:'linear-gradient(135deg,#3e2005,#7d3a08)',borderRadius:10,padding:'10px 14px',marginBottom:10,color:'#fff',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      <div>
+        <div style=${{fontSize:11,opacity:.65,fontWeight:600,textTransform:'uppercase',letterSpacing:'.06em'}}>All Crops</div>
+        <div style=${{fontSize:14,fontWeight:700}}>🎃 Pumpkin + 🍉 Watermelon Orders</div>
+      </div>
+      <div style=${{fontSize:12,fontWeight:600,opacity:.8}}>${orders.filter(o=>!o.shipped).length} pending</div>
     </div>
 
     <!-- Sub-tabs -->
@@ -2009,6 +2019,9 @@ function OrderBrain(){
             <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:5}}>
               <div>
                 <span style=${{fontWeight:700,fontSize:14}}>${o.customer}</span>
+              <span style=${{fontSize:10,fontWeight:700,padding:'1px 6px',borderRadius:4,
+                background:o.crop==='pumpkin'?'#fff3e0':'#ffebee',
+                color:o.crop==='pumpkin'?'#e65100':'#c0392b',marginLeft:4}}>${o.crop==='pumpkin'?'🎃':'🍉'}</span>
                 ${o.po?html`<span style=${{fontSize:11,color:'#aaa',marginLeft:6}}>PO ${o.po}</span>`:null}
               </div>
               <span style=${{fontWeight:700,fontSize:14,color:oc}}>${skuList.reduce((s,sk)=>s+(o.skus[sk.id]||0),0)} bins</span>
@@ -2055,7 +2068,7 @@ function OrderBrain(){
         <div style=${{fontSize:11,opacity:.7,marginTop:3}}>Excludes shipped orders · Update barn inventory below</div>
       </div>
       <!-- Per-SKU: Need across all days, Have, To Pick -->
-      ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+      ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>(ORDER_SKUS[draftCrop]||[]).some(s=>s.group===g)).map(grp=>html`
       <div key=${grp} class="card" style=${{marginBottom:8}}>
         <div style=${{padding:'8px 14px',borderBottom:'1px solid #f0f0f0',fontWeight:700,fontSize:11,color:'#888',textTransform:'uppercase',letterSpacing:'.05em'}}>${grp}</div>
         <div style=${{padding:'6px 14px 10px'}}>
@@ -2098,7 +2111,7 @@ function OrderBrain(){
         <span style=${{fontWeight:700,fontSize:14}}>Barn Inventory — ${crop.charAt(0).toUpperCase()+crop.slice(1)}</span>
         <span style=${{fontSize:11,color:'#aaa'}}>Last updated ${new Date().toLocaleDateString()}</span>
       </div>
-      ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+      ${['Seedless','Standard','Specialty','Caribbean','Watermelon'].filter(g=>(ORDER_SKUS[draftCrop]||[]).some(s=>s.group===g)).map(grp=>html`
       <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
         <div style=${{fontSize:11,fontWeight:700,color:'#888',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8}}>${grp}</div>
         <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -2578,7 +2591,7 @@ function SprayBrain(){
     const tanksStr=partT>0.05?totalTanks.toFixed(1)+' tanks ('+fullT+' full + '+Math.round(partT*100)+'% of a tank)':fullT+' full tanks';
     lines.push('Tanks needed: '+tanksStr+' for '+acres.toFixed(2)+' ac at '+gpa+' GPA');
     setBJ(lines.join('\n'));
-    setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+apt.toFixed(2)+'ac/tank · '+totalTanks.toFixed(1)+' tanks · '+acres.toFixed(2)+'ac');
+    const safeApt=isFinite(apt)&&apt>0?apt:0;const safeTot=isFinite(totalTanks)&&totalTanks>0?totalTanks:0;setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+safeApt.toFixed(2)+'ac/tank · '+safeTot.toFixed(1)+' tanks · '+acres.toFixed(2)+'ac');
     const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):fieldZoneObj.label;
     const gapRows=vp.filter(p=>sprayInfo(p.name).type!=='N').map(p=>{
       const info=sprayInfo(p.name)||{};
