@@ -2541,7 +2541,7 @@ function SprayBrain(){
       chkWarn(u);
       return u;
     });
-    setBJ(null);setBR(null);setBGap([]);
+    // Note: do NOT clear bJulio here — it wipes the output immediately after generate
   }
   function handleGpaChange(v){
     setBG(v);
@@ -2567,11 +2567,7 @@ function SprayBrain(){
   }
 
   function genJulio(){
-    try{
-    console.log('[genJulio] bProds=',JSON.stringify(bProds.map(p=>({n:p.name,a:p.amt,u:p.unit}))));
-    console.log('[genJulio] apt=',apt,'tvol=',tvol,'gpa=',gpa,'acres=',acres,'isTunnels=',isTunnels);
     const vp=bProds.filter(p=>p.name&&parseFloat(p.amt)>0);
-    console.log('[genJulio] vp.length=',vp.length);
     if(!vp.length){alert('Add at least one product with a quantity');return;}
     const certNote=appCertNote(bApplicator);
     const lines=['Julio,'];
@@ -2616,7 +2612,6 @@ function SprayBrain(){
       const cn=appCertNote(bApplicator);const appl=bApplicator+(cn?' ('+cn+')':'');return[p.name,info.pcp||'—',info.phi!==undefined?info.phi+'d':'—',eahd,rate,locLabel,bDate+' '+bTime,appl].join('\t');
     });
     setBGap(gapRows);
-    }catch(err){console.error('[genJulio] ERROR:',err);alert('Generate error: '+err.message+'. Check browser console (F12).');}
   }
 
   function saveEv(){
