@@ -129,6 +129,15 @@ textarea{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:10px
 .stage-ref-val{font-size:12px;font-weight:600;color:#1a2b1a}
 .storage-note{font-size:11px;color:#bbb;margin-top:6px}
 hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
+.sp-gen-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:900;overflow-y:auto;padding:12px}
+.sp-gen-panel{background:#fff;border-radius:14px;max-width:680px;margin:0 auto;overflow:hidden}
+.sp-gen-hdr{background:#1a2b1a;color:#fff;padding:13px 16px;display:flex;justify-content:space-between;align-items:center}
+.sp-gen-hdr span{font-size:14px;font-weight:700}
+.sp-gen-body{padding:14px 16px}
+.sp-julio-pre{background:#f8faf6;border:1px solid #c8e6c9;border-radius:8px;padding:12px;font-family:monospace;font-size:12px;white-space:pre-wrap;margin-bottom:12px;color:#1a2b1a}
+.sp-gen-save{width:100%;padding:14px;border:none;border-radius:10px;background:#2e7d32;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+.sp-gen-save:hover{background:#1b5e20}
+
 @media print{
   .hdr,.vtabs,.exp-row,.sbtns,.fert-sub-tabs,.hv-sub-tabs,.ai-box,
   button:not(.audit-chk-lbl),.drow,.crop-tabs{display:none!important}
@@ -2359,44 +2368,25 @@ function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,
 }
 
 function SprayJulioOut({bJulio, bRec, bGap, onSave}){
-  const outRef=useRef(null);
-  useEffect(()=>{if(bJulio&&outRef.current){outRef.current.scrollIntoView({behavior:'smooth',block:'start'});}}, [bJulio]);
   if(!bJulio) return null;
   const gapHeader='Product\tPCP #\tPHI\tEAHD\tRate\tLocation\tDate/Time\tApplicator';
   const gapFull=gapHeader+'\n'+(bGap||[]).join('\n');
-  const colHdrs=['Product','PCP #','PHI','EAHD','Rate','Location','Date/Time','Applicator'];
-  return html`<div ref=${outRef}>
-    <div class="sp-divider"></div>
-    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-      <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#888'}}>Julio text</span>
-      <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(bJulio).catch(()=>{})}>Copy</button>
+  return html`<div class="sp-gen-overlay" onClick=${e=>{if(e.target===e.currentTarget){}/*keep open*/}}>
+    <div class="sp-gen-panel">
+      <div class="sp-gen-hdr">
+        <span>✓ Spray Record Generated</span>
+      </div>
+      <div class="sp-gen-body">
+        <p style=${{fontSize:11,color:'#888',marginBottom:6}}>Julio text — tap to copy:</p>
+        <pre class="sp-julio-pre" onClick=${e=>{
+          if(navigator.clipboard){navigator.clipboard.writeText(bJulio).then(()=>{e.target.style.background='#e8f5e9';setTimeout(()=>{e.target.style.background='';},800);});}
+          else{const r=document.createRange();r.selectNode(e.target);window.getSelection().removeAllRanges();window.getSelection().addRange(r);}
+        }}>${bJulio}</pre>
+        <button class="sp-gen-save" onClick=${onSave}>
+          💾 Save Spray Record
+        </button>
+      </div>
     </div>
-    <div class="sp-mono">${bJulio}</div>
-    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14}}>
-      <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#2e7d32'}}>CanadaGAP spray record</span>
-      <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(gapFull).catch(()=>{})}>Copy all</button>
-    </div>
-    <div style=${{overflowX:'auto',marginTop:6,borderRadius:8,border:'1.5px solid #e8e8e4'}}>
-      <table class="sp-gap-table">
-        <thead><tr>${colHdrs.map(h=>html`<th key=${h}>${h}</th>`)}</tr></thead>
-        <tbody>
-          ${(bGap||[]).map((row,i)=>{
-            const cells=row.split('\t');
-            return html`<tr key=${i} style=${{background:i%2?'#fafaf8':'#fff'}}>
-              ${cells.map((c,j)=>html`<td key=${j}>${c}</td>
-                    <td style=${{textAlign:'center',color:'#555'}}>${ev.gpa}</td>
-                    <td style=${{textAlign:'right',color:'#555'}}>${ev.acres}</td>`)}
-            </tr>`;
-          })}
-        </tbody>
-      </table>
-    </div>
-    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
-      <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#888'}}>Spray log row (Excel)</span>
-      <button class="sp-cpb" onClick=${()=>navigator.clipboard.writeText(bRec).catch(()=>{})}>Copy</button>
-    </div>
-    <div class="sp-mono" style=${{fontSize:11}}>${bRec}</div>
-    <button class="btn btn-out" style=${{width:'100%',marginTop:10}} onClick=${onSave}>✓ Save to season history</button>
   </div>`;
 }
 
@@ -2941,8 +2931,8 @@ function SprayBrain(){
         onUpdate=${updP} onRemove=${remP}/>`)}
       <button class="sp-addp" onClick=${addP}>+ Add product</button>
       <div class="sp-iwarn" style=${{display:bWarn?'block':'none'}}>${bWarn}</div>
-      <button class="btn" style=${{width:'100%',marginTop:4,background:bJulio?'#2e7d32':'',transition:'background .3s'}} onClick=${genJulio}>
-        ${bJulio?'✓ Generated — scroll down to save':'Generate Julio text + record row'}
+      <button class="btn" style=${{width:'100%',marginTop:4}} onClick=${genJulio}>
+        Generate Julio text + record row
       </button>
       <${SprayJulioOut} bJulio=${bJulio} bRec=${bRec} bGap=${bGap} onSave=${saveEv}/>
     </div>
