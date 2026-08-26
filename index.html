@@ -2359,11 +2359,13 @@ function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,
 }
 
 function SprayJulioOut({bJulio, bRec, bGap, onSave}){
+  const outRef=useRef(null);
+  useEffect(()=>{if(bJulio&&outRef.current){outRef.current.scrollIntoView({behavior:'smooth',block:'start'});}}, [bJulio]);
   if(!bJulio) return null;
   const gapHeader='Product\tPCP #\tPHI\tEAHD\tRate\tLocation\tDate/Time\tApplicator';
   const gapFull=gapHeader+'\n'+(bGap||[]).join('\n');
   const colHdrs=['Product','PCP #','PHI','EAHD','Rate','Location','Date/Time','Applicator'];
-  return html`<div>
+  return html`<div ref=${outRef}>
     <div class="sp-divider"></div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <span style=${{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'#888'}}>Julio text</span>
@@ -2939,7 +2941,9 @@ function SprayBrain(){
         onUpdate=${updP} onRemove=${remP}/>`)}
       <button class="sp-addp" onClick=${addP}>+ Add product</button>
       <div class="sp-iwarn" style=${{display:bWarn?'block':'none'}}>${bWarn}</div>
-      <button class="btn" style=${{width:'100%',marginTop:4}} onClick=${genJulio}>${editId?'Regenerate edited record row':'Generate Julio text + record row'}</button>
+      <button class="btn" style=${{width:'100%',marginTop:4,background:bJulio?'#2e7d32':'',transition:'background .3s'}} onClick=${genJulio}>
+        ${bJulio?'✓ Generated — scroll down to save':'Generate Julio text + record row'}
+      </button>
       <${SprayJulioOut} bJulio=${bJulio} bRec=${bRec} bGap=${bGap} onSave=${saveEv}/>
     </div>
 
