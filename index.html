@@ -1285,38 +1285,7 @@ function FertBrain(){
             <span class="fert-litres" style=${{color:'#2e7d32'}}>${Math.round(z.acres*(recipe.bluePerAcre||0))} L</span>
           </div>`)}
         </div>
-        <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+        
     </div>`:null}
 
       <!-- Ca rates -->
@@ -1334,71 +1303,9 @@ function FertBrain(){
             <span class="fert-litres" style=${{color:'#1565c0'}}>${Math.round(z.acres*(recipe?.caPerAcre||8))} L</span>
           </div>`)}
         </div>
-        <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+        
     </div>`:null}
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
 
     <!-- ── MIX ── -->
@@ -1438,38 +1345,7 @@ function FertBrain(){
         <div style=${{margin:'4px 14px 12px',background:'#fff8e1',border:'1px solid #ffe082',borderRadius:8,padding:'9px 11px'}}>
           <div style=${{fontSize:11,fontWeight:700,color:'#f57f17',marginBottom:2}}>Ca Tote Note</div>
           <div style=${{fontSize:13,color:'#795548'}}>${recipe.caNote}</div>
-          <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+          
     </div>`:null}
 
         <div style=${{padding:'0 14px 14px'}}>
@@ -1491,38 +1367,7 @@ function FertBrain(){
         <div style=${{fontSize:11,color:'#888',marginTop:2}}>${l.date} ${l.time} · ${l.mixer}</div>
       </div>`)}
       ${mixLog.filter(l=>l.crop===fertCrop).length===0?html`<p style=${{fontSize:13,color:'#ccc',textAlign:'center',padding:'24px 0'}}>No mix records yet</p>`:null}
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
 
     <!-- ── APPLY ── -->
@@ -1623,38 +1468,7 @@ function FertBrain(){
         </div>
       </div>`)}
       ${applyLog.filter(l=>l.crop===fertCrop).length===0?html`<p style=${{fontSize:13,color:'#ccc',textAlign:'center',padding:'24px 0'}}>No application records yet</p>`:null}
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
 
     <!-- ── HISTORY ── -->
@@ -1720,38 +1534,7 @@ function FertBrain(){
         const upd=[...zones,nz];setZones(upd);LS.set('hff:fert:zones',upd);
         setEditZone(nz.id);setZoneDraft({name:'',acres:0});
       }}>+ Add zone</button>
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
   </div>`;
 }
@@ -1873,38 +1656,7 @@ function FertHistory({applyLog,crop,phases}){
       <div style=${{fontSize:10,color:'#aaa',marginTop:3}}>
         Reference — fruit sizing target: 1 : 3.2 : 1.4 · bearing strawberry: 1 : 1.0 : 1.4
       </div>
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
 
     <!-- Weekly chart -->
@@ -2366,38 +2118,7 @@ function OrderBrain(){
           </details>`:null}
         </div>`;
       })}
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
 
     <!-- ── PICK LIST VIEW ── -->
@@ -2443,38 +2164,7 @@ function OrderBrain(){
       <p style=${{fontSize:11,color:'#aaa',textAlign:'center',marginTop:6}}>
         Red = must pick · ✓ = inventory covers orders · Update barn counts in Inventory tab
       </p>
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
 
     <!-- ── INVENTORY VIEW ── -->
@@ -2500,38 +2190,7 @@ function OrderBrain(){
         </div>
       </div>`)}
       <p style=${{fontSize:11,color:'#bbb',textAlign:'center',marginTop:6}}>Enter current bin count in barn/cooler. Updates Pick List automatically.</p>
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
 
     <!-- ── CUSTOMERS VIEW ── -->
@@ -2586,38 +2245,40 @@ function OrderBrain(){
         </div>`;
       })}
       `}
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
+      
+
+        <!-- Custom SKU manager -->
+        <div style=${{marginTop:18,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+            <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
+            <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
+          </div>
+          ${showAddSku?html`
+          <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
+            <div style=${{display:'flex',gap:6,marginBottom:8}}>
+              ${['pumpkin','watermelon'].map(c=>html`
+              <button key=${c} onClick=${()=>setNewSkuCrop(c)}
+                style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),borderRadius:7,
+                  background:newSkuCrop===c?'#e65100':'#fff',color:newSkuCrop===c?'#fff':'#777',
+                  fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+                ${c==='pumpkin'?'🎃':'🍉'} ${c}
+              </button>`)}
+            </div>
+            <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
+              placeholder="e.g. Organic Seedless 45ct…" style=${{marginBottom:8}}/>
+            <div style=${{display:'flex',gap:6}}>
+              <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
+              <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
+            </div>
+          </div>`:null}
+          ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
+          customSkus.map(s=>html`
+          <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
+            <span>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
+            <span style=${{flex:1,fontSize:13}}>${s.label}</span>
+            <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
+          </div>`)}
         </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
     </div>`:null}
   </div>`;
 }
@@ -3419,38 +3080,7 @@ function SeasonOverview({zones,onChangeStage}){
         ${!exp?html`
         <div class="season-groups">
           ${Object.entries(groups).map(([sk,zs])=>{const sc=STAGE_COLORS[sk]||{bg:'#f5f5f5',co:'#555'};return html`<span key=${sk} class="sgbadge" style=${{background:sc.bg,color:sc.co}}>${GROWTH_STAGES[sk]?.label||sk}: ${zs.map(z=>z.label.replace('Zone ','')).join(', ')}</span>`;})}
-          <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+          
     </div>`:null}
       </div>
       <button class="btn-sm btn-out" style=${{flexShrink:0}} onClick=${()=>setExp(e=>!e)}>${exp?'Collapse':'Edit stages'}</button>
@@ -3467,38 +3097,7 @@ function SeasonOverview({zones,onChangeStage}){
       </div>`;
       })}
       <p style=${{fontSize:11,color:'#aaa',marginTop:8,fontStyle:'italic'}}>Changes save immediately.</p>
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
   </div>`;
 }
@@ -3560,38 +3159,7 @@ function ZoneRow({zone,data,onChange}){
           ${[['EC','priva_ec'],['pH','priva_ph'],['mL','priva_ml']].map(([fl,fk])=>html`
           <div key=${fk}><span class="fl">${fl}</span><${NInput} value=${d[fk]} onChange=${v=>upd(fk,v)} placeholder="—"/></div>`)}
         </div>
-        <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+        
     </div>`:null}
     </div>
   </div>`;
@@ -3687,38 +3255,7 @@ function ImageSection({cropId,date,attachments,onUpdate,entry,zones,stageKey,cro
     <div class="lightbox" onClick=${()=>setLb(null)}>
       <img src=${imgs[lb]} onClick=${e=>e.stopPropagation()} alt=""/>
       <button class="lightbox-close" onClick=${()=>setLb(null)}>✕</button>
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
   </div>`;
 }
@@ -3846,38 +3383,7 @@ function ZoneEditor({zones,onSave}){
               <label class="fl" style=${{fontSize:11}}>Priva drain drippers</label>
               <input type="number" min="1" max="50" class="ti" style=${{fontSize:15}}
                 value=${draft.privaDrippers||''} onInput=${e=>setDraft(d=>({...d,privaDrippers:parseInt(e.target.value)||null}))} placeholder="e.g. 12"/>
-              <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+              
     </div>`:null}
           </div>
           <p style=${{fontSize:11,color:'#888',marginTop:4}}>Number of emitters over which you collect drain (drip is always from 1). drain% = drain_mL ÷ (drip_mL × N).</p>
@@ -4022,71 +3528,9 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
             <div class="stage-ref-val">${v}</div>
           </div>`)}
         </div>
-        <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+        
     </div>`:null}
-      <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+      
     </div>`:null}
     <div class="sbox">
       <div class="sbox-title">AI Briefing Strategy — ${cropLabel}</div>
@@ -4323,38 +3767,7 @@ function App(){
           <button class=${'btn'+(aiLoading?' loading':'')} onClick=${runAI} disabled=${aiLoading}>${aiLoading?'Generating…':'Generate briefing ↗'}</button>
           ${aiOut?html`<div class=${'ai-out'+(aiOut.startsWith('⚠')||aiOut.startsWith('API')||aiOut.startsWith('Network')?' err':'')}>${aiOut}</div>`:null}
         </div>
-        <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+        
     </div>`:null}
 
       ${view==='history'?html`
@@ -4367,38 +3780,7 @@ function App(){
         <p style=${{fontSize:13,color:'#aaa',marginBottom:10}}>${history.length} day${history.length!==1?'s':''} saved — ${crop.label}</p>
         ${history.length===0?html`<div class="empty">
           ${sbOn()?'No entries yet — if Binod has saved data, tap ☁ on the Today tab to pull from cloud.':'No saved entries yet for this crop.'}
-          <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+          
     </div>`:null}
         ${history.map(h=>{
           const lvl=histLvl(h);
@@ -4413,38 +3795,7 @@ function App(){
             <span style=${{fontSize:12,color:'#bbb'}}>→</span>
           </button>`;
         })}
-        <!-- Custom SKU manager -->
-      <div style=${{marginTop:20,paddingTop:14,borderTop:'1px solid #f0f0f0'}}>
-        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <span style=${{fontWeight:700,fontSize:13,color:'#555'}}>Custom SKUs</span>
-          <button class="btn btn-sm btn-out" onClick=${()=>setShowAddSku(s=>!s)}>+ Add SKU</button>
-        </div>
-        ${showAddSku?html`
-        <div style=${{background:'#f8f8f8',borderRadius:9,padding:'10px 12px',marginBottom:10}}>
-          <div style=${{display:'flex',gap:6,marginBottom:8}}>
-            ${['pumpkin','watermelon'].map(c=>html`
-            <button key=${c} onClick=${()=>setNewSkuCrop(c)}
-              style=${{flex:1,padding:'6px',border:'1.5px solid '+(newSkuCrop===c?'#e65100':'#ddd'),
-                borderRadius:7,background:newSkuCrop===c?'#e65100':'#fff',
-                color:newSkuCrop===c?'#fff':'#777',fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
-              ${c==='pumpkin'?'🎃':'🍉'} ${c}
-            </button>`)}
-          </div>
-          <input class="ti" type="text" value=${newSkuName} onInput=${e=>setNewSkuName(e.target.value)}
-            placeholder="Custom SKU name (e.g. Organic Seedless 45ct)…" style=${{marginBottom:8}}/>
-          <div style=${{display:'flex',gap:6}}>
-            <button class="btn btn-sm" onClick=${addCustomSku} disabled=${!newSkuName.trim()}>Add</button>
-            <button class="btn btn-sm btn-muted" onClick=${()=>{setShowAddSku(false);setNewSkuName('');}}>Cancel</button>
-          </div>
-        </div>`:null}
-        ${customSkus.length===0?html`<p style=${{fontSize:12,color:'#ccc',textAlign:'center',padding:'10px 0'}}>No custom SKUs yet</p>`:
-        customSkus.map(s=>html`
-        <div key=${s.id} style=${{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #f5f5f5'}}>
-          <span style=${{fontSize:12}}>${s.crop==='pumpkin'?'🎃':'🍉'}</span>
-          <span style=${{flex:1,fontSize:13}}>${s.label}</span>
-          <button class="btn btn-sm btn-danger" style=${{padding:'3px 8px'}} onClick=${()=>removeCustomSku(s.id)}>×</button>
-        </div>`)}
-      </div>
+        
     </div>`:null}
 
       ${view==='zones'?html`<${ZoneEditor} zones=${zones} onSave=${saveZones}/>`:null}
