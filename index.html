@@ -1712,49 +1712,56 @@ function FertHistory({applyLog,crop,phases}){
 
 const ORDER_SKUS = {
   pumpkin:[
-    // Seedless
-    {id:'sdls_80',  label:'80ct SDLS',            group:'Seedless'},
-    {id:'sdls_60',  label:'60ct SDLS',            group:'Seedless'},
-    {id:'sdls_45',  label:'45ct SDLS',            group:'Seedless'},
-    {id:'sdls_36',  label:'36ct SDLS',            group:'Seedless'},
-    // Standard
-    {id:'std_1820', label:'18/20ct',              group:'Standard'},
-    {id:'std_25lbl',label:'25ct Labelled',        group:'Standard'},
-    {id:'std_25nl', label:'25ct No Label',        group:'Standard'},
-    {id:'std_30lbl',label:'30ct 3130 Label',      group:'Standard'},
-    {id:'std_3035', label:'30/35ct',              group:'Standard'},
-    {id:'std_40',   label:'40ct 4735',            group:'Standard'},
-    {id:'std_4045', label:'40/45ct',              group:'Standard'},
-    {id:'std_50',   label:'50ct',                 group:'Standard'},
-    {id:'std_6070', label:'60/70ct',              group:'Standard'},
-    {id:'std_60p',  label:'60ct+',                group:'Standard'},
-    // Specialty
-    {id:'spc_pie',  label:'Pie Pumpkin',          group:'Specialty'},
-    {id:'spc_blan', label:'Blanco',               group:'Specialty'},
-    {id:'spc_wart', label:'Warty',                group:'Specialty'},
-    {id:'spc_sq',   label:'Mixed Squash',         group:'Specialty'},
-    {id:'spc_v3635',label:'Varietal 36" 35ct',    group:'Specialty'},
-    {id:'spc_v2430',label:'Varietal 24" 30ct',    group:'Specialty'},
-    {id:'spc_v2440',label:'Varietal 24" 40-45ct', group:'Specialty'},
-    {id:'spc_v2460',label:'Varietal 24" 60ct',    group:'Specialty'},
-    {id:'spc_w40',  label:'White 24" 40ct',       group:'Specialty'},
-    {id:'spc_w60',  label:'White 24" 60ct',       group:'Specialty'},
-    {id:'spc_wlg',  label:'White 36" 20 Lg',      group:'Specialty'},
+    // Standard Pumpkin
+    {id:'std_1820', label:'18/20ct',              group:'Pumpkin'},
+    {id:'std_25lbl',label:'25ct Labelled',        group:'Pumpkin'},
+    {id:'std_25nl', label:'25ct No Label',        group:'Pumpkin'},
+    {id:'std_30lbl',label:'30ct 3130 Label',      group:'Pumpkin'},
+    {id:'std_3035', label:'30/35ct',              group:'Pumpkin'},
+    {id:'std_40',   label:'40ct 4735',            group:'Pumpkin'},
+    {id:'std_4045', label:'40/45ct',              group:'Pumpkin'},
+    {id:'std_50',   label:'50ct',                 group:'Pumpkin'},
+    {id:'std_6070', label:'60/70ct',              group:'Pumpkin'},
+    {id:'std_60p',  label:'60ct+',                group:'Pumpkin'},
+    // Specialty Pumpkin
+    {id:'spc_pie',  label:'Pie Pumpkin',          group:'Specialty Pumpkin'},
+    {id:'spc_blan', label:'Blanco',               group:'Specialty Pumpkin'},
+    {id:'spc_wart', label:'Warty',                group:'Specialty Pumpkin'},
+    {id:'spc_sq',   label:'Mixed Squash',         group:'Specialty Pumpkin'},
+    {id:'spc_v3635',label:'Varietal 36" 35ct',    group:'Specialty Pumpkin'},
+    {id:'spc_v2430',label:'Varietal 24" 30ct',    group:'Specialty Pumpkin'},
+    {id:'spc_v2440',label:'Varietal 24" 40-45ct', group:'Specialty Pumpkin'},
+    {id:'spc_v2460',label:'Varietal 24" 60ct',    group:'Specialty Pumpkin'},
+    {id:'spc_w40',  label:'White 24" 40ct',       group:'Specialty Pumpkin'},
+    {id:'spc_w60',  label:'White 24" 60ct',       group:'Specialty Pumpkin'},
+    {id:'spc_wlg',  label:'White 36" 20 Lg',      group:'Specialty Pumpkin'},
     // Caribbean
     {id:'car_36',   label:'Caribbean 36"',        group:'Caribbean'},
     {id:'car_24',   label:'Caribbean 24"',        group:'Caribbean'},
     {id:'car_ft',   label:'Field Trip',           group:'Caribbean'},
   ],
   watermelon:[
-    {id:'wm_sdls',    label:'Seedless',              group:'Seedless'},
-    {id:'wm_prem',    label:'Premium',               group:'Seedless'},
-    {id:'wm_sang',    label:'Sangria',               group:'Seedless'},
-    {id:'wm_ysd',     label:'Yellow Seeded',         group:'Yellow'},
-    {id:'wm_ysdls',   label:'Yellow Seedless',       group:'Yellow'},
-    {id:'wm_ysdls36', label:'Yellow Seedless 36ct',  group:'Yellow'},
-    {id:'wm_ysdls45', label:'Yellow Seedless 45ct',  group:'Yellow'},
-    {id:'wm_ysdls60', label:'Yellow Seedless 60ct',  group:'Yellow'},
-    {id:'wm_ysdls80', label:'Yellow Seedless 80ct',  group:'Yellow'},
+    // Seedless — most common, stays at top
+    {id:'wm_sdls',    label:'Seedless',            group:'Seedless'},
+    {id:'wm_sdls80',  label:'Seedless 80ct',       group:'Seedless'},
+    {id:'wm_sdls60',  label:'Seedless 60ct',       group:'Seedless'},
+    {id:'wm_sdls45',  label:'Seedless 45ct',       group:'Seedless'},
+    {id:'wm_sdls36',  label:'Seedless 36ct',       group:'Seedless'},
+    // Sangria
+    {id:'wm_sang35',  label:'Sangria 35ct',        group:'Sangria'},
+    {id:'wm_sang45',  label:'Sangria 45ct',        group:'Sangria'},
+    // Premium
+    {id:'wm_prem80',  label:'Premium 80ct',        group:'Premium'},
+    {id:'wm_prem110', label:'Premium 110ct',       group:'Premium'},
+    {id:'wm_prem140', label:'Premium 140ct',       group:'Premium'},
+    // Yellow Seeded
+    {id:'wm_ysd80',   label:'Yellow Seeded 80ct',  group:'Yellow Seeded'},
+    {id:'wm_ysd100',  label:'Yellow Seeded 100ct', group:'Yellow Seeded'},
+    // Yellow Seedless
+    {id:'wm_ysdls36', label:'Yellow Seedless 36ct',group:'Yellow Seedless'},
+    {id:'wm_ysdls45', label:'Yellow Seedless 45ct',group:'Yellow Seedless'},
+    {id:'wm_ysdls60', label:'Yellow Seedless 60ct',group:'Yellow Seedless'},
+    {id:'wm_ysdls80', label:'Yellow Seedless 80ct',group:'Yellow Seedless'},
   ]
 };
 
@@ -1878,7 +1885,7 @@ function OrderBrain(){
   // Merge default + custom SKUs for current crop
   const allCustom=customSkus.filter(s=>s.crop===draftCrop);
   const skuList=(ORDER_SKUS[draftCrop]||[]).concat(allCustom.map(s=>({id:s.id,label:s.label,group:'Custom',custom:true})));
-  const viewSkuList=(crop)=>(ORDER_SKUS[crop]||[]).concat(customSkus.filter(s=>s.crop===crop).map(s=>({id:s.id,label:s.label,group:'Custom',custom:true})));
+  const viewSkuList=(crop)=>[...ORDER_SKUS.pumpkin,...ORDER_SKUS.watermelon].concat(customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',custom:true})));
   const allOrders=orders;  // all crops combined
   const cropOrders=orders;  // for counts: show all
   const ORD_C={pumpkin:'#e65100',watermelon:'#c0392b'};
@@ -1982,7 +1989,7 @@ function OrderBrain(){
   // Add/Edit form
   if(adding) return html`<div>
     <div style=${{background:oc,borderRadius:'0 0 12px 12px',padding:'12px 16px',color:'#fff',marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-      <span style=${{fontWeight:700,fontSize:15}}>${editId?'Edit Order':'New Order'} — ${crop.charAt(0).toUpperCase()+crop.slice(1)}</span>
+      <span style=${{fontWeight:700,fontSize:15}}>${editId?'Edit Order':'New Order'}</span>
       <button onClick=${()=>setAdding(false)} style=${{background:'rgba(255,255,255,.2)',border:'none',color:'#fff',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>✕ Cancel</button>
     </div>
     <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
@@ -2015,15 +2022,19 @@ function OrderBrain(){
         ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
         ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
       ];
-      const groups=['Seedless (Pumpkin)','Standard','Specialty','Caribbean',
-                    'Seedless (Watermelon)','Yellow','Custom'];
-      const groupMap={'Seedless':{'pumpkin':'Seedless (Pumpkin)','watermelon':'Seedless (Watermelon)'}};
-      const getGrp=(s)=>s.group==='Seedless'?(s._crop==='pumpkin'?'Seedless (Pumpkin)':'Seedless (Watermelon)'):s.group;
+      // Watermelon first (Seedless at top as most common), then pumpkin
+      const groups=['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless',
+                    'Pumpkin','Specialty Pumpkin','Caribbean','Custom'];
+      const getGrp=(s)=>s.group;
       const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
-      return activeGroups;
+      // Only show groups that have at least one SKU defined
+      return groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
     })().map(grp=>html`
     <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
-      <div style=${{fontSize:11,fontWeight:700,color:'#888',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8}}>${grp}</div>
+      <div style=${{fontSize:11,fontWeight:700,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8,
+        color:['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless'].includes(grp)?'#c0392b':'#555'}}>
+        ${['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless'].includes(grp)?'🍉 ':''}${['Pumpkin','Specialty Pumpkin','Caribbean'].includes(grp)?'🎃 ':''}${grp}
+      </div>
       <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
         ${(()=>{
           const allSk=[...ORDER_SKUS.pumpkin.map(s=>({...s,_crop:'pumpkin'})),
@@ -2181,12 +2192,13 @@ function OrderBrain(){
         ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
         ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
       ];
-      const groups=['Seedless (Pumpkin)','Standard','Specialty','Caribbean',
-                    'Seedless (Watermelon)','Yellow','Custom'];
-      const groupMap={'Seedless':{'pumpkin':'Seedless (Pumpkin)','watermelon':'Seedless (Watermelon)'}};
-      const getGrp=(s)=>s.group==='Seedless'?(s._crop==='pumpkin'?'Seedless (Pumpkin)':'Seedless (Watermelon)'):s.group;
+      // Watermelon first (Seedless at top as most common), then pumpkin
+      const groups=['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless',
+                    'Pumpkin','Specialty Pumpkin','Caribbean','Custom'];
+      const getGrp=(s)=>s.group;
       const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
-      return activeGroups;
+      // Only show groups that have at least one SKU defined
+      return groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
     })().map(grp=>html`
       <div key=${grp} class="card" style=${{marginBottom:8}}>
         <div style=${{padding:'8px 14px',borderBottom:'1px solid #f0f0f0',fontWeight:700,fontSize:11,color:'#888',textTransform:'uppercase',letterSpacing:'.05em'}}>${grp}</div>
@@ -2238,15 +2250,19 @@ function OrderBrain(){
         ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
         ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
       ];
-      const groups=['Seedless (Pumpkin)','Standard','Specialty','Caribbean',
-                    'Seedless (Watermelon)','Yellow','Custom'];
-      const groupMap={'Seedless':{'pumpkin':'Seedless (Pumpkin)','watermelon':'Seedless (Watermelon)'}};
-      const getGrp=(s)=>s.group==='Seedless'?(s._crop==='pumpkin'?'Seedless (Pumpkin)':'Seedless (Watermelon)'):s.group;
+      // Watermelon first (Seedless at top as most common), then pumpkin
+      const groups=['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless',
+                    'Pumpkin','Specialty Pumpkin','Caribbean','Custom'];
+      const getGrp=(s)=>s.group;
       const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
-      return activeGroups;
+      // Only show groups that have at least one SKU defined
+      return groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
     })().map(grp=>html`
       <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
-        <div style=${{fontSize:11,fontWeight:700,color:'#888',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8}}>${grp}</div>
+        <div style=${{fontSize:11,fontWeight:700,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8,
+        color:['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless'].includes(grp)?'#c0392b':'#555'}}>
+        ${['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless'].includes(grp)?'🍉 ':''}${['Pumpkin','Specialty Pumpkin','Caribbean'].includes(grp)?'🎃 ':''}${grp}
+      </div>
         <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
           ${skuList.filter(s=>s.group===grp).map(sk=>html`
           <div key=${sk.id} style=${{display:'flex',alignItems:'center',gap:6}}>
@@ -2371,7 +2387,7 @@ function ZoneSummaryChart({zones,entry}){
   const DRAIN_LO=20,DRAIN_HI=30,DRAIN_CRIT=2.2,DRIP_EC_LO=1.2,DRIP_EC_HI=1.7,PH_LO=5.3,PH_HI=5.5;
   const cols=[
     {key:'drain',label:'Dr%',
-     val:(d)=>parseFloat(d?.drain)||0,
+     val:(d)=>{const dr=parseFloat(d?.drip_ml)||parseFloat(d?.dripML)||0;const dn=parseFloat(d?.drain_ml)||parseFloat(d?.drainML)||0;return dr>0?Math.round(dn/dr*100):0;},
      color:(v)=>v===0?'#eeeeee':v<8||v>50?'#ffcdd2':v<DRAIN_LO||v>DRAIN_HI?'#fff8e1':'#e8f5e9'},
     {key:'drip_ec',label:'Drip EC',
      val:(d)=>parseFloat(d?.drip_ec)||0,
