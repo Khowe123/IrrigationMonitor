@@ -1772,6 +1772,20 @@ async function sbOrderPush(order){
   try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok};}
   catch(e){return{ok:false};}
 }
+async function sbInventoryPush(inv){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  if(!u||!k)return{ok:false};
+  const row={id:t+'_inventory',team_id:t,entry_data:{...inv,_type:'inventory',savedAt:new Date().toISOString()},updated_at:new Date().toISOString()};
+  try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok};}
+  catch(e){return{ok:false};}
+}
+async function sbInventoryPull(){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  if(!u||!k)return null;
+  try{const r=await sbReq('GET','harvest_logs?id=eq.'+encodeURIComponent(t+'_inventory')+'&select=entry_data',null,u,k);
+    if(!r.ok)return null;const rows=await r.json();return rows[0]?.entry_data||null;}
+  catch(e){return null;}
+}
 async function sbOrderPull(){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
   if(!u||!k)return null;
@@ -1822,6 +1836,7 @@ function OrderBrain(){
   const[inventory,setInventory]=useState(()=>LS.get('hff:ord:inv',{}));
   const[customers,setCustomers]=useState(()=>LS.get('hff:ord:customers',ORDER_CUSTOMERS_DEFAULT));
   const[syncSt,setSyncSt]=useState('idle');
+  const[invSyncSt,setInvSyncSt]=useState('idle');
   const[horizonDays,setHorizonDays]=useState(7);  // date range: 3,4,7,30,'all'
   const[customSkus,setCustomSkus]=useState(()=>LS.get('hff:ord:custom_skus',[]));
   const[showAddSku,setShowAddSku]=useState(false);
@@ -1843,6 +1858,23 @@ function OrderBrain(){
   const[histCust,setHistCust]=useState(null);
   const[showHistFor,setShowHistFor]=useState(null);
 
+  // Auto-pull orders + inventory from Supabase on mount
+  useEffect(()=>{
+    sbOrderPull().then(remote=>{
+      if(remote&&remote.length){
+        const map={};orders.forEach(o=>{map[o.id]=o;});
+        remote.forEach(o=>{if(!map[o.id]||o.updatedAt>map[o.id].updatedAt)map[o.id]=o;});
+        const merged=Object.values(map).sort((a,b)=>b.shipDate.localeCompare(a.shipDate));
+        setOrders(merged);LS.set('hff:ord:list',merged);
+      }
+    });
+    sbInventoryPull().then(remInv=>{
+      if(remInv&&remInv._type==='inventory'){
+        const{_type,savedAt,...inv}=remInv;
+        setInventory(inv);LS.set('hff:ord:inv',inv);
+      }
+    });
+  },[]);
   // Merge default + custom SKUs for current crop
   const allCustom=customSkus.filter(s=>s.crop===draftCrop);
   const skuList=(ORDER_SKUS[draftCrop]||[]).concat(allCustom.map(s=>({id:s.id,label:s.label,group:'Custom',custom:true})));
@@ -1888,7 +1920,11 @@ function OrderBrain(){
     if(!draftCust.trim()){alert('Customer name required');return;}
     addCustIfNew(draftCust);
     const id=editId||('ord_'+Date.now());
-    const order={id,crop:draftCrop,shipDate:draftDate,customer:draftCust.trim(),po:draftPO.trim(),
+    // Auto-detect crop from which SKUs have quantities
+    const _wm=ORDER_SKUS.watermelon.some(s=>(draftSkus[s.id]||0)>0);
+    const _pm=ORDER_SKUS.pumpkin.some(s=>(draftSkus[s.id]||0)>0);
+    const _autoCrop=_wm&&_pm?'mixed':_wm?'watermelon':_pm?'pumpkin':draftCrop||'pumpkin';
+    const order={id,crop:_autoCrop,shipDate:draftDate,customer:draftCust.trim(),po:draftPO.trim(),
       notes:draftNotes,skus:{...draftSkus},shipped:false,shippedAt:null,
       createdAt:editId?undefined:new Date().toISOString(),updatedAt:new Date().toISOString()};
     const upd=editId?orders.map(o=>o.id===editId?order:o):[order,...orders];
@@ -1962,16 +1998,6 @@ function OrderBrain(){
         </div>
       </div>
       <div style=${{marginBottom:9}}>
-        <div style=${{display:'flex',gap:6,marginBottom:9}}>
-          ${['pumpkin','watermelon'].map(c=>html`
-          <button key=${c} onClick=${()=>setDraftCrop(c)}
-            style=${{flex:1,padding:'7px',border:'2px solid '+(draftCrop===c?ORD_C[c]:'#ddd'),
-              borderRadius:8,background:draftCrop===c?ORD_C[c]:'#fff',
-              color:draftCrop===c?'#fff':'#888',fontWeight:700,fontSize:13,
-              cursor:'pointer',fontFamily:'inherit'}}>
-            ${c==='pumpkin'?'🎃 Pumpkin':'🍉 Watermelon'}
-          </button>`)}
-        </div>
         <label class="fl" style=${{fontSize:11}}>Customer</label>
         <input class="ti" type="text" value=${draftCust} onInput=${e=>setDraftCust(e.target.value)} placeholder="Type name or select..." list="ord-cust-list"/>
         <datalist id="ord-cust-list">${customers.map(c=>html`<option key=${c} value=${c}/>`)}</datalist>
@@ -1982,11 +2008,30 @@ function OrderBrain(){
       </div>
     </div>
     <!-- SKU quantities grouped by category -->
-    ${['Seedless','Yellow','Standard','Specialty','Caribbean','Watermelon','Custom'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+    <!-- All SKUs: pumpkin groups first, then watermelon, then custom -->
+    ${(()=>{
+      const allSkus=[
+        ...ORDER_SKUS.pumpkin.map(s=>({...s,_crop:'pumpkin'})),
+        ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
+        ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
+      ];
+      const groups=['Seedless (Pumpkin)','Standard','Specialty','Caribbean',
+                    'Seedless (Watermelon)','Yellow','Custom'];
+      const groupMap={'Seedless':{'pumpkin':'Seedless (Pumpkin)','watermelon':'Seedless (Watermelon)'}};
+      const getGrp=(s)=>s.group==='Seedless'?(s._crop==='pumpkin'?'Seedless (Pumpkin)':'Seedless (Watermelon)'):s.group;
+      const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
+      return activeGroups;
+    })().map(grp=>html`
     <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <div style=${{fontSize:11,fontWeight:700,color:'#888',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8}}>${grp}</div>
       <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
-        ${skuList.filter(s=>s.group===grp).map(sk=>html`
+        ${(()=>{
+          const allSk=[...ORDER_SKUS.pumpkin.map(s=>({...s,_crop:'pumpkin'})),
+            ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
+            ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop}))];
+          const getGrp=(s)=>s.group==='Seedless'?(s._crop==='pumpkin'?'Seedless (Pumpkin)':'Seedless (Watermelon)'):s.group;
+          return allSk.filter(s=>getGrp(s)===grp);
+        })().map(sk=>html`
         <div key=${sk.id} style=${{display:'flex',alignItems:'center',gap:6}}>
           <span style=${{fontSize:12,flex:1,color:'#555'}}>${sk.label}</span>
           <input type="number" min="0" value=${draftSkus[sk.id]||''}
@@ -2129,7 +2174,20 @@ function OrderBrain(){
         <div style=${{fontSize:11,opacity:.7,marginTop:3}}>Excludes shipped orders · Update barn inventory below</div>
       </div>
       <!-- Per-SKU: Need across all days, Have, To Pick -->
-      ${['Seedless','Yellow','Standard','Specialty','Caribbean','Watermelon','Custom'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+      <!-- All SKUs: pumpkin groups first, then watermelon, then custom -->
+    ${(()=>{
+      const allSkus=[
+        ...ORDER_SKUS.pumpkin.map(s=>({...s,_crop:'pumpkin'})),
+        ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
+        ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
+      ];
+      const groups=['Seedless (Pumpkin)','Standard','Specialty','Caribbean',
+                    'Seedless (Watermelon)','Yellow','Custom'];
+      const groupMap={'Seedless':{'pumpkin':'Seedless (Pumpkin)','watermelon':'Seedless (Watermelon)'}};
+      const getGrp=(s)=>s.group==='Seedless'?(s._crop==='pumpkin'?'Seedless (Pumpkin)':'Seedless (Watermelon)'):s.group;
+      const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
+      return activeGroups;
+    })().map(grp=>html`
       <div key=${grp} class="card" style=${{marginBottom:8}}>
         <div style=${{padding:'8px 14px',borderBottom:'1px solid #f0f0f0',fontWeight:700,fontSize:11,color:'#888',textTransform:'uppercase',letterSpacing:'.05em'}}>${grp}</div>
         <div style=${{padding:'6px 14px 10px'}}>
@@ -2173,7 +2231,20 @@ function OrderBrain(){
         <span style=${{fontWeight:700,fontSize:14}}>Barn Inventory — ${crop.charAt(0).toUpperCase()+crop.slice(1)}</span>
         <span style=${{fontSize:11,color:'#aaa'}}>Last updated ${new Date().toLocaleDateString()}</span>
       </div>
-      ${['Seedless','Yellow','Standard','Specialty','Caribbean','Watermelon','Custom'].filter(g=>skuList.some(s=>s.group===g)).map(grp=>html`
+      <!-- All SKUs: pumpkin groups first, then watermelon, then custom -->
+    ${(()=>{
+      const allSkus=[
+        ...ORDER_SKUS.pumpkin.map(s=>({...s,_crop:'pumpkin'})),
+        ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
+        ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
+      ];
+      const groups=['Seedless (Pumpkin)','Standard','Specialty','Caribbean',
+                    'Seedless (Watermelon)','Yellow','Custom'];
+      const groupMap={'Seedless':{'pumpkin':'Seedless (Pumpkin)','watermelon':'Seedless (Watermelon)'}};
+      const getGrp=(s)=>s.group==='Seedless'?(s._crop==='pumpkin'?'Seedless (Pumpkin)':'Seedless (Watermelon)'):s.group;
+      const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
+      return activeGroups;
+    })().map(grp=>html`
       <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
         <div style=${{fontSize:11,fontWeight:700,color:'#888',letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8}}>${grp}</div>
         <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -2189,7 +2260,15 @@ function OrderBrain(){
           </div>`)}
         </div>
       </div>`)}
-      <p style=${{fontSize:11,color:'#bbb',textAlign:'center',marginTop:6}}>Enter current bin count in barn/cooler. Updates Pick List automatically.</p>
+      <div style=${{display:'flex',gap:8,alignItems:'center',marginTop:10}}>
+        <button onClick=${async()=>{setInvSyncSt('saving');const r=await sbInventoryPush(inventory);setInvSyncSt(r.ok?'ok':'local');setTimeout(()=>setInvSyncSt('idle'),3000);}}
+          style=${{flex:1,padding:'10px',border:'none',borderRadius:9,
+            background:invSyncSt==='ok'?'#2e7d32':invSyncSt==='saving'?'#aaa':'#1a3a2a',
+            color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>
+          ${invSyncSt==='saving'?'⟳ Saving…':invSyncSt==='ok'?'✓ Saved & Synced':invSyncSt==='local'?'💾 Saved locally':'💾 Save & Sync Inventory'}
+        </button>
+      </div>
+      <p style=${{fontSize:11,color:'#bbb',textAlign:'center',marginTop:6}}>Tap Save to push counts to all devices. Loads latest on each page open.</p>
       
     </div>`:null}
 
@@ -2282,6 +2361,66 @@ function OrderBrain(){
     </div>`:null}
   </div>`;
 }
+
+
+// ── ZONE SUMMARY CHART ─────────────────────────────────────────────────────
+function ZoneSummaryChart({zones,entry}){
+  if(!zones||!zones.length)return null;
+  const hasAny=zones.some(z=>entry&&entry[z.id]&&(entry[z.id].drip_ec||entry[z.id].drain_ec));
+  if(!hasAny)return null;
+  const DRAIN_LO=20,DRAIN_HI=30,DRAIN_CRIT=2.2,DRIP_EC_LO=1.2,DRIP_EC_HI=1.7,PH_LO=5.3,PH_HI=5.5;
+  const cols=[
+    {key:'drain',label:'Dr%',
+     val:(d)=>parseFloat(d?.drain)||0,
+     color:(v)=>v===0?'#eeeeee':v<8||v>50?'#ffcdd2':v<DRAIN_LO||v>DRAIN_HI?'#fff8e1':'#e8f5e9'},
+    {key:'drip_ec',label:'Drip EC',
+     val:(d)=>parseFloat(d?.drip_ec)||0,
+     color:(v)=>v===0?'#eeeeee':v<DRIP_EC_LO||v>DRIP_EC_HI?'#fff8e1':'#e8f5e9'},
+    {key:'drain_ec',label:'Drn EC',
+     val:(d)=>parseFloat(d?.drain_ec)||0,
+     color:(v)=>v===0?'#eeeeee':v>DRAIN_CRIT?'#ffcdd2':v>2.0?'#fff8e1':'#e8f5e9'},
+    {key:'drip_ph',label:'Drip pH',
+     val:(d)=>parseFloat(d?.drip_ph)||0,
+     color:(v)=>v===0?'#eeeeee':v<PH_LO||v>PH_HI?'#fff8e1':'#e8f5e9'},
+    {key:'drain_ph',label:'Drn pH',
+     val:(d)=>parseFloat(d?.drain_ph)||0,
+     color:(v)=>v===0?'#eeeeee':v<5.0||v>6.5?'#fff8e1':'#e8f5e9'},
+  ];
+  return html`
+  <div class="card" style=${{marginBottom:10,overflowX:'auto'}}>
+    <div style=${{padding:'8px 14px 4px',fontWeight:700,fontSize:11,color:'#555',letterSpacing:'.05em',textTransform:'uppercase'}}>Zone Summary</div>
+    <table style=${{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+      <thead>
+        <tr>
+          <th style=${{padding:'4px 8px',textAlign:'left',color:'#888',fontWeight:600,borderBottom:'1px solid #f0f0f0'}}>Zone</th>
+          ${cols.map(c=>html`<th key=${c.key} style=${{padding:'4px 6px',textAlign:'center',color:'#888',fontWeight:600,borderBottom:'1px solid #f0f0f0',minWidth:44}}>${c.label}</th>`)}
+        </tr>
+      </thead>
+      <tbody>
+        ${zones.map(z=>{
+          const d=entry&&entry[z.id]||{};
+          return html`<tr key=${z.id}>
+            <td style=${{padding:'3px 8px',fontWeight:600,fontSize:11,color:'#333',borderBottom:'1px solid #f9f9f9',whiteSpace:'nowrap'}}>${z.label||z.id}</td>
+            ${cols.map(c=>{
+              const v=c.val(d);
+              const bg=c.color(v);
+              const isRed=bg==='#ffcdd2';
+              return html`<td key=${c.key} style=${{padding:'3px 6px',textAlign:'center',background:bg,borderBottom:'1px solid #f9f9f9',borderRadius:3,fontSize:11,fontWeight:isRed?700:400,color:isRed?'#c62828':'#333'}}>
+                ${v>0?v.toFixed(1):'—'}
+              </td>`;
+            })}
+          </tr>`;
+        })}
+      </tbody>
+    </table>
+    <div style=${{padding:'4px 14px 6px',display:'flex',gap:10,fontSize:10,color:'#aaa'}}>
+      <span style=${{background:'#ffcdd2',borderRadius:3,padding:'1px 5px'}}>🔴 Action</span>
+      <span style=${{background:'#fff8e1',borderRadius:3,padding:'1px 5px'}}>⚠ Caution</span>
+      <span style=${{background:'#e8f5e9',borderRadius:3,padding:'1px 5px'}}>✓ OK</span>
+    </div>
+  </div>`;
+}
+
 
 // ── SPRAY BRAIN HELPERS ───────────────────────────────────────────────────────
 function SprayPill({name, frac, irac, rate, unit}){
@@ -3567,6 +3706,7 @@ function App(){
   const[aiLoading,setAiLoading]=useState(false);
   const[saved,setSaved]=useState(false);
   const[syncSt,setSyncSt]=useState('idle');
+  const[invSyncSt,setInvSyncSt]=useState('idle');
   const[horizonDays,setHorizonDays]=useState(7);  // date range: 3,4,7,30,'all'
   const[customSkus,setCustomSkus]=useState(()=>LS.get('hff:ord:custom_skus',[]));
   const[showAddSku,setShowAddSku]=useState(false);
@@ -3754,8 +3894,7 @@ function App(){
           <button class=${'btn'+(saved?' saved':'')} onClick=${saveEntry}>${saved?'✓ Saved':'Save'}</button>
         </div>
         ${isStraw?html`<${SeasonOverview} zones=${zones} onChangeStage=${updateZoneStage}/>`:null}
-        <${FlagBox} level="danger" items=${alerts}/>
-        <${FlagBox} level="warn" items=${warns}/>
+        <${ZoneSummaryChart} zones=${zones} entry=${entry}/>
         ${zones.map(z=>html`<${ZoneRow} key=${z.id} zone=${z} data=${entry[z.id]} onChange=${updateField}/>`)}
         <textarea class="notes-area" placeholder="Tech notes: hot day, bucket issues, maintenance, recipe change…"
           value=${entry.notes} onInput=${e=>setEntries(es=>({...es,[date]:{...(es[date]||emptyDay(zones,date)),notes:e.target.value}}))}></textarea>
