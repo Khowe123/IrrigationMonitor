@@ -1741,22 +1741,20 @@ const ORDER_SKUS = {
     {id:'car_ft',   label:'Field Trip',           group:'Caribbean'},
   ],
   watermelon:[
-    // Seedless — most common, stays at top
-    {id:'wm_sdls',    label:'Seedless',            group:'Seedless'},
+    // Seedless — 4 count sizes (most common watermelon)
     {id:'wm_sdls80',  label:'Seedless 80ct',       group:'Seedless'},
     {id:'wm_sdls60',  label:'Seedless 60ct',       group:'Seedless'},
     {id:'wm_sdls45',  label:'Seedless 45ct',       group:'Seedless'},
     {id:'wm_sdls36',  label:'Seedless 36ct',       group:'Seedless'},
-    // Sangria
-    {id:'wm_sang35',  label:'Sangria 35ct',        group:'Sangria'},
-    {id:'wm_sang45',  label:'Sangria 45ct',        group:'Sangria'},
-    // Premium
+    // Sangria + Yellow Seeded — combined card, no sub-headers
+    {id:'wm_sang35',  label:'Sangria 35ct',        group:'Varieties'},
+    {id:'wm_sang45',  label:'Sangria 45ct',        group:'Varieties'},
+    {id:'wm_ysd80',   label:'Yellow Seeded 80ct',  group:'Varieties'},
+    {id:'wm_ysd100',  label:'Yellow Seeded 100ct', group:'Varieties'},
+    // Premium — separates Yellow Seeded from Yellow Seedless
     {id:'wm_prem80',  label:'Premium 80ct',        group:'Premium'},
     {id:'wm_prem110', label:'Premium 110ct',       group:'Premium'},
     {id:'wm_prem140', label:'Premium 140ct',       group:'Premium'},
-    // Yellow Seeded
-    {id:'wm_ysd80',   label:'Yellow Seeded 80ct',  group:'Yellow Seeded'},
-    {id:'wm_ysd100',  label:'Yellow Seeded 100ct', group:'Yellow Seeded'},
     // Yellow Seedless
     {id:'wm_ysdls36', label:'Yellow Seedless 36ct',group:'Yellow Seedless'},
     {id:'wm_ysdls45', label:'Yellow Seedless 45ct',group:'Yellow Seedless'},
@@ -1844,7 +1842,8 @@ function OrderBrain(){
   const[customers,setCustomers]=useState(()=>LS.get('hff:ord:customers',ORDER_CUSTOMERS_DEFAULT));
   const[syncSt,setSyncSt]=useState('idle');
   const[invSyncSt,setInvSyncSt]=useState('idle');
-  const[horizonDays,setHorizonDays]=useState(7);  // date range: 3,4,7,30,'all'
+  const[horizonDays,setHorizonDays]=useState(7);  // orders date range
+  const[pickHorizon,setPickHorizon]=useState(4);  // pick list days
   const[customSkus,setCustomSkus]=useState(()=>LS.get('hff:ord:custom_skus',[]));
   const[showAddSku,setShowAddSku]=useState(false);
   const[newSkuName,setNewSkuName]=useState('');
@@ -1983,7 +1982,7 @@ function OrderBrain(){
   function getInv(skuId){return(inventory[crop]||{})[skuId]||0;}
 
   // ── RENDER ────────────────────────────────────────────────────────────
-  const shipDates=getShipDates(4);
+  const shipDates=getShipDates(pickHorizon);
   const TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'}];
 
   // Add/Edit form
@@ -2023,7 +2022,7 @@ function OrderBrain(){
         ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
       ];
       // Watermelon first (Seedless at top as most common), then pumpkin
-      const groups=['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless',
+      const groups=['Seedless','Varieties','Premium','Yellow Seedless',
                     'Pumpkin','Specialty Pumpkin','Caribbean','Custom'];
       const getGrp=(s)=>s.group;
       const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
@@ -2032,8 +2031,8 @@ function OrderBrain(){
     })().map(grp=>html`
     <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <div style=${{fontSize:11,fontWeight:700,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8,
-        color:['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless'].includes(grp)?'#c0392b':'#555'}}>
-        ${['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless'].includes(grp)?'🍉 ':''}${['Pumpkin','Specialty Pumpkin','Caribbean'].includes(grp)?'🎃 ':''}${grp}
+        color:['Seedless','Varieties','Premium','Yellow Seedless'].includes(grp)?'#c0392b':'#555'}}>
+        ${['Seedless','Varieties','Premium','Yellow Seedless'].includes(grp)?'🍉 ':''}${['Pumpkin','Specialty Pumpkin','Caribbean'].includes(grp)?'🎃 ':''}${grp}
       </div>
       <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
         ${(()=>{
@@ -2179,10 +2178,19 @@ function OrderBrain(){
 
     <!-- ── PICK LIST VIEW ── -->
     ${view==='picklist'?html`<div>
-      <div style=${{background:'linear-gradient(135deg,#2c1810,#5c2d0a)',borderRadius:12,padding:'12px 16px',marginBottom:12,color:'#fff'}}>
+      <div style=${{background:'linear-gradient(135deg,#2c1810,#5c2d0a)',borderRadius:12,padding:'12px 16px',marginBottom:10,color:'#fff'}}>
         <div style=${{fontSize:11,opacity:.65,fontWeight:600,letterSpacing:'.07em',textTransform:'uppercase',marginBottom:2}}>Harvest Planning</div>
-        <div style=${{fontSize:15,fontWeight:700}}>Pick List — Next 4 Days</div>
+        <div style=${{fontSize:15,fontWeight:700}}>Pick List — Next ${pickHorizon===1?'1 Day':pickHorizon+' Days'}</div>
         <div style=${{fontSize:11,opacity:.7,marginTop:3}}>Excludes shipped orders · Update barn inventory below</div>
+        <div style=${{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
+          ${[1,2,3,4,7,14].map(n=>html`
+          <button key=${n} onClick=${()=>setPickHorizon(n)}
+            style=${{padding:'4px 10px',border:'1.5px solid '+(pickHorizon===n?'#fff':'rgba(255,255,255,.35)'),
+              borderRadius:6,background:pickHorizon===n?'rgba(255,255,255,.25)':'transparent',
+              color:'#fff',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+            ${n===1?'1d':n+'d'}
+          </button>`)}
+        </div>
       </div>
       <!-- Per-SKU: Need across all days, Have, To Pick -->
       <!-- All SKUs: pumpkin groups first, then watermelon, then custom -->
@@ -2193,7 +2201,7 @@ function OrderBrain(){
         ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
       ];
       // Watermelon first (Seedless at top as most common), then pumpkin
-      const groups=['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless',
+      const groups=['Seedless','Varieties','Premium','Yellow Seedless',
                     'Pumpkin','Specialty Pumpkin','Caribbean','Custom'];
       const getGrp=(s)=>s.group;
       const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
@@ -2211,7 +2219,7 @@ function OrderBrain(){
             <span style=${{color:'#2e7d32'}}>HAVE</span>
             <span style=${{color:oc}}>PICK</span>
           </div>
-          ${skuList.filter(s=>s.group===grp).map(sk=>{
+          ${[...ORDER_SKUS.pumpkin,...ORDER_SKUS.watermelon].filter(s=>s.group===grp).map(sk=>{
             const needs=shipDates.map(d=>calcNeed(d,sk.id));
             const totalNeed=needs.reduce((s,n)=>s+n,0);
             const have=getInv(sk.id);
@@ -2251,7 +2259,7 @@ function OrderBrain(){
         ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
       ];
       // Watermelon first (Seedless at top as most common), then pumpkin
-      const groups=['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless',
+      const groups=['Seedless','Varieties','Premium','Yellow Seedless',
                     'Pumpkin','Specialty Pumpkin','Caribbean','Custom'];
       const getGrp=(s)=>s.group;
       const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
@@ -2260,8 +2268,8 @@ function OrderBrain(){
     })().map(grp=>html`
       <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
         <div style=${{fontSize:11,fontWeight:700,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8,
-        color:['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless'].includes(grp)?'#c0392b':'#555'}}>
-        ${['Seedless','Sangria','Premium','Yellow Seeded','Yellow Seedless'].includes(grp)?'🍉 ':''}${['Pumpkin','Specialty Pumpkin','Caribbean'].includes(grp)?'🎃 ':''}${grp}
+        color:['Seedless','Varieties','Premium','Yellow Seedless'].includes(grp)?'#c0392b':'#555'}}>
+        ${['Seedless','Varieties','Premium','Yellow Seedless'].includes(grp)?'🍉 ':''}${['Pumpkin','Specialty Pumpkin','Caribbean'].includes(grp)?'🎃 ':''}${grp}
       </div>
         <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
           ${skuList.filter(s=>s.group===grp).map(sk=>html`
@@ -3723,7 +3731,8 @@ function App(){
   const[saved,setSaved]=useState(false);
   const[syncSt,setSyncSt]=useState('idle');
   const[invSyncSt,setInvSyncSt]=useState('idle');
-  const[horizonDays,setHorizonDays]=useState(7);  // date range: 3,4,7,30,'all'
+  const[horizonDays,setHorizonDays]=useState(7);  // orders date range
+  const[pickHorizon,setPickHorizon]=useState(4);  // pick list days
   const[customSkus,setCustomSkus]=useState(()=>LS.get('hff:ord:custom_skus',[]));
   const[showAddSku,setShowAddSku]=useState(false);
   const[newSkuName,setNewSkuName]=useState('');
