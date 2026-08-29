@@ -1983,7 +1983,7 @@ function OrderBrain(){
 
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(pickHorizon);
-  const TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'}];
+  const TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'},{id:'tasks',lbl:'📋 Tasks'}];
 
   // Add/Edit form
   if(adding) return html`<div>
@@ -2445,6 +2445,369 @@ function ZoneSummaryChart({zones,entry}){
   </div>`;
 }
 
+
+
+// ════════════════════════════════════════════════════════════════════════
+// FARM TASK BRAIN — Spring season calendar Mar–Jun
+// ════════════════════════════════════════════════════════════════════════
+
+const TASK_CATS={
+  field_prep: {label:'Field Prep',  color:'#3d6b47',bg:'#e6f4ec',icon:'🌾'},
+  tunnel:     {label:'Tunnel',      color:'#1e5c8a',bg:'#ddeef8',icon:'🏗'},
+  ipm:        {label:'IPM',         color:'#7a3310',bg:'#fde8dc',icon:'🔬'},
+  fertility:  {label:'Fertility',   color:'#4a6e1a',bg:'#eef5e0',icon:'💧'},
+  equipment:  {label:'Equipment',   color:'#5c4a28',bg:'#f5f0e4',icon:'🔧'},
+  compliance: {label:'Compliance',  color:'#3a3070',bg:'#eae6f5',icon:'📋'},
+  harvest:    {label:'Harvest/Pack',color:'#b02020',bg:'#fce8e8',icon:'🍓'},
+  planting:   {label:'Planting',    color:'#2a6030',bg:'#e0f2e5',icon:'🌱'},
+  greenhouse: {label:'Greenhouse',  color:'#7a4000',bg:'#fef0e0',icon:'🌿'},
+};
+
+const TASK_WEEKS=[
+  {week:1, label:'Mar 25–31',    month:'March'},
+  {week:2, label:'Apr 1–3',      month:'April'},
+  {week:3, label:'Apr 6–11',     month:'April'},
+  {week:4, label:'Apr 13–16',    month:'April'},
+  {week:5, label:'Apr 17–23',    month:'April'},
+  {week:6, label:'Apr 28–May 3', month:'Apr/May'},
+  {week:7, label:'May 6–11',     month:'May'},
+  {week:8, label:'May 12–18',    month:'May'},
+  {week:9, label:'May 19–25',    month:'May'},
+  {week:10,label:'May 26–Jun 1', month:'May/Jun'},
+  {week:11,label:'Jun 2–8',      month:'June'},
+];
+
+const TASK_MONTH_COLORS={'March':'#4a7c59','April':'#3d6e9f','Apr/May':'#5b7a3d','May':'#2d7a4f','May/Jun':'#4a7a2e','June':'#c07830'};
+const TASK_STAFF=['Any','Julio','Jose','Bob','Chicken','Kumar','Dycks','Hildebrandts','Roger','Abzal','Nero','Binod','Kevin','Glenn'];
+
+const TASKS_DATA=[
+[
+  // ── WEEK 1 ──────────────────────────────────────────────────────────────
+  {id:"s001",week:1,cat:"tunnel",   pri:"high",  rec:true,  assign:"Any",    title:"Finish raking straw off strawberries", notes:"Remove row cover first, rake, then replace. Do not leave berries exposed overnight."},
+  {id:"s002",week:1,cat:"tunnel",   pri:"high",  rec:true,  assign:"Any",    title:"Erosion cloth down on new tunnel bays", notes:"Staple down following week (Apr 1–3)."},
+  {id:"s003",week:1,cat:"tunnel",   pri:"high",  rec:false, assign:"Any",    title:"Put up and self-tap new tunnel hoops", notes:"Self tappers into roll bar on new tunnel build."},
+  {id:"s004",week:1,cat:"tunnel",   pri:"normal",rec:false, assign:"Any",    title:"Build south door on peaked tunnels", notes:""},
+  {id:"s005",week:1,cat:"tunnel",   pri:"normal",rec:true,  assign:"Any",    title:"Punch plant holes in peak tunnel plastic", notes:"6 holes per metre."},
+  {id:"s006",week:1,cat:"field_prep",pri:"normal",rec:true, assign:"Any",    title:"Seed grass & clover — new tunnel bays", notes:"3 new bays."},
+  {id:"s007",week:1,cat:"tunnel",   pri:"normal",rec:true,  assign:"Any",    title:"Power sweep leg rows erosion cloth", notes:""},
+  {id:"s008",week:1,cat:"tunnel",   pri:"normal",rec:true,  assign:"Any",    title:"Put out white bean pots + drip tape", notes:""},
+  {id:"s009",week:1,cat:"planting", pri:"high",  rec:false, assign:"Any",    title:"Dig and pack variety one strawberry rows", notes:""},
+
+  // ── WEEK 2 ──────────────────────────────────────────────────────────────
+  {id:"s010",week:2,cat:"tunnel",    pri:"high",  rec:false, assign:"Any",   title:"Staple down erosion cloth — 3 new bays", notes:"Follow-up from end of March."},
+  {id:"s011",week:2,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Rake/hoe weeds off raspberry erosion cloth", notes:""},
+  {id:"s012",week:2,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Clip up blackberries", notes:""},
+  {id:"s013",week:2,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Rake straw off new berries", notes:""},
+
+  // ── WEEK 3 ──────────────────────────────────────────────────────────────
+  {id:"s014",week:3,cat:"equipment", pri:"high",  rec:true,  assign:"Any",   title:"Set up heater in germ room", notes:"Target 80–90°F for watermelon germination."},
+  {id:"s015",week:3,cat:"greenhouse",pri:"high",  rec:true,  assign:"Any",   title:"Seed watermelon — main batches", notes:"Pull from germ room: check at 24h, pull by 36h MAX. Pull when radicle just visible — before emergence. Critical: stretched plants won't pull properly. Plant to just below cotyledon level — spot-check first 10 trays of any new planter."},
+  {id:"s016",week:3,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"⚠ Open tunnels — calm days only (Mon/Wed/Fri)", notes:"SOP: After opening — pull all ropes tight both sides, tie off cleats before moving to next tunnel. Walk full length. Last person out: final walk of all opened tunnels. Wind >20km/h overnight = do not open (or re-close). 2026 incident: 1 tunnel not secured — destroyed plastic + adjacent bay."},
+  {id:"s017",week:3,cat:"fertility", pri:"high",  rec:true,  assign:"Jose",  title:"Spread sweetcorn fertilizer", notes:"Market garden + 12 acres north of chem shed."},
+  {id:"s018",week:3,cat:"planting",  pri:"high",  rec:true,  assign:"Jose",  title:"Plant sweetcorn — Kickoff (rows 1–11) + 274", notes:"Not before Wednesday. Row cover immediately after planting. Kickoff furthest south. Planting 1 = 120,000 total. Fill out planting map as you go."},
+  {id:"s019",week:3,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Turn on water in tunnels", notes:"Not until overnight low above −5°C. Flush waterlines after. Do AFTER drip tape + solenoids confirmed installed."},
+  {id:"s020",week:3,cat:"planting",  pri:"high",  rec:true,  assign:"Any",   title:"Start planting Zone 4 strawberries — Thu/Fri", notes:"Line up trucks for tray plant delivery. Log planting date for DAP tracking."},
+  {id:"s021",week:3,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",   title:"Remove row cover → rake straw → replace row cover", notes:"Do in sequence. Do not leave berries exposed overnight."},
+  {id:"s022",week:3,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Fill sandbags — rainy/cold day job", notes:"Fill dump wagon with sand for continuous filling during bad weather. Leo's barn."},
+
+  // ── WEEK 4 ──────────────────────────────────────────────────────────────
+  {id:"s023",week:4,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Set up drip tape in tunnels", notes:"Install before turning water on. Confirm solenoid valves in place first."},
+  {id:"s024",week:4,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Set up solenoid valves — tunnels, raspberries, blackberries", notes:"#7=Kevin's garden (gray) · #8=Rick's garden south (yellow) · #9=Rick's garden north (gray)."},
+  {id:"s025",week:4,cat:"field_prep",pri:"high",  rec:true,  assign:"Any",   title:"Put out raspberry pots + fill with coarse chips", notes:""},
+  {id:"s026",week:4,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",   title:"Power rake erosion cloth — strawberry + raspberry tunnels + prop area", notes:""},
+  {id:"s027",week:4,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Cut overwintered blackberry canes at soil level", notes:"Encourages new sucker/spawn shoots."},
+  {id:"s028",week:4,cat:"greenhouse",pri:"high",  rec:true,  assign:"Any",   title:"Seed watermelon — large Crackerjack batch", notes:"30 racks × 98-cell Crackerjack + 6 racks × 128-cell Premium."},
+  {id:"s029",week:4,cat:"field_prep",pri:"high",  rec:true,  assign:"Any",   title:"Confirm watermelon field layout — before rye burndown", notes:"Must confirm BEFORE Roundup. Laneway: 13' driveway, 65' swath GPS, 3 nozzles off per boom."},
+  {id:"s030",week:4,cat:"ipm",       pri:"high",  rec:true,  assign:"Jose",  title:"Group 3 fungicide on watermelon transplants", notes:"Via powerwasher foam wand, ~10–15 mL. Nova/Tilt/Bumper/Mettle all FRAC 3. Rotate off Group 3 next application."},
+  {id:"s031",week:4,cat:"planting",  pri:"high",  rec:true,  assign:"Any",   title:"Plant Zone 1 strawberries — Florida Beauty, 7 plants/m", notes:"Receive plants from Joey (Quebec) — thaw 24–48 hrs before grading. Log planting date for DAP tracking."},
+
+  // ── WEEK 5 ──────────────────────────────────────────────────────────────
+  {id:"s032",week:5,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"🚨 FROST PREP — sidewalls, end caps, solenoids, windbreak", notes:"CHECKLIST: Drop sidewalls + doors on all planted tunnels ✓ | Seal peak end caps ✓ | Row cover solenoid valves ✓ | Erosion cloth windbreak Zone 1–2 ✓ | Sara's pump primed + running ✓ | Final tunnel walk at dusk ✓. Must be done before sundown."},
+  {id:"s033",week:5,cat:"field_prep",pri:"high",  rec:true,  assign:"Any",   title:"Set up frost irrigation — Sara's berries", notes:"Overhead frost protection via irrigation. Confirm pump prime + coverage before dark."},
+  {id:"s034",week:5,cat:"planting",  pri:"normal",rec:true,  assign:"Dycks", title:"Plant beans in raspberry pots", notes:"2 lines per pot, 4–5\" apart. 2 rows Goldilocks + 3 rows Desperado."},
+  {id:"s035",week:5,cat:"planting",  pri:"normal",rec:true,  assign:"Any",   title:"Plant blackberries into 3L pots", notes:""},
+  {id:"s036",week:5,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",   title:"Put out Plantlogic pot rails and posts", notes:""},
+  {id:"s037",week:5,cat:"planting",  pri:"high",  rec:true,  assign:"Any",   title:"Finish planting Zone 2 strawberries", notes:"Log planting date for DAP tracking."},
+  {id:"s038",week:5,cat:"ipm",       pri:"high",  rec:true,  assign:"Julio", title:"First spray on row-covered berries", notes:"Pull row cover, spray (TPB + Group M fungicide), replace. Log product + FRAC group."},
+  {id:"s039",week:5,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Replant lavender + echinacea on erosion cloth", notes:""},
+  {id:"s040",week:5,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Seed grass/clover — market headlands + level plastic headlands", notes:""},
+  {id:"s041",week:5,cat:"greenhouse",pri:"high",  rec:true,  assign:"Any",   title:"Finish last batch of watermelon seeding", notes:""},
+  {id:"s042",week:5,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"First mow of season — assign dedicated operator", notes:"First mow typically needed by week 3 of April in Elgin County."},
+
+  // ── WEEK 6 ──────────────────────────────────────────────────────────────
+  {id:"s043",week:6,cat:"ipm",       pri:"high",  rec:true,  assign:"Any",   title:"Spread Sluggo", notes:"Iron phosphate, OMRI listed. First application typically late April when wet. Sara's field + tunnels."},
+  {id:"s044",week:6,cat:"field_prep",pri:"high",  rec:true,  assign:"Any",   title:"Seed market garden — beans, dill, zucchini, onions, glads", notes:""},
+  {id:"s045",week:6,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Pre-punch flower rows + trellis posts + first string", notes:"Put tabletop post down one flower trellis row + erosion cloth windbreak."},
+  {id:"s046",week:6,cat:"tunnel",    pri:"high",  rec:false, assign:"Any",   title:"Build sidewall + door on new tunnels — insert into roll bar", notes:"Pool noodles over tunnel door posts."},
+  {id:"s047",week:6,cat:"equipment", pri:"normal",rec:true,  assign:"Any",   title:"Powerwash buildings + wash all RPCs, crates, bins", notes:"Barns, trailers, market sign, houses. Stain market sign after powerwash."},
+  {id:"s048",week:6,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Fill all sandbags — VanYmeren taking all", notes:""},
+  {id:"s049",week:6,cat:"equipment", pri:"normal",rec:true,  assign:"Any",   title:"Purge pig barn + kiln pad + scrap steel Triple-M", notes:""},
+  {id:"s050",week:6,cat:"equipment", pri:"high",  rec:true,  assign:"Any",   title:"Leaf cutter bee styrofoam into bin boxes", notes:"⚠ Goes into place AFTER watermelon planted — pollination dependency. Do not place early."},
+  {id:"s051",week:6,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Set up drip at new berries + watermelon fields", notes:""},
+  {id:"s052",week:6,cat:"planting",  pri:"high",  rec:true,  assign:"Any",   title:"⚠ Pull June-bearing plants from cooler", notes:"Normal spring: pull 5 days before planting. Cold spring: pull 7–8 days before. 2026 lesson: pulled too close to planting — plants still frozen at planting time."},
+  {id:"s053",week:6,cat:"planting",  pri:"high",  rec:true,  assign:"Any",   title:"Start planting Zone 3 strawberries — target May 10", notes:"Zone order: 4 (Apr 9) → 1 (Apr 14) → 2 (Apr 21) → 3 (May 10). Log planting date for DAP tracking."},
+  {id:"s054",week:6,cat:"field_prep",pri:"low",   rec:false, assign:"Any",   title:"Plant cedars — fencerows", notes:"John's Van fencerow + west side Keith's barn field on erosion cloth."},
+
+  // ── WEEK 7 ──────────────────────────────────────────────────────────────
+  {id:"s055",week:7,cat:"planting",  pri:"high",  rec:true,  assign:"Any",   title:"Complete June-bearing strawberry planting", notes:"Completed May 6 in 2026. Set up solid set to wash off Chateau on newly planted berries same/next day — add to planting SOP."},
+  {id:"s056",week:7,cat:"fertility", pri:"high",  rec:true,  assign:"Bob",   title:"Bob — establishment drip: Quadris + Velum Prime + boosted fert", notes:"On all newly planted berries. Velum Prime most effective at/shortly after transplant. Double or triple fertilizer rate. Log rate + date for IPM record."},
+  {id:"s057",week:7,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Put drip tape on new 3 tunnels + peonies (Zone 3 old drip)", notes:""},
+  {id:"s058",week:7,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Seed grass — new tunnels + market headland + tunnel grass", notes:"Roll garden headland grass."},
+  {id:"s059",week:7,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Trim lavender — rake + leaf blow after", notes:"Pull grass/weeds from erosion cloth on lavender and grapes."},
+  {id:"s060",week:7,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Remove row cover from June berries — Friday morning", notes:"Spray for TPB + Group M fungicide same day as removal."},
+  {id:"s061",week:7,cat:"ipm",       pri:"high",  rec:true,  assign:"Julio", title:"First spray on June bearers — TPB + Group M fungicide", notes:"Tarnished Plant Bug. Apply at first row cover removal."},
+  {id:"s062",week:7,cat:"planting",  pri:"normal",rec:true,  assign:"Any",   title:"Plant 1 bay raspberry — Optima", notes:""},
+  {id:"s063",week:7,cat:"harvest",   pri:"normal",rec:true,  assign:"Any",   title:"Harvest rhubarb", notes:""},
+  {id:"s064",week:7,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Pull thistle from June field + dandelions from Barnfield", notes:"Stand up blackberry propagation pots."},
+  {id:"s065",week:7,cat:"compliance",pri:"high",  rec:false, assign:"Kevin", title:"FCC 0% loan application", notes:"Filed May 6, 2026. Follow up on response window."},
+
+  // ── WEEK 8 ──────────────────────────────────────────────────────────────
+  {id:"s066",week:8,cat:"greenhouse",pri:"high",  rec:true,  assign:"Any",   title:"Seed Caribbean pumpkin — 15 racks × 72-cell", notes:""},
+  {id:"s067",week:8,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Trellis wire on blackberries + string raspberries", notes:"Stringing raspberries = good rain day job."},
+  {id:"s068",week:8,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Set up drip + fix centre laneway in new berries", notes:"Dycks/Hildebrandts: dump new coir from Plantlogic trays, refill with used coir, put on leg rows between raspberry tunnels 3/4, 4/5, 5/6 north."},
+  {id:"s069",week:8,cat:"planting",  pri:"normal",rec:true,  assign:"Any",   title:"Plant dahlias into trays at raspberries", notes:"2026: planted week of May 17. In 2024, still planting in June — target earlier."},
+  {id:"s070",week:8,cat:"planting",  pri:"normal",rec:true,  assign:"Any",   title:"Plant eucalyptus into trays — west row strawberry tunnel", notes:"Cut flower crop."},
+  {id:"s071",week:8,cat:"planting",  pri:"normal",rec:true,  assign:"Any",   title:"Plant lavender row 1 + blackberries bay 6", notes:""},
+  {id:"s072",week:8,cat:"tunnel",    pri:"high",  rec:false, assign:"Any",   title:"Set up new 3-tunnel irrigation mainline", notes:""},
+  {id:"s073",week:8,cat:"planting",  pri:"high",  rec:true,  assign:"Any",   title:"Thaw plugs + plant remaining June bearers", notes:"Last June-bearer planting ~May 18 in 2026. Thaw 5–7 days before."},
+  {id:"s074",week:8,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Sandbags out in market garden → row cover Wednesday", notes:""},
+
+  // ── WEEK 9 ──────────────────────────────────────────────────────────────
+  {id:"s075",week:9,cat:"planting",  pri:"high",  rec:true,  assign:"Dycks", title:"Watermelon field transplanting — 3 crews", notes:"Crackerjack → 3-spike wheel. Premium → 1-spike wheel. Wrong wheel = wrong spacing — brief crews every year.\nTransplant water (2026): Prosaro Pro 5.7L + Actara 1.0L + Quadris 1.4L + Exirel 1.8L. Rate: 1.1L/tank. Do NOT use 1.4L/tank — too stiff."},
+  {id:"s076",week:9,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",   title:"Pull weeds in tunnels — Zone 2, bays 4–8", notes:"1 row per person. Look under each plant for small weeds. Pull by roots."},
+  {id:"s077",week:9,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Row cover market garden + green hampers out", notes:""},
+  {id:"s078",week:9,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",   title:"Put row cover back on strawberries", notes:"Top rhubarb seed heads in strawberry tunnels, then uncover row cover."},
+  {id:"s079",week:9,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",   title:"Fill sandbags into VanYmeren bins", notes:""},
+
+  // ── WEEK 10 ─────────────────────────────────────────────────────────────
+  {id:"s080",week:10,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",  title:"Force fiddle early Florida Beauty", notes:""},
+  {id:"s081",week:10,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",  title:"Leaf string on Plantlogic + leaf spring + wire", notes:""},
+  {id:"s082",week:10,cat:"ipm",       pri:"high",  rec:true,  assign:"Any",  title:"Put up bug tape — truss tape as sticky barrier", notes:"Blue sticky tape in irrigation room on top of acid totes. Deploy once tunnels fully planted and canopy starts to close."},
+  {id:"s083",week:10,cat:"planting",  pri:"high",  rec:true,  assign:"Any",  title:"Plant last row of raspberries", notes:""},
+  {id:"s084",week:10,cat:"equipment", pri:"normal",rec:true,  assign:"Any",  title:"Fix market driveway — dig potholes 1ft deep, pack asphalt", notes:""},
+  {id:"s085",week:10,cat:"planting",  pri:"normal",rec:true,  assign:"Any",  title:"Plant next batch of onions + glads", notes:""},
+  {id:"s086",week:10,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",  title:"Replant Zone 1 — big plants, throw out remaining", notes:"Steam propagation trays. Set up tray field."},
+  {id:"s087",week:10,cat:"greenhouse",pri:"high",  rec:true,  assign:"Any",  title:"Mix up pumpkin seed + check germ on varietal pumpkin", notes:""},
+  {id:"s088",week:10,cat:"field_prep",pri:"normal",rec:true,  assign:"Any",  title:"Set up garden solenoids + trellis market garden plants", notes:"#7=Kevin's garden (gray) · #8=Rick's garden south (yellow) · #9=Rick's garden north (gray)."},
+  {id:"s089",week:10,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",  title:"Replant watermelon gaps", notes:""},
+
+  // ── WEEK 11 ─────────────────────────────────────────────────────────────
+  {id:"s090",week:11,cat:"harvest",   pri:"high",  rec:true,  assign:"Any",  title:"🍓 First strawberry harvest", notes:"2026: ~80 flats Zone 1+2 + ~60 flats Galetta. All 12×1 market flats. Confirm scanner working before first pick."},
+  {id:"s091",week:11,cat:"tunnel",    pri:"high",  rec:true,  assign:"Any",  title:"Begin weekly runner cutting — Zone 4 then Zone 2", notes:"Once leaves pulled down, harder to find runners — weekly frequency required. Nip Zone 4 first, then Zone 2."},
+  {id:"s092",week:11,cat:"fertility", pri:"high",  rec:true,  assign:"Julio",title:"Apogee drip application — tunnels", notes:"Rate: 45g/100L. Conditioner: Agral 90 @ 0.5mL/L + AMS. 2026: 853g/10 acres + 2L AMS + 2L LI-700.\n⚠ Track as DAYS AFTER PLANTING not calendar date. 2026 DAP: Zone 4 ~57 DAP, Zone 1 ~53 DAP, Zone 2 ~44 DAP, Zone 3 ~27 DAP at June 6 application. Repeat every 3–4 weeks if runner pressure continues."},
+  {id:"s093",week:11,cat:"ipm",       pri:"high",  rec:true,  assign:"Julio",title:"Tunnel spray — potassium bicarbonate + sulphur + Xiameter", notes:"Powdery mildew prevention. Rotate with other FRAC groups."},
+  {id:"s094",week:11,cat:"equipment", pri:"high",  rec:true,  assign:"Any",  title:"⚠ LCB incubator setup — leaf cutter bees", notes:"Must start 3–4 weeks before target release. Target release end of June = start by June 1. 2026 set up June 6 — too late. Move earlier every year."},
+  {id:"s095",week:11,cat:"compliance",pri:"high",  rec:true,  assign:"Kevin",title:"Book flights — ag stream workers", notes:"Book ASAP once workers confirmed."},
+  {id:"s096",week:11,cat:"equipment", pri:"normal",rec:true,  assign:"Any",  title:"Power wash big cooler before main harvest", notes:""},
+  {id:"s097",week:11,cat:"planting",  pri:"normal",rec:true,  assign:"Any",  title:"Plant out lavender, milkweed, cosmos, foxglove, zinnia, marigold", notes:""},
+  {id:"s098",week:11,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",  title:"Pull trusses to tray edge — Zone 4", notes:""},
+]
+];
+
+function TaskCardHtm({task}){
+  const[open,setOpen]=useState(false);
+  const cat=TASK_CATS[task.cat]||{label:task.cat,color:'#888',bg:'#f5f5f5',icon:'📌'};
+  return html`
+  <div onClick=${()=>task.notes&&setOpen(o=>!o)}
+    style=${{borderRadius:6,border:'1px solid '+(open?cat.color:'#e8e2d8'),
+      background:'#fff',marginBottom:5,cursor:task.notes?'pointer':'default',
+      boxShadow:open?'0 2px 12px '+cat.color+'22':'none',transition:'border-color .15s'}}>
+    <div style=${{display:'flex',alignItems:'center',gap:8,padding:'9px 12px'}}>
+      <div style=${{width:8,height:8,borderRadius:'50%',flexShrink:0,
+        background:task.pri==='high'?'#d44':task.pri==='normal'?'#aaa':'#ddd'}}/>
+      <span style=${{fontSize:10,padding:'2px 6px',borderRadius:3,background:cat.bg,color:cat.color,
+        fontFamily:'monospace',letterSpacing:.3,whiteSpace:'nowrap',flexShrink:0}}>
+        ${cat.icon} ${cat.label}
+      </span>
+      <span style=${{fontSize:13,color:'#1a1a14',flex:1,lineHeight:1.4}}>${task.title}</span>
+      ${task.assign!=='Any'?html`<span style=${{fontSize:10,padding:'1px 7px',borderRadius:10,
+        background:'#f0ede6',color:'#6b5b2e',fontFamily:'monospace',flexShrink:0}}>${task.assign}</span>`:null}
+      ${task.rec?html`<span title="Recurring" style=${{fontSize:10,color:'#aaa',flexShrink:0}}>↻</span>`:null}
+      ${task.notes?html`<span style=${{fontSize:10,color:'#bbb',flexShrink:0}}>${open?'▲':'▼'}</span>`:null}
+    </div>
+    ${open&&task.notes?html`
+    <div style=${{borderTop:'1px solid '+cat.bg,padding:'10px 14px 10px 28px',fontSize:12,
+      color:'#555',lineHeight:1.6,background:cat.bg,borderRadius:'0 0 6px 6px',whiteSpace:'pre-wrap'}}>
+      ${task.notes}
+    </div>`:null}
+  </div>`;
+}
+
+function WeekSectionHtm({weekData,tasks,open,onToggle}){
+  const monthColor=TASK_MONTH_COLORS[weekData.month]||'#555';
+  const high=tasks.filter(t=>t.pri==='high').length;
+  return html`
+  <div style=${{marginBottom:8}}>
+    <div onClick=${onToggle} style=${{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
+      background:open?'#1b2e20':'#f0ede8',borderRadius:open?'6px 6px 0 0':'6px',cursor:'pointer',userSelect:'none'}}>
+      <div style=${{width:3,height:28,borderRadius:2,background:monthColor,flexShrink:0}}/>
+      <div style=${{flex:1}}>
+        <div style=${{fontSize:11,fontFamily:'monospace',letterSpacing:2,
+          color:open?'#a8c9a0':'#888',textTransform:'uppercase'}}>${weekData.month}</div>
+        <div style=${{fontSize:15,fontWeight:'bold',color:open?'#fff':'#1a1a14',marginTop:1}}>${weekData.label}</div>
+      </div>
+      <div style=${{display:'flex',gap:6,alignItems:'center'}}>
+        ${high>0?html`<span style=${{fontSize:10,padding:'2px 7px',borderRadius:10,
+          background:'#fce8e8',color:'#b02020',fontFamily:'monospace'}}>● ${high} priority</span>`:null}
+        <span style=${{fontSize:11,padding:'2px 8px',borderRadius:10,
+          background:open?'rgba(255,255,255,.15)':'#e8e2d8',color:open?'#fff':'#888',fontFamily:'monospace'}}>
+          ${tasks.length} tasks
+        </span>
+        <span style=${{color:open?'#8ab898':'#bbb',fontSize:12}}>${open?'▲':'▼'}</span>
+      </div>
+    </div>
+    ${open?html`
+    <div style=${{border:'1px solid #e8e2d8',borderTop:'none',borderRadius:'0 0 6px 6px',
+      padding:'10px 10px 6px',background:'#faf8f5'}}>
+      ${high>0?html`
+        <div style=${{fontSize:9,letterSpacing:2,color:'#b02020',textTransform:'uppercase',
+          fontFamily:'monospace',marginBottom:5}}>Priority</div>
+        ${tasks.filter(t=>t.pri==='high').map(t=>html`<${TaskCardHtm} key=${t.id} task=${t}/>`)}`
+      :null}
+      ${tasks.filter(t=>t.pri!=='high').length>0?html`
+        <div style=${{fontSize:9,letterSpacing:2,color:'#aaa',textTransform:'uppercase',
+          fontFamily:'monospace',margin:'8px 0 5px'}}>Other Tasks</div>
+        ${tasks.filter(t=>t.pri!=='high').map(t=>html`<${TaskCardHtm} key=${t.id} task=${t}/>`)}
+      `:null}
+    </div>`:null}
+  </div>`;
+}
+
+function TaskBrain(){
+  const[openWeeks,setOpenWeeks]=useState(()=>new Set([1,2,3]));
+  const[catFilter,setCatFilter]=useState(null);
+  const[assignFilter,setAssignFilter]=useState(null);
+  const[search,setSearch]=useState('');
+  const[taskView,setTaskView]=useState('season'); // season | stats
+
+  function toggleWeek(w){setOpenWeeks(prev=>{const n=new Set(prev);n.has(w)?n.delete(w):n.add(w);return n;});}
+  function expandAll(){setOpenWeeks(new Set(TASK_WEEKS.map(w=>w.week)));}
+  function collapseAll(){setOpenWeeks(new Set());}
+
+  // Filter tasks
+  const filtered=TASKS_DATA.filter(t=>{
+    if(catFilter&&t.cat!==catFilter)return false;
+    if(assignFilter&&t.assign!==assignFilter)return false;
+    if(search&&!t.title.toLowerCase().includes(search.toLowerCase())&&
+       !t.notes.toLowerCase().includes(search.toLowerCase()))return false;
+    return true;
+  });
+
+  // Current week detection
+  const now=new Date();
+  const yr=now.getFullYear();
+  const weekOfYear=Math.ceil(((now-new Date(yr,0,1))/86400000+new Date(yr,0,1).getDay()+1)/7);
+  // approximate current sprint week (1=Mar25 = ~week 12-13 of year)
+  const approxSprintWeek=Math.max(1,Math.min(11,weekOfYear-11));
+
+  return html`<div style=${{fontFamily:'system-ui,-apple-system,sans-serif',color:'#1a1a14'}}>
+    <!-- Header -->
+    <div style=${{background:'#1b2e20',borderRadius:12,padding:'14px 16px',marginBottom:12,color:'#fff'}}>
+      <div style=${{fontSize:11,letterSpacing:2,color:'#5a9a6a',fontFamily:'monospace',textTransform:'uppercase',marginBottom:3}}>
+        Howe Family Farms
+      </div>
+      <div style=${{fontSize:18,fontWeight:'bold',color:'#f0ece4',marginBottom:2}}>📋 Farm Task Brain</div>
+      <div style=${{fontSize:11,color:'#6a9a78',fontFamily:'monospace'}}>Spring 2026 · 11 weeks · ${TASKS_DATA.length} tasks</div>
+      <!-- View toggle -->
+      <div style=${{display:'flex',gap:6,marginTop:10}}>
+        ${['season','stats'].map(v=>html`
+        <button key=${v} onClick=${()=>setTaskView(v)}
+          style=${{padding:'5px 12px',border:'1.5px solid '+(taskView===v?'#8ab898':'rgba(255,255,255,.25)'),
+            borderRadius:6,background:taskView===v?'rgba(255,255,255,.15)':'transparent',
+            color:'#fff',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+          ${v==='season'?'📅 Season':'📊 Stats'}
+        </button>`)}
+        <button onClick=${expandAll} style=${{padding:'5px 10px',border:'1px solid rgba(255,255,255,.2)',borderRadius:6,background:'transparent',color:'rgba(255,255,255,.6)',fontSize:11,cursor:'pointer',fontFamily:'inherit',marginLeft:'auto'}}>Expand all</button>
+        <button onClick=${collapseAll} style=${{padding:'5px 10px',border:'1px solid rgba(255,255,255,.2)',borderRadius:6,background:'transparent',color:'rgba(255,255,255,.6)',fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>Collapse</button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div style=${{marginBottom:10}}>
+      <input placeholder="🔍 Search tasks…" value=${search} onInput=${e=>setSearch(e.target.value)}
+        style=${{width:'100%',padding:'8px 12px',border:'1.5px solid #ddd',borderRadius:8,
+          fontSize:14,fontFamily:'inherit',outline:'none',background:'#faf8f5',boxSizing:'border-box',marginBottom:8}}/>
+      <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>
+        <button onClick=${()=>setCatFilter(null)}
+          style=${{padding:'4px 10px',borderRadius:6,border:'1.5px solid '+(catFilter===null?'#1b2e20':'#ddd'),
+            background:catFilter===null?'#1b2e20':'transparent',color:catFilter===null?'#fff':'#888',
+            fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>All</button>
+        ${Object.entries(TASK_CATS).map(([k,v])=>html`
+        <button key=${k} onClick=${()=>setCatFilter(catFilter===k?null:k)}
+          style=${{padding:'4px 8px',borderRadius:6,border:'1.5px solid '+(catFilter===k?v.color:'#ddd'),
+            background:catFilter===k?v.bg:'transparent',color:catFilter===k?v.color:'#888',
+            fontSize:10,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+          ${v.icon} ${v.label}
+        </button>`)}
+      </div>
+      <div style=${{display:'flex',gap:5,flexWrap:'wrap',marginTop:5}}>
+        <select value=${assignFilter||''} onChange=${e=>setAssignFilter(e.target.value||null)}
+          style=${{padding:'5px 10px',border:'1.5px solid #ddd',borderRadius:7,fontSize:12,
+            fontFamily:'inherit',outline:'none',background:'#faf8f5',cursor:'pointer'}}>
+          <option value="">👤 All staff</option>
+          ${TASK_STAFF.filter(s=>s!=='Any').map(s=>html`<option key=${s} value=${s}>${s}</option>`)}
+        </select>
+        <span style=${{fontSize:12,color:'#aaa',alignSelf:'center'}}>${filtered.length} tasks shown</span>
+      </div>
+    </div>
+
+    <!-- Season view -->
+    ${taskView==='season'?html`
+    <div>
+      ${TASK_WEEKS.map(wd=>{
+        const wTasks=filtered.filter(t=>t.week===wd.week);
+        if(!wTasks.length&&(catFilter||assignFilter||search))return null;
+        return html`<${WeekSectionHtm} key=${wd.week} weekData=${wd}
+          tasks=${wTasks.length?wTasks:TASKS_DATA.filter(t=>t.week===wd.week&&(!catFilter&&!assignFilter&&!search))}
+          open=${openWeeks.has(wd.week)} onToggle=${()=>toggleWeek(wd.week)}/>`;
+      })}
+    </div>`:null}
+
+    <!-- Stats view -->
+    ${taskView==='stats'?html`
+    <div>
+      <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+        <div style=${{fontWeight:700,fontSize:13,marginBottom:10}}>Tasks by Category</div>
+        ${Object.entries(TASK_CATS).map(([k,v])=>{
+          const n=TASKS_DATA.filter(t=>t.cat===k).length;
+          return html`<div key=${k} style=${{display:'flex',alignItems:'center',gap:8,marginBottom:7}}>
+            <span style=${{fontSize:13,minWidth:20}}>${v.icon}</span>
+            <span style=${{flex:1,fontSize:12}}>${v.label}</span>
+            <div style=${{flex:2,background:'#f0f0f0',borderRadius:4,height:8,overflow:'hidden'}}>
+              <div style=${{width:(n/TASKS_DATA.length*100)+'%',height:'100%',background:v.color,borderRadius:4}}></div>
+            </div>
+            <span style=${{fontSize:11,color:'#888',minWidth:24,textAlign:'right'}}>${n}</span>
+          </div>`;
+        })}
+      </div>
+      <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
+        <div style=${{fontWeight:700,fontSize:13,marginBottom:10}}>Tasks by Staff</div>
+        ${TASK_STAFF.map(s=>{
+          const n=TASKS_DATA.filter(t=>t.assign===s).length;
+          if(!n)return null;
+          return html`<div key=${s} style=${{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
+            <span style=${{flex:1,fontSize:12,fontFamily:'monospace'}}>${s}</span>
+            <div style=${{flex:3,background:'#f0f0f0',borderRadius:4,height:7,overflow:'hidden'}}>
+              <div style=${{width:(n/Math.max(...TASK_STAFF.map(x=>TASKS_DATA.filter(t=>t.assign===x).length))*100)+'%',height:'100%',background:'#1b2e20',borderRadius:4}}></div>
+            </div>
+            <span style=${{fontSize:11,color:'#888',minWidth:20,textAlign:'right'}}>${n}</span>
+          </div>`;
+        })}
+      </div>
+      <div class="card" style=${{padding:'12px 14px'}}>
+        <div style=${{fontWeight:700,fontSize:13,marginBottom:10}}>High Priority Tasks</div>
+        ${TASKS_DATA.filter(t=>t.pri==='high').map(t=>html`
+        <div key=${t.id} style=${{padding:'5px 0',borderBottom:'1px solid #f5f5f5',fontSize:12}}>
+          <span style=${{color:TASK_CATS[t.cat]?.color||'#888',fontSize:10,marginRight:6}}>
+            ${TASK_CATS[t.cat]?.icon}
+          </span>
+          <span style=${{fontWeight:600}}>Wk ${t.week}</span>
+          <span style=${{color:'#555',marginLeft:6}}>${t.title}</span>
+        </div>`)}
+      </div>
+    </div>`:null}
+  </div>`;
+}
 
 // ── SPRAY BRAIN HELPERS ───────────────────────────────────────────────────────
 function SprayPill({name, frac, irac, rate, unit}){
@@ -3966,6 +4329,7 @@ function App(){
 
       ${view==='fert'?html`<${FertBrain}/>`:null}
       ${view==='orders'?html`<${OrderBrain}/>`:null}
+      ${view==='tasks'?html`<${TaskBrain}/>`:null}
       ${view==='settings'?html`
       <${SettingsView} strat=${strat} defaultStage=${defaultStage} onSaveStrat=${saveStrat}
         onSaveStage=${saveDefStage} cropLabel=${crop.label} isStraw=${isStraw}
