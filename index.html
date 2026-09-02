@@ -1983,7 +1983,7 @@ function OrderBrain(){
 
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(pickHorizon);
-  const TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'},{id:'tasks',lbl:'📋 Tasks'}];
+  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'📦 Orders'}];;
 
   // Add/Edit form
   if(adding) return html`<div>
@@ -2678,7 +2678,22 @@ function TaskBrain(){
   const[catFilter,setCatFilter]=useState(null);
   const[assignFilter,setAssignFilter]=useState(null);
   const[search,setSearch]=useState('');
-  const[taskView,setTaskView]=useState('season'); // season | stats
+  const[taskView,setTaskView]=useState('season'); // season | weekly | monthly | stats
+  const[customTasks,setCustomTasks]=useState(()=>LS.get('hff:tasks:custom',[]));
+  const[showAddTask,setShowAddTask]=useState(false);
+  const[editingTask,setEditingTask]=useState(null);
+  const[draftTask,setDraftTask]=useState({title:'',cat:'tunnel',pri:'normal',week:1,assign:'Any',notes:'',rec:false,photos:[]});
+
+  function saveCustomTask(){
+    const t={...draftTask,id:'ct_'+Date.now(),source:'custom'};
+    const upd=editingTask?customTasks.map(x=>x.id===editingTask?t:x):[...customTasks,t];
+    setCustomTasks(upd);LS.set('hff:tasks:custom',upd);
+    setShowAddTask(false);setEditingTask(null);
+    setDraftTask({title:'',cat:'tunnel',pri:'normal',week:1,assign:'Any',notes:'',rec:false,photos:[]});
+  }
+  function deleteCustomTask(id){if(!confirm('Delete this task?'))return;const upd=customTasks.filter(x=>x.id!==id);setCustomTasks(upd);LS.set('hff:tasks:custom',upd);}
+
+  const allTasks=[...TASKS_DATA,...customTasks];
 
   function toggleWeek(w){setOpenWeeks(prev=>{const n=new Set(prev);n.has(w)?n.delete(w):n.add(w);return n;});}
   function expandAll(){setOpenWeeks(new Set(TASK_WEEKS.map(w=>w.week)));}
@@ -2710,15 +2725,19 @@ function TaskBrain(){
       <div style=${{fontSize:11,color:'#6a9a78',fontFamily:'monospace'}}>Spring 2026 · 11 weeks · ${TASKS_DATA.length} tasks</div>
       <!-- View toggle -->
       <div style=${{display:'flex',gap:6,marginTop:10}}>
-        ${['season','stats'].map(v=>html`
+        ${[['season','📅 Season'],['weekly','📆 Week'],['monthly','🗓 Month'],['stats','📊 Stats']].map(([v,lbl])=>html`
         <button key=${v} onClick=${()=>setTaskView(v)}
           style=${{padding:'5px 12px',border:'1.5px solid '+(taskView===v?'#8ab898':'rgba(255,255,255,.25)'),
             borderRadius:6,background:taskView===v?'rgba(255,255,255,.15)':'transparent',
             color:'#fff',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
-          ${v==='season'?'📅 Season':'📊 Stats'}
+          ${lbl}
         </button>`)}
         <button onClick=${expandAll} style=${{padding:'5px 10px',border:'1px solid rgba(255,255,255,.2)',borderRadius:6,background:'transparent',color:'rgba(255,255,255,.6)',fontSize:11,cursor:'pointer',fontFamily:'inherit',marginLeft:'auto'}}>Expand all</button>
         <button onClick=${collapseAll} style=${{padding:'5px 10px',border:'1px solid rgba(255,255,255,.2)',borderRadius:6,background:'transparent',color:'rgba(255,255,255,.6)',fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>Collapse</button>
+        <button onClick=${()=>{setDraftTask({title:'',cat:'tunnel',pri:'normal',week:1,assign:'Any',notes:'',rec:false,photos:[]});setShowAddTask(true);setEditingTask(null);}}
+          style=${{padding:'5px 12px',border:'none',borderRadius:6,background:'#4a9a5a',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',marginLeft:4}}>
+          + Add Task
+        </button>
       </div>
     </div>
 
@@ -2764,6 +2783,169 @@ function TaskBrain(){
     </div>`:null}
 
     <!-- Stats view -->
+    <!-- Weekly view -->
+    ${taskView==='weekly'?html`
+    <div>
+      ${TASK_WEEKS.map(wd=>{
+        const wTasks=allTasks.filter(t=>t.week===wd.week);
+        const high=wTasks.filter(t=>t.pri==='high').length;
+        return html`
+        <div key=${wd.week} class="card" style=${{marginBottom:8}}>
+          <div style=${{padding:'10px 14px',borderBottom:'1px solid #f0f0f0',display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'}}
+            onClick=${()=>toggleWeek(wd.week)}>
+            <div>
+              <span style=${{fontWeight:700,fontSize:13}}>${wd.label}</span>
+              <span style=${{fontSize:11,color:'#aaa',marginLeft:8}}>${wd.month}</span>
+            </div>
+            <div style=${{display:'flex',gap:6}}>
+              ${high>0?html`<span style=${{background:'#fce8e8',color:'#b02020',borderRadius:5,padding:'2px 7px',fontSize:10,fontWeight:700}}>● ${high} priority</span>`:null}
+              <span style=${{fontSize:11,color:'#888'}}>${wTasks.length} tasks</span>
+            </div>
+          </div>
+          ${openWeeks.has(wd.week)?html`
+          <div style=${{padding:'8px 12px'}}>
+            ${wTasks.map(t=>{
+              const cat=TASK_CATS[t.cat]||{label:t.cat,color:'#888',bg:'#f5f5f5',icon:'📌'};
+              return html`<div key=${t.id} style=${{display:'flex',alignItems:'flex-start',gap:8,padding:'6px 0',borderBottom:'1px solid #f9f9f9'}}>
+                <div style=${{width:8,height:8,borderRadius:'50%',marginTop:5,flexShrink:0,
+                  background:t.pri==='high'?'#d44':'#ccc'}}/>
+                <span style=${{fontSize:10,padding:'1px 5px',borderRadius:3,background:cat.bg,color:cat.color,flexShrink:0,marginTop:2}}>${cat.icon}</span>
+                <div style=${{flex:1,fontSize:12}}>${t.title}
+                  ${t.assign&&t.assign!=='Any'?html`<span style=${{fontSize:10,color:'#888',marginLeft:4}}>(${t.assign})</span>`:null}
+                  ${t.notes?html`<div style=${{fontSize:11,color:'#aaa',marginTop:2,whiteSpace:'pre-wrap'}}>${t.notes.slice(0,100)}${t.notes.length>100?'…':''}</div>`:null}
+                </div>
+                ${t.source==='custom'?html`
+                <button onClick=${()=>deleteCustomTask(t.id)} style=${{padding:'2px 6px',border:'1px solid #fdd',borderRadius:4,background:'transparent',fontSize:10,color:'#e88',cursor:'pointer',fontFamily:'inherit'}}>×</button>`:null}
+              </div>`;
+            })}
+          </div>`:null}
+        </div>`;
+      })}
+    </div>`:null}
+
+    <!-- Monthly view -->
+    ${taskView==='monthly'?html`
+    <div>
+      ${['March','April','Apr/May','May','May/Jun','June'].map(month=>{
+        const monthTasks=allTasks.filter(t=>TASK_WEEKS[t.week-1]?.month===month||(month==='Apr/May'&&TASK_WEEKS[t.week-1]?.month==='Apr/May'));
+        const uniq=[...new Set(allTasks.filter(t=>TASK_WEEKS[t.week-1]?.month===month).map(t=>t.id))];
+        const mTasks=allTasks.filter(t=>TASK_WEEKS[t.week-1]?.month===month);
+        if(!mTasks.length)return null;
+        const mc=TASK_MONTH_COLORS[month]||'#555';
+        return html`
+        <div key=${month} class="card" style=${{marginBottom:8}}>
+          <div style=${{padding:'10px 14px',borderBottom:'1px solid #f0f0f0',display:'flex',alignItems:'center',gap:10}}>
+            <div style=${{width:4,height:24,background:mc,borderRadius:2,flexShrink:0}}/>
+            <span style=${{fontWeight:700,fontSize:14,color:mc}}>${month}</span>
+            <span style=${{fontSize:12,color:'#aaa',marginLeft:'auto'}}>${mTasks.length} tasks · ${mTasks.filter(t=>t.pri==='high').length} priority</span>
+          </div>
+          <div style=${{padding:'8px 14px'}}>
+            ${mTasks.filter(t=>t.pri==='high').slice(0,8).map(t=>html`
+            <div key=${t.id} style=${{display:'flex',gap:6,alignItems:'center',padding:'4px 0',borderBottom:'1px solid #f9f9f9',fontSize:12}}>
+              <span style=${{color:'#d44',fontSize:9}}>●</span>
+              <span>${t.title}</span>
+              ${t.assign&&t.assign!=='Any'?html`<span style=${{fontSize:10,color:'#aaa',marginLeft:'auto'}}>${t.assign}</span>`:null}
+            </div>`)}
+            ${mTasks.filter(t=>t.pri!=='high').slice(0,5).map(t=>html`
+            <div key=${t.id} style=${{display:'flex',gap:6,alignItems:'center',padding:'3px 0',fontSize:11,color:'#888'}}>
+              <span style=${{color:'#ddd',fontSize:9}}>●</span>
+              <span>${t.title}</span>
+            </div>`)}
+            ${mTasks.length>13?html`<p style=${{fontSize:11,color:'#bbb',margin:'5px 0 0'}}>+${mTasks.length-13} more tasks</p>`:null}
+          </div>
+        </div>`;
+      })}
+    </div>`:null}
+
+    <!-- Add/Edit Task form overlay -->
+    ${showAddTask?html`
+    <div style=${{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,.6)',zIndex:950,overflowY:'auto',padding:12}}>
+      <div style=${{background:'#fff',borderRadius:12,maxWidth:520,margin:'0 auto',overflow:'hidden'}}>
+        <div style=${{background:'#1b2e20',padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style=${{color:'#fff',fontWeight:700,fontSize:15}}>${editingTask?'Edit Task':'+ New Task'}</span>
+          <button onClick=${()=>{setShowAddTask(false);setEditingTask(null);}} style=${{background:'rgba(255,255,255,.2)',border:'none',color:'#fff',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>✕</button>
+        </div>
+        <div style=${{padding:'14px 16px'}}>
+          <div style=${{marginBottom:10}}>
+            <label class="fl" style=${{fontSize:11}}>Task Title</label>
+            <input class="ti" type="text" value=${draftTask.title} onInput=${e=>setDraftTask(d=>({...d,title:e.target.value}))} placeholder="e.g. Set up drip tape in tunnels"/>
+          </div>
+          <div style=${{display:'flex',gap:8,marginBottom:10}}>
+            <div style=${{flex:1}}>
+              <label class="fl" style=${{fontSize:11}}>Category</label>
+              <select style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}
+                value=${draftTask.cat} onChange=${e=>setDraftTask(d=>({...d,cat:e.target.value}))}>
+                ${Object.entries(TASK_CATS).map(([k,v])=>html`<option key=${k} value=${k}>${v.icon} ${v.label}</option>`)}
+              </select>
+            </div>
+            <div style=${{flex:1}}>
+              <label class="fl" style=${{fontSize:11}}>Priority</label>
+              <select style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}
+                value=${draftTask.pri} onChange=${e=>setDraftTask(d=>({...d,pri:e.target.value}))}>
+                <option value="high">🔴 High</option>
+                <option value="normal">🟡 Normal</option>
+                <option value="low">⚪ Low</option>
+              </select>
+            </div>
+          </div>
+          <div style=${{display:'flex',gap:8,marginBottom:10}}>
+            <div style=${{flex:1}}>
+              <label class="fl" style=${{fontSize:11}}>Week</label>
+              <select style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}
+                value=${draftTask.week} onChange=${e=>setDraftTask(d=>({...d,week:parseInt(e.target.value)}))}>
+                ${TASK_WEEKS.map(w=>html`<option key=${w.week} value=${w.week}>Wk ${w.week} · ${w.label}</option>`)}
+              </select>
+            </div>
+            <div style=${{flex:1}}>
+              <label class="fl" style=${{fontSize:11}}>Assign to</label>
+              <select style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}
+                value=${draftTask.assign} onChange=${e=>setDraftTask(d=>({...d,assign:e.target.value}))}>
+                ${TASK_STAFF.map(s=>html`<option key=${s} value=${s}>${s}</option>`)}
+              </select>
+            </div>
+          </div>
+          <div style=${{marginBottom:10}}>
+            <label class="fl" style=${{fontSize:11}}>Notes / SOP</label>
+            <textarea value=${draftTask.notes}
+              onInput=${e=>setDraftTask(d=>({...d,notes:e.target.value}))}
+              placeholder="Detailed instructions, safety notes, lessons learned…"
+              style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',height:90,resize:'vertical',boxSizing:'border-box'}}/>
+          </div>
+          <div style=${{marginBottom:10}}>
+            <label class="fl" style=${{fontSize:11}}>📷 Photos / Attachments</label>
+            <input type="file" accept="image/*" multiple capture="environment"
+              onChange=${async e=>{
+                const files=[...e.target.files];
+                const b64s=await Promise.all(files.map(f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res({name:f.name,data:r.result});r.onerror=rej;r.readAsDataURL(f);})));
+                setDraftTask(d=>({...d,photos:[...(d.photos||[]),...b64s]}));
+              }}
+              style=${{fontSize:12,marginTop:4}}/>
+            ${(draftTask.photos||[]).length>0?html`
+            <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+              ${(draftTask.photos||[]).map((p,i)=>html`
+              <div key=${i} style=${{position:'relative'}}>
+                <img src=${p.data} style=${{width:64,height:64,objectFit:'cover',borderRadius:6,border:'1px solid #ddd'}}/>
+                <button onClick=${()=>setDraftTask(d=>({...d,photos:d.photos.filter((_,j)=>j!==i)}))}
+                  style=${{position:'absolute',top:-4,right:-4,width:18,height:18,borderRadius:'50%',border:'none',background:'#e44',color:'#fff',fontSize:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0}}>×</button>
+              </div>`)}
+            </div>`:null}
+          </div>
+          <label style=${{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:14,fontSize:13}}>
+            <input type="checkbox" checked=${draftTask.rec} onChange=${e=>setDraftTask(d=>({...d,rec:e.target.checked}))}
+              style=${{width:16,height:16,cursor:'pointer'}}/>
+            Recurring annually
+          </label>
+          <button onClick=${saveCustomTask} disabled=${!draftTask.title.trim()}
+            style=${{width:'100%',padding:12,border:'none',borderRadius:9,
+              background:draftTask.title.trim()?'#1b2e20':'#e0e0e0',
+              color:draftTask.title.trim()?'#fff':'#aaa',fontWeight:700,fontSize:14,
+              cursor:draftTask.title.trim()?'pointer':'default',fontFamily:'inherit'}}>
+            ${editingTask?'Update Task':'Save Task'}
+          </button>
+        </div>
+      </div>
+    </div>`:null}
+
     ${taskView==='stats'?html`
     <div>
       <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
@@ -2806,6 +2988,33 @@ function TaskBrain(){
         </div>`)}
       </div>
     </div>`:null}
+  </div>`;
+}
+
+
+// ── IRRIGATION WRAPPER ─────────────────────────────────────────────────
+function IrrigationWrapper({crop,cropTabs,setCrop,view,setView,zones,entry,setEntry,
+  spEvents,setSpEvents,setSE,saveEntry,syncEntry,isSyncing,syncStatus,
+  entries,todayEntries,irrView,setIrrView,onTabSelect}){
+  return html`<div>
+    <!-- Sub-tabs: Today | History | Zones -->
+    <div style=${{display:'flex',gap:4,marginBottom:12,overflowX:'auto'}}>
+      ${[{id:'entry',lbl:'📅 Today'},{id:'history',lbl:'📈 History'},{id:'zones',lbl:'⚙️ Zones'}].map(t=>html`
+      <button key=${t.id} onClick=${()=>onTabSelect(t.id)}
+        style=${{flex:1,padding:'8px 10px',borderRadius:8,border:'1.5px solid '+(irrView===t.id?'#2e7d32':'#ddd'),
+          background:irrView===t.id?'#2e7d32':'transparent',color:irrView===t.id?'#fff':'#888',
+          fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+        ${t.lbl}
+      </button>`)}
+    </div>
+    <!-- Crop selector inside Irrigation -->
+    <div style=${{display:'flex',gap:6,marginBottom:10}}>
+      ${cropTabs.map(c=>html`
+      <button key=${c.id} class=${'ctab'+(crop===c.id?' ctab-a':'')} onClick=${()=>setCrop(c.id)}
+        style=${{flex:1}}>
+        ${c.lbl}
+      </button>`)}
+    </div>
   </div>`;
 }
 
@@ -4083,7 +4292,8 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 function App(){
   const[cropId,setCropId]=useState('str');
-  const[view,setView]=useState('entry');
+  const[view,setView]=useState('irrigation');
+  const[irrView,setIrrView]=useState('entry');
   const[date,setDate]=useState(todayStr);
   const[zones,setZones]=useState(()=>LS.get('hff:str:zones',STR_ZONES));
   const[entries,setEntries]=useState(()=>{const map={};LS.keys('hff:str:d:').forEach(k=>{const e=LS.get(k,null);if(e&&e.date)map[e.date]=e;});return map;});
@@ -4230,7 +4440,7 @@ function App(){
   const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
 
   const{bg,acc,act,actTxt}=crop;
-  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'Orders 📦'},{id:'settings',lbl:'Settings'}];
+  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'Orders 📦'}];
 
   const FlagBox=({level,items})=>items.length===0?null:html`
   <div class=${'flag-box '+level}>
@@ -4251,11 +4461,18 @@ function App(){
           <div class="hdr-title">Irrigation Monitor</div>
         </div>
         <div style=${{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
-          <div class="crop-tabs">
-            ${Object.values(CROPS).map(c=>html`
-            <button key=${c.id} class=${'ctab'+(cropId===c.id?' active':'')} style=${{borderColor:cropId===c.id?acc:'#444'}} onClick=${()=>setCropId(c.id)}>
-              ${c.emoji} ${c.label}
-            </button>`)}
+          <div style=${{display:'flex',gap:5,alignItems:'center'}}>
+            ${view!=='irrigation'?html`
+            <div class="crop-tabs">
+              ${Object.values(CROPS).map(c=>html`
+              <button key=${c.id} class=${'ctab'+(cropId===c.id?' active':'')} style=${{borderColor:cropId===c.id?acc:'#444'}} onClick=${()=>setCropId(c.id)}>
+                ${c.emoji} ${c.label}
+              </button>`)}
+            </div>`:null}
+            <button title="Settings" onClick=${()=>setView('settings')}
+              style=${{background:view==='settings'?acc:'transparent',border:'1.5px solid '+(view==='settings'?acc:'#555'),
+                borderRadius:7,color:'#fff',fontSize:13,width:30,height:28,cursor:'pointer',
+                display:'flex',alignItems:'center',justifyContent:'center'}}>⚙️</button>
           </div>
           ${sbOn()?html`<span class=${'sync-pill '+(syncSt==='syncing'?'sync-ing':syncSt==='ok'?'sync-ok':syncSt==='err'?'sync-err':'sync-idle')}>
             ${syncSt==='syncing'?'⟳':syncSt==='ok'?'☁ synced':syncSt==='err'?'⚠ sync error':'☁'}
@@ -4271,7 +4488,27 @@ function App(){
     </div>
 
     <div class="main">
-      ${view==='entry'?html`
+      ${view==='irrigation'?html`
+      <div>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <div class="crop-tabs">
+            ${Object.values(CROPS).map(c=>html`
+            <button key=${c.id} class=${'ctab'+(cropId===c.id?' active':'')} style=${{borderColor:cropId===c.id?acc:'#ccc',color:cropId===c.id?'#fff':'#666',background:cropId===c.id?acc:'transparent'}} onClick=${()=>setCropId(c.id)}>
+              ${c.emoji} ${c.label}
+            </button>`)}
+          </div>
+        </div>
+        <div style=${{display:'flex',gap:4,marginBottom:12}}>
+          ${[{id:'entry',lbl:'📅 Today'},{id:'history',lbl:'📈 History'},{id:'zones',lbl:'⚙️ Zones'}].map(t=>html`
+          <button key=${t.id} onClick=${()=>setIrrView(t.id)}
+            style=${{flex:1,padding:'8px',borderRadius:8,border:'1.5px solid '+(irrView===t.id?acc:'#ddd'),
+              background:irrView===t.id?acc:'transparent',color:irrView===t.id?'#fff':'#888',
+              fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+            ${t.lbl}
+          </button>`)}
+        </div>
+      </div>`:null}
+      ${view==='irrigation'&&irrView==='entry'?html`
       <div>
         <div class="drow">
           <input type="date" value=${date} onChange=${e=>{setDate(e.target.value);setSaved(false);setAiOut('');}}/>
@@ -4297,7 +4534,7 @@ function App(){
         
     </div>`:null}
 
-      ${view==='history'?html`
+      ${view==='irrigation'&&irrView==='history'?html`
       <div>
         <${TrendChart} entries=${entries} zones=${zones}/>
         <div class="exp-row">
@@ -4325,7 +4562,7 @@ function App(){
         
     </div>`:null}
 
-      ${view==='zones'?html`<${ZoneEditor} zones=${zones} onSave=${saveZones}/>`:null}
+      ${view==='irrigation'&&irrView==='zones'?html`<${ZoneEditor} zones=${zones} onSave=${saveZones}/>`:null}
 
       ${view==='fert'?html`<${FertBrain}/>`:null}
       ${view==='orders'?html`<${OrderBrain}/>`:null}
