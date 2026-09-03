@@ -2725,7 +2725,7 @@ function TaskBrain(){
       <div style=${{fontSize:11,color:'#6a9a78',fontFamily:'monospace'}}>Spring 2026 · 11 weeks · ${TASKS_DATA.length} tasks</div>
       <!-- View toggle -->
       <div style=${{display:'flex',gap:6,marginTop:10}}>
-        ${[['season','📅 Season'],['weekly','📆 Week'],['monthly','🗓 Month'],['stats','📊 Stats']].map(([v,lbl])=>html`
+        ${[['season','📅 Season'],['weekly','📆 Week'],['monthly','🗓 Month'],['stats','📊 Stats'],['resources','📎 Resources']].map(([v,lbl])=>html`
         <button key=${v} onClick=${()=>setTaskView(v)}
           style=${{padding:'5px 12px',border:'1.5px solid '+(taskView===v?'#8ab898':'rgba(255,255,255,.25)'),
             borderRadius:6,background:taskView===v?'rgba(255,255,255,.15)':'transparent',
@@ -2946,6 +2946,7 @@ function TaskBrain(){
       </div>
     </div>`:null}
 
+    ${taskView==='resources'?html`<${ResourceLibrary}/>`:null}
     ${taskView==='stats'?html`
     <div>
       <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
@@ -3015,6 +3016,250 @@ function IrrigationWrapper({crop,cropTabs,setCrop,view,setView,zones,entry,setEn
         ${c.lbl}
       </button>`)}
     </div>
+  </div>`;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// RESOURCE LIBRARY — Documents, Spreadsheets, SOPs
+// ════════════════════════════════════════════════════════════════════════
+
+const RESOURCE_CROPS=['All','Strawberry','Watermelon','Pumpkin','Sweet Corn','Raspberry','Blackberry','Market Garden'];
+const RESOURCE_TYPES=['Planting Plan','Spray Record','Fertility','SOP','Compliance','Map/Layout','Other'];
+
+async function sbResourcePush(res){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  if(!u||!k)return{ok:false};
+  // Only push metadata + link, not base64 blobs (too large for Supabase row)
+  const {files,...meta}=res;
+  const row={id:res.id,team_id:t,entry_data:{...meta,_type:'resource'},updated_at:new Date().toISOString()};
+  try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok};}
+  catch(e){return{ok:false};}
+}
+async function sbResourcePull(){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  if(!u||!k)return null;
+  try{const r=await sbReq('GET','harvest_logs?team_id=eq.'+encodeURIComponent(t)+'&select=entry_data&order=updated_at.desc&limit=200',null,u,k);
+    if(!r.ok)return null;const rows=await r.json();
+    return rows.filter(r=>r.entry_data?._type==='resource').map(r=>r.entry_data);}
+  catch(e){return null;}
+}
+
+function ResourceLibrary(){
+  const[resources,setResources]=useState(()=>LS.get('hff:resources',[]));
+  const[cropFilter,setCropFilter]=useState('All');
+  const[showAdd,setShowAdd]=useState(false);
+  const[editId,setEditId]=useState(null);
+  const[syncSt,setSyncSt]=useState('idle');
+  const[draft,setDraft]=useState({
+    title:'',description:'',crops:['All'],type:'Planting Plan',
+    link:'',files:[],visibility:'all',tasks:[]
+  });
+
+  function startAdd(){
+    setDraft({title:'',description:'',crops:['All'],type:'Planting Plan',link:'',files:[],visibility:'all',tasks:[]});
+    setEditId(null);setShowAdd(true);
+  }
+  function startEdit(r){
+    setDraft({...r,files:r.files||[]});setEditId(r.id);setShowAdd(true);
+  }
+  function deleteResource(id){
+    if(!confirm('Remove this resource?'))return;
+    const upd=resources.filter(r=>r.id!==id);setResources(upd);LS.set('hff:resources',upd);
+  }
+
+  async function saveResource(){
+    if(!draft.title.trim())return;
+    const id=editId||('res_'+Date.now());
+    const res={...draft,id,addedAt:editId?undefined:new Date().toISOString().slice(0,10)};
+    const upd=editId?resources.map(r=>r.id===editId?res:r):[res,...resources];
+    setResources(upd);LS.set('hff:resources',upd);
+    setShowAdd(false);setEditId(null);
+    setSyncSt('syncing');const r=await sbResourcePush(res);setSyncSt(r.ok?'ok':'local');
+    setTimeout(()=>setSyncSt('idle'),3000);
+  }
+
+  async function syncNow(){
+    setSyncSt('syncing');
+    const remote=await sbResourcePull();
+    if(remote){
+      const map={};resources.forEach(r=>{map[r.id]=r;});
+      remote.forEach(r=>{if(!map[r.id])map[r.id]={...r,files:[]};});
+      const merged=Object.values(map).sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
+      setResources(merged);LS.set('hff:resources',merged);setSyncSt('ok');
+    }else setSyncSt('local');
+    setTimeout(()=>setSyncSt('idle'),3000);
+  }
+
+  function toggleCrop(c){
+    setDraft(d=>{
+      const crops=d.crops.includes(c)?d.crops.filter(x=>x!==c):[...d.crops,c];
+      return{...d,crops:crops.length?crops:['All']};
+    });
+  }
+
+  const filtered=cropFilter==='All'?resources:resources.filter(r=>(r.crops||[]).includes(cropFilter)||(r.crops||[]).includes('All'));
+
+  // Add/Edit form overlay
+  if(showAdd)return html`<div style=${{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,.65)',zIndex:960,overflowY:'auto',padding:12}}>
+    <div style=${{background:'#fff',borderRadius:12,maxWidth:540,margin:'0 auto',overflow:'hidden'}}>
+      <div style=${{background:'#2c3e50',padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style=${{color:'#fff',fontWeight:700,fontSize:15}}>${editId?'Edit Resource':'📎 Add Resource'}</span>
+        <button onClick=${()=>{setShowAdd(false);setEditId(null);}} style=${{background:'rgba(255,255,255,.2)',border:'none',color:'#fff',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>✕</button>
+      </div>
+      <div style=${{padding:'14px 16px'}}>
+        <div style=${{marginBottom:10}}>
+          <label class="fl" style=${{fontSize:11}}>Title</label>
+          <input class="ti" type="text" value=${draft.title} onInput=${e=>setDraft(d=>({...d,title:e.target.value}))} placeholder="e.g. Sweet Corn Planting Plan 2026"/>
+        </div>
+        <div style=${{marginBottom:10}}>
+          <label class="fl" style=${{fontSize:11}}>Description</label>
+          <textarea value=${draft.description} onInput=${e=>setDraft(d=>({...d,description:e.target.value}))}
+            placeholder="What is this? Who should use it?"
+            style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',height:60,resize:'vertical',boxSizing:'border-box'}}/>
+        </div>
+        <div style=${{display:'flex',gap:8,marginBottom:10}}>
+          <div style=${{flex:1}}>
+            <label class="fl" style=${{fontSize:11}}>Document Type</label>
+            <select style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}
+              value=${draft.type} onChange=${e=>setDraft(d=>({...d,type:e.target.value}))}>
+              ${RESOURCE_TYPES.map(t=>html`<option key=${t} value=${t}>${t}</option>`)}
+            </select>
+          </div>
+          <div style=${{flex:1}}>
+            <label class="fl" style=${{fontSize:11}}>Visible to</label>
+            <select style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}
+              value=${draft.visibility} onChange=${e=>setDraft(d=>({...d,visibility:e.target.value}))}>
+              <option value="all">All Staff</option>
+              ${TASK_STAFF.filter(s=>s!=='Any').map(s=>html`<option key=${s} value=${s}>${s} only</option>`)}
+            </select>
+          </div>
+        </div>
+        <div style=${{marginBottom:10}}>
+          <label class="fl" style=${{fontSize:11}}>Tag Crops</label>
+          <div style=${{display:'flex',flexWrap:'wrap',gap:5,marginTop:4}}>
+            ${RESOURCE_CROPS.map(c=>html`
+            <button key=${c} type="button" onClick=${()=>toggleCrop(c)}
+              style=${{padding:'4px 10px',borderRadius:6,border:'1.5px solid '+(draft.crops.includes(c)?'#1a3a2a':'#ddd'),
+                background:draft.crops.includes(c)?'#1a3a2a':'#fff',
+                color:draft.crops.includes(c)?'#fff':'#888',
+                fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+              ${c}
+            </button>`)}
+          </div>
+        </div>
+        <div style=${{marginBottom:10}}>
+          <label class="fl" style=${{fontSize:11}}>🔗 Link (Google Sheets, Drive, OneDrive…)</label>
+          <input class="ti" type="url" value=${draft.link} onInput=${e=>setDraft(d=>({...d,link:e.target.value}))} placeholder="https://docs.google.com/spreadsheets/…"/>
+          <p style=${{fontSize:10,color:'#aaa',margin:'3px 0 0'}}>Tip: Share Google Sheets with "Anyone with the link" → employees can view/edit on their phones</p>
+        </div>
+        <div style=${{marginBottom:12}}>
+          <label class="fl" style=${{fontSize:11}}>📷 Attach Images / PDFs</label>
+          <input type="file" accept="image/*,.pdf" multiple
+            onChange=${async e=>{
+              const files=[...e.target.files];
+              const b64s=await Promise.all(files.map(f=>new Promise((res,rej)=>{
+                const r=new FileReader();r.onload=()=>res({name:f.name,size:f.size,data:r.result,type:f.type});r.onerror=rej;r.readAsDataURL(f);
+              })));
+              setDraft(d=>({...d,files:[...(d.files||[]),...b64s]}));
+            }}
+            style=${{fontSize:12,marginTop:4}}/>
+          ${(draft.files||[]).length>0?html`
+          <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+            ${(draft.files||[]).map((f,i)=>html`
+            <div key=${i} style=${{position:'relative',background:'#f5f5f0',borderRadius:6,padding:'4px 8px',border:'1px solid #ddd',display:'flex',alignItems:'center',gap:5}}>
+              <span style=${{fontSize:11}}>${f.type?.startsWith('image/')?'🖼':'📄'} ${f.name.slice(0,18)}</span>
+              <button onClick=${()=>setDraft(d=>({...d,files:d.files.filter((_,j)=>j!==i)}))}
+                style=${{border:'none',background:'transparent',color:'#e44',cursor:'pointer',fontSize:12,padding:0}}>×</button>
+            </div>`)}
+          </div>`:null}
+        </div>
+        <button onClick=${saveResource} disabled=${!draft.title.trim()}
+          style=${{width:'100%',padding:12,border:'none',borderRadius:9,
+            background:draft.title.trim()?'#2c3e50':'#e0e0e0',
+            color:draft.title.trim()?'#fff':'#aaa',fontWeight:700,fontSize:14,
+            cursor:draft.title.trim()?'pointer':'default',fontFamily:'inherit'}}>
+          ${editId?'Update Resource':'Save Resource'}
+        </button>
+      </div>
+    </div>
+  </div>`;
+
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+      <div>
+        <span style=${{fontWeight:700,fontSize:14}}>📎 Resources</span>
+        <span style=${{fontSize:11,color:'#aaa',marginLeft:8}}>${resources.length} documents</span>
+      </div>
+      <div style=${{display:'flex',gap:6}}>
+        <span style=${{fontSize:11,color:syncSt==='ok'?'#2e7d32':syncSt==='syncing'?'#aaa':'#ddd'}}>${syncSt==='ok'?'☁ synced':syncSt==='syncing'?'⟳':''}  </span>
+        <button class="btn btn-sm btn-out" onClick=${syncNow} disabled=${syncSt==='syncing'}>↓ Sync</button>
+        <button onClick=${startAdd}
+          style=${{padding:'7px 14px',border:'none',borderRadius:8,background:'#2c3e50',color:'#fff',fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+          + Add
+        </button>
+      </div>
+    </div>
+
+    <!-- Crop filter pills -->
+    <div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:12}}>
+      ${RESOURCE_CROPS.map(c=>html`
+      <button key=${c} onClick=${()=>setCropFilter(c)}
+        style=${{padding:'4px 10px',borderRadius:6,border:'1.5px solid '+(cropFilter===c?'#2c3e50':'#ddd'),
+          background:cropFilter===c?'#2c3e50':'transparent',color:cropFilter===c?'#fff':'#888',
+          fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+        ${c}${c!=='All'?html`<span style=${{color:'#aaa',marginLeft:3}}>(${resources.filter(r=>(r.crops||[]).includes(c)).length})</span>`:''}
+      </button>`)}
+    </div>
+
+    ${filtered.length===0?html`
+    <div style=${{textAlign:'center',color:'#bbb',padding:'40px 20px'}}>
+      <div style=${{fontSize:32,marginBottom:8}}>📎</div>
+      <div style=${{fontSize:14,fontWeight:600,color:'#999',marginBottom:4}}>No resources yet</div>
+      <div style=${{fontSize:12}}>Add Google Sheets links, SOPs, planting maps, and photos</div>
+    </div>`:null}
+
+    ${filtered.map(res=>html`
+    <div key=${res.id} class="card" style=${{marginBottom:8,overflow:'hidden'}}>
+      <div style=${{padding:'12px 14px'}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:5}}>
+          <div style=${{flex:1}}>
+            <div style=${{fontWeight:700,fontSize:14,marginBottom:3}}>
+              ${res.type==='Planting Plan'?'📅':res.type==='Spray Record'?'🌿':res.type==='SOP'?'📋':res.type==='Map/Layout'?'🗺':'📎'}
+              ${res.title}
+            </div>
+            <div style=${{display:'flex',gap:4,flexWrap:'wrap',marginBottom:4}}>
+              ${(res.crops||[]).filter(c=>c!=='All').map(c=>html`
+              <span key=${c} style=${{background:'#e8f4ec',color:'#2a6030',borderRadius:4,padding:'1px 6px',fontSize:10,fontWeight:600}}>${c}</span>`)}
+              <span style=${{background:'#f0ede6',color:'#6b5b2e',borderRadius:4,padding:'1px 6px',fontSize:10}}>${res.type}</span>
+              ${res.visibility!=='all'?html`<span style=${{background:'#ddeef8',color:'#1e5c8a',borderRadius:4,padding:'1px 6px',fontSize:10}}>👤 ${res.visibility}</span>`:null}
+            </div>
+            ${res.description?html`<div style=${{fontSize:12,color:'#666',lineHeight:1.4}}>${res.description}</div>`:null}
+          </div>
+        </div>
+        <!-- Files preview -->
+        ${(res.files||[]).length>0?html`
+        <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+          ${(res.files||[]).map((f,i)=>html`
+          <div key=${i} style=${{cursor:'pointer'}} onClick=${()=>{const a=document.createElement('a');a.href=f.data;a.download=f.name;a.click();}}>
+            ${f.type?.startsWith('image/')?
+              html`<img src=${f.data} style=${{width:60,height:60,objectFit:'cover',borderRadius:6,border:'1px solid #ddd'}} title=${f.name}/>`:
+              html`<div style=${{width:60,height:60,background:'#f5f5f0',borderRadius:6,border:'1px solid #ddd',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontSize:20}}>📄<div style=${{fontSize:8,color:'#888',marginTop:2}}>${f.name.slice(-6)}</div></div>`}
+          </div>`)}
+        </div>`:null}
+        <!-- Actions -->
+        <div style=${{display:'flex',gap:6,marginTop:10,alignItems:'center'}}>
+          ${res.link?html`
+          <a href=${res.link} target="_blank" rel="noopener noreferrer"
+            style=${{flex:1,padding:'8px 0',border:'none',borderRadius:8,background:'#1a7a3a',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',textAlign:'center',textDecoration:'none',display:'block'}}>
+            🔗 Open Document
+          </a>`:null}
+          <button onClick=${()=>startEdit(res)} class="btn btn-sm btn-out">Edit</button>
+          <button onClick=${()=>deleteResource(res.id)} class="btn btn-sm btn-danger">Delete</button>
+        </div>
+        ${res.addedAt?html`<div style=${{fontSize:10,color:'#ccc',marginTop:6}}>Added ${res.addedAt}</div>`:null}
+      </div>
+    </div>`)}
   </div>`;
 }
 
