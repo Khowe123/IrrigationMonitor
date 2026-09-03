@@ -1983,7 +1983,7 @@ function OrderBrain(){
 
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(pickHorizon);
-  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'📦 Orders'}];;
+  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'📦 Orders'},{id:'tasks',lbl:'📋 Tasks'}];;
 
   // Add/Edit form
   if(adding) return html`<div>
@@ -2074,7 +2074,7 @@ function OrderBrain(){
     <!-- Sub-tabs -->
     <div style=${{display:'flex',gap:4,marginBottom:12,overflowX:'auto'}}>
       ${TABS.map(t=>html`
-      <button key=${t.id} onClick=${()=>setView(t.id)}
+      <button key=${t.id} onClick=${()=>{setView(t.id);LS.set('hff:view',t.id);}}
         style=${{flex:1,minWidth:80,padding:'7px 4px',borderRadius:8,border:'1.5px solid '+(view===t.id?oc:'#ddd'),
           background:view===t.id?oc:'transparent',color:view===t.id?'#fff':'#888',
           fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
@@ -4292,8 +4292,19 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 function App(){
   const[cropId,setCropId]=useState('str');
-  const[view,setView]=useState('irrigation');
-  const[irrView,setIrrView]=useState('entry');
+  // Migrate old view keys to new top-level structure
+  const[view,setView]=useState(()=>{
+    const v=LS.get('hff:view','irrigation');
+    if(['entry','history','zones'].includes(v))return 'irrigation';
+    if(['settings'].includes(v))return 'irrigation';
+    if(!['irrigation','spray','fert','orders','tasks'].includes(v))return 'irrigation';
+    return v;
+  });
+  const[irrView,setIrrView]=useState(()=>{
+    const v=LS.get('hff:view','entry');
+    if(['entry','history','zones'].includes(v))return v;
+    return 'entry';
+  });
   const[date,setDate]=useState(todayStr);
   const[zones,setZones]=useState(()=>LS.get('hff:str:zones',STR_ZONES));
   const[entries,setEntries]=useState(()=>{const map={};LS.keys('hff:str:d:').forEach(k=>{const e=LS.get(k,null);if(e&&e.date)map[e.date]=e;});return map;});
@@ -4317,6 +4328,13 @@ function App(){
   const isStraw=cropId==='str';
 
   // Reload state when crop changes
+  // One-time migration: redirect old view values
+  useEffect(()=>{
+    if(['entry','history','zones','settings'].includes(view)){
+      setIrrView(view==='settings'?'entry':view);
+      setView('irrigation');
+    }
+  },[]);
   useEffect(()=>{
     setView('entry');setDate(todayStr());setAiOut('');setSaved(false);
     const z=LS.get('hff:'+cropId+':zones',crop.zones);setZones(z);
@@ -4500,7 +4518,7 @@ function App(){
         </div>
         <div style=${{display:'flex',gap:4,marginBottom:12}}>
           ${[{id:'entry',lbl:'📅 Today'},{id:'history',lbl:'📈 History'},{id:'zones',lbl:'⚙️ Zones'}].map(t=>html`
-          <button key=${t.id} onClick=${()=>setIrrView(t.id)}
+          <button key=${t.id} onClick=${()=>{setIrrView(t.id);LS.set('hff:irr_view',t.id);}}
             style=${{flex:1,padding:'8px',borderRadius:8,border:'1.5px solid '+(irrView===t.id?acc:'#ddd'),
               background:irrView===t.id?acc:'transparent',color:irrView===t.id?'#fff':'#888',
               fontWeight:600,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
