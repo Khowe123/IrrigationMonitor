@@ -1836,7 +1836,7 @@ function exportCustomerHistory(customer, orders, skus, crop){
 
 function OrderBrain(){
   const[crop,setCrop]=useState(()=>LS.get('hff:ord:crop','pumpkin'));
-  const[view,setView]=useState('orders');
+  const[view,setView]=useState(()=>{const v=LS.get('hff:ord:view','orders');return ['orders','picklist','inventory','customers'].includes(v)?v:'orders';});
   const[orders,setOrders]=useState(()=>LS.get('hff:ord:list',[]));
   const[inventory,setInventory]=useState(()=>LS.get('hff:ord:inv',{}));
   const[customers,setCustomers]=useState(()=>LS.get('hff:ord:customers',ORDER_CUSTOMERS_DEFAULT));
@@ -1983,7 +1983,7 @@ function OrderBrain(){
 
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(pickHorizon);
-  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'📦 Orders'},{id:'tasks',lbl:'📋 Tasks'}];;
+  const TABS=[{id:'orders',lbl:'📦 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'}];
 
   // Add/Edit form
   if(adding) return html`<div>
@@ -2074,7 +2074,7 @@ function OrderBrain(){
     <!-- Sub-tabs -->
     <div style=${{display:'flex',gap:4,marginBottom:12,overflowX:'auto'}}>
       ${TABS.map(t=>html`
-      <button key=${t.id} onClick=${()=>{setView(t.id);LS.set('hff:view',t.id);}}
+      <button key=${t.id} onClick=${()=>{setView(t.id);LS.set('hff:ord:view',t.id);}}
         style=${{flex:1,minWidth:80,padding:'7px 4px',borderRadius:8,border:'1.5px solid '+(view===t.id?oc:'#ddd'),
           background:view===t.id?oc:'transparent',color:view===t.id?'#fff':'#888',
           fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
@@ -2481,7 +2481,6 @@ const TASK_MONTH_COLORS={'March':'#4a7c59','April':'#3d6e9f','Apr/May':'#5b7a3d'
 const TASK_STAFF=['Any','Julio','Jose','Bob','Chicken','Kumar','Dycks','Hildebrandts','Roger','Abzal','Nero','Binod','Kevin','Glenn'];
 
 const TASKS_DATA=[
-[
   // ── WEEK 1 ──────────────────────────────────────────────────────────────
   {id:"s001",week:1,cat:"tunnel",   pri:"high",  rec:true,  assign:"Any",    title:"Finish raking straw off strawberries", notes:"Remove row cover first, rake, then replace. Do not leave berries exposed overnight."},
   {id:"s002",week:1,cat:"tunnel",   pri:"high",  rec:true,  assign:"Any",    title:"Erosion cloth down on new tunnel bays", notes:"Staple down following week (Apr 1–3)."},
@@ -2601,7 +2600,6 @@ const TASKS_DATA=[
   {id:"s096",week:11,cat:"equipment", pri:"normal",rec:true,  assign:"Any",  title:"Power wash big cooler before main harvest", notes:""},
   {id:"s097",week:11,cat:"planting",  pri:"normal",rec:true,  assign:"Any",  title:"Plant out lavender, milkweed, cosmos, foxglove, zinnia, marigold", notes:""},
   {id:"s098",week:11,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",  title:"Pull trusses to tray edge — Zone 4", notes:""},
-]
 ];
 
 function TaskCardHtm({task}){
@@ -2700,7 +2698,7 @@ function TaskBrain(){
   function collapseAll(){setOpenWeeks(new Set());}
 
   // Filter tasks
-  const filtered=TASKS_DATA.filter(t=>{
+  const filtered=allTasks.filter(t=>{
     if(catFilter&&t.cat!==catFilter)return false;
     if(assignFilter&&t.assign!==assignFilter)return false;
     if(search&&!t.title.toLowerCase().includes(search.toLowerCase())&&
@@ -2952,12 +2950,12 @@ function TaskBrain(){
       <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
         <div style=${{fontWeight:700,fontSize:13,marginBottom:10}}>Tasks by Category</div>
         ${Object.entries(TASK_CATS).map(([k,v])=>{
-          const n=TASKS_DATA.filter(t=>t.cat===k).length;
+          const n=allTasks.filter(t=>t.cat===k).length;
           return html`<div key=${k} style=${{display:'flex',alignItems:'center',gap:8,marginBottom:7}}>
             <span style=${{fontSize:13,minWidth:20}}>${v.icon}</span>
             <span style=${{flex:1,fontSize:12}}>${v.label}</span>
             <div style=${{flex:2,background:'#f0f0f0',borderRadius:4,height:8,overflow:'hidden'}}>
-              <div style=${{width:(n/TASKS_DATA.length*100)+'%',height:'100%',background:v.color,borderRadius:4}}></div>
+              <div style=${{width:(n/Math.max(allTasks.length,1)*100)+'%',height:'100%',background:v.color,borderRadius:4}}></div>
             </div>
             <span style=${{fontSize:11,color:'#888',minWidth:24,textAlign:'right'}}>${n}</span>
           </div>`;
@@ -2966,12 +2964,12 @@ function TaskBrain(){
       <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
         <div style=${{fontWeight:700,fontSize:13,marginBottom:10}}>Tasks by Staff</div>
         ${TASK_STAFF.map(s=>{
-          const n=TASKS_DATA.filter(t=>t.assign===s).length;
+          const n=allTasks.filter(t=>t.assign===s).length;
           if(!n)return null;
           return html`<div key=${s} style=${{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
             <span style=${{flex:1,fontSize:12,fontFamily:'monospace'}}>${s}</span>
             <div style=${{flex:3,background:'#f0f0f0',borderRadius:4,height:7,overflow:'hidden'}}>
-              <div style=${{width:(n/Math.max(...TASK_STAFF.map(x=>TASKS_DATA.filter(t=>t.assign===x).length))*100)+'%',height:'100%',background:'#1b2e20',borderRadius:4}}></div>
+              <div style=${{width:(n/Math.max(1,...TASK_STAFF.map(x=>allTasks.filter(t=>t.assign===x).length))*100)+'%',height:'100%',background:'#1b2e20',borderRadius:4}}></div>
             </div>
             <span style=${{fontSize:11,color:'#888',minWidth:20,textAlign:'right'}}>${n}</span>
           </div>`;
@@ -2979,7 +2977,7 @@ function TaskBrain(){
       </div>
       <div class="card" style=${{padding:'12px 14px'}}>
         <div style=${{fontWeight:700,fontSize:13,marginBottom:10}}>High Priority Tasks</div>
-        ${TASKS_DATA.filter(t=>t.pri==='high').map(t=>html`
+        ${allTasks.filter(t=>t.pri==='high').map(t=>html`
         <div key=${t.id} style=${{padding:'5px 0',borderBottom:'1px solid #f5f5f5',fontSize:12}}>
           <span style=${{color:TASK_CATS[t.cat]?.color||'#888',fontSize:10,marginRight:6}}>
             ${TASK_CATS[t.cat]?.icon}
@@ -3026,6 +3024,7 @@ function IrrigationWrapper({crop,cropTabs,setCrop,view,setView,zones,entry,setEn
 
 const RESOURCE_CROPS=['All','Strawberry','Watermelon','Pumpkin','Sweet Corn','Raspberry','Blackberry','Market Garden'];
 const RESOURCE_TYPES=['Planting Plan','Spray Record','Fertility','SOP','Compliance','Map/Layout','Other'];
+const FIELDMARGIN_NOTES_URL='https://notes.fieldmargin.com/farms/ecf14c91-78d2-4dee-89d1-809895bc9909/notes';
 
 async function sbResourcePush(res){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
@@ -3155,6 +3154,7 @@ function ResourceLibrary(){
         </div>
         <div style=${{marginBottom:12}}>
           <label class="fl" style=${{fontSize:11}}>📷 Attach Images / PDFs</label>
+          <p style=${{fontSize:10,color:'#b06a00',margin:'2px 0 5px'}}>Attached files are stored on this device only right now. For staff sharing, use the shared Link field until cloud file storage is enabled.</p>
           <input type="file" accept="image/*,.pdf" multiple
             onChange=${async e=>{
               const files=[...e.target.files];
@@ -3186,6 +3186,16 @@ function ResourceLibrary(){
   </div>`;
 
   return html`<div>
+    <div class="card" style=${{padding:'10px 12px',marginBottom:10,borderColor:'#cfe0d2',background:'#f7fbf7'}}>
+      <div style=${{display:'flex',alignItems:'center',gap:10,justifyContent:'space-between',flexWrap:'wrap'}}>
+        <div>
+          <div style=${{fontWeight:700,fontSize:13,color:'#244a2a'}}>🗺 Fieldmargin Farm Notes</div>
+          <div style=${{fontSize:11,color:'#788878',marginTop:2}}>Quick access to the existing farm notes. Staff still need Fieldmargin permission/login.</div>
+        </div>
+        <a href=${FIELDMARGIN_NOTES_URL} target="_blank" rel="noopener noreferrer"
+          style=${{padding:'7px 12px',borderRadius:8,background:'#2e6b3b',color:'#fff',fontWeight:700,fontSize:12,textDecoration:'none',whiteSpace:'nowrap'}}>Open Fieldmargin ↗</a>
+      </div>
+    </div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
       <div>
         <span style=${{fontWeight:700,fontSize:14}}>📎 Resources</span>
@@ -4541,13 +4551,14 @@ function App(){
   const[view,setView]=useState(()=>{
     const v=LS.get('hff:view','irrigation');
     if(['entry','history','zones'].includes(v))return 'irrigation';
-    if(['settings'].includes(v))return 'irrigation';
-    if(!['irrigation','spray','fert','orders','tasks'].includes(v))return 'irrigation';
+    if(!['irrigation','spray','fert','orders','tasks','settings'].includes(v))return 'irrigation';
     return v;
   });
   const[irrView,setIrrView]=useState(()=>{
-    const v=LS.get('hff:view','entry');
-    if(['entry','history','zones'].includes(v))return v;
+    const saved=LS.get('hff:irr_view',null);
+    if(['entry','history','zones'].includes(saved))return saved;
+    const old=LS.get('hff:view','entry');
+    if(['entry','history','zones'].includes(old))return old;
     return 'entry';
   });
   const[date,setDate]=useState(todayStr);
@@ -4575,13 +4586,16 @@ function App(){
   // Reload state when crop changes
   // One-time migration: redirect old view values
   useEffect(()=>{
-    if(['entry','history','zones','settings'].includes(view)){
-      setIrrView(view==='settings'?'entry':view);
+    const old=LS.get('hff:view','');
+    if(['entry','history','zones'].includes(old)){
+      setIrrView(old);
       setView('irrigation');
+      LS.set('hff:irr_view',old);
+      LS.set('hff:view','irrigation');
     }
   },[]);
   useEffect(()=>{
-    setView('entry');setDate(todayStr());setAiOut('');setSaved(false);
+    setIrrView('entry');LS.set('hff:irr_view','entry');setDate(todayStr());setAiOut('');setSaved(false);
     const z=LS.get('hff:'+cropId+':zones',crop.zones);setZones(z);
     const map={};LS.keys('hff:'+cropId+':d:').forEach(k=>{const e=LS.get(k,null);if(e&&e.date)map[e.date]=e;});setEntries(map);
     setStrat(LS.get('hff:'+cropId+':strat',crop.strat));
@@ -4646,9 +4660,8 @@ function App(){
   // Switch view and auto-pull on History/Today if sync is configured
   function switchView(v){
     setView(v);
-    if(sbOn()&&(v==='history'||v==='entry')){
-      syncNow();
-    }
+    LS.set('hff:view',v);
+    if(sbOn()&&v==='irrigation')syncNow();
   }
 
   // Poll Supabase every 5 minutes while the app is open
@@ -4703,7 +4716,7 @@ function App(){
   const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
 
   const{bg,acc,act,actTxt}=crop;
-  const TABS=[{id:'entry',lbl:'Today'},{id:'history',lbl:'History'},{id:'zones',lbl:'Zones'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'Orders 📦'}];
+  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'Orders 📦'},{id:'tasks',lbl:'Tasks 📋'}];
 
   const FlagBox=({level,items})=>items.length===0?null:html`
   <div class=${'flag-box '+level}>
@@ -4725,19 +4738,12 @@ function App(){
         </div>
         <div style=${{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
           <div style=${{display:'flex',gap:5,alignItems:'center'}}>
-            ${view!=='irrigation'?html`
-            <div class="crop-tabs">
-              ${Object.values(CROPS).map(c=>html`
-              <button key=${c.id} class=${'ctab'+(cropId===c.id?' active':'')} style=${{borderColor:cropId===c.id?acc:'#444'}} onClick=${()=>setCropId(c.id)}>
-                ${c.emoji} ${c.label}
-              </button>`)}
-            </div>`:null}
-            <button title="Settings" onClick=${()=>setView('settings')}
+            <button title="Settings" onClick=${()=>switchView('settings')}
               style=${{background:view==='settings'?acc:'transparent',border:'1.5px solid '+(view==='settings'?acc:'#555'),
                 borderRadius:7,color:'#fff',fontSize:13,width:30,height:28,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center'}}>⚙️</button>
           </div>
-          ${sbOn()?html`<span class=${'sync-pill '+(syncSt==='syncing'?'sync-ing':syncSt==='ok'?'sync-ok':syncSt==='err'?'sync-err':'sync-idle')}>
+          ${sbOn()&&view==='irrigation'?html`<span class=${'sync-pill '+(syncSt==='syncing'?'sync-ing':syncSt==='ok'?'sync-ok':syncSt==='err'?'sync-err':'sync-idle')}>
             ${syncSt==='syncing'?'⟳':syncSt==='ok'?'☁ synced':syncSt==='err'?'⚠ sync error':'☁'}
           </span>`:null}
         </div>
@@ -4812,7 +4818,7 @@ function App(){
         ${history.map(h=>{
           const lvl=histLvl(h);
           return html`
-          <button key=${h.date} class=${'hr-btn '+lvl} onClick=${()=>{setDate(h.date);setSaved(true);setAiOut('');setView('entry');}}>
+          <button key=${h.date} class=${'hr-btn '+lvl} onClick=${()=>{setDate(h.date);setSaved(true);setAiOut('');setIrrView('entry');LS.set('hff:irr_view','entry');}}>
             <div style=${{display:'flex',alignItems:'center',gap:8}}>
               <span class=${'dot'+(lvl==='danger'?' danger':lvl==='warn'?' warn':'')}></span>
               <span style=${{fontWeight:600,fontSize:14,color:'#222'}}>${fmtDate(h.date)}</span>
