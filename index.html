@@ -298,7 +298,7 @@ const STR_ZONES=[
   {id:'Z3S',label:'Zone 3 South', valve:'Valve 4',location:'12th Tunnel, 2nd row South',   variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering',drainDrippers:18},
   {id:'Z4N',label:'Zone 4 North', valve:'Valve 5',location:'18th Tunnel, 3rd row North',   variety:'Florida Beauty – 135cc',     hasPriva:false,stage:'to_fruit',   drainDrippers:17},
   {id:'Z4S',label:'Zone 4 South', valve:'Valve 6',location:'16th Tunnel, 3rd row South',   variety:'Florida Beauty – 135cc',     hasPriva:false,stage:'to_fruit',   drainDrippers:17},
-  {id:'Z5N',label:'Zone 5 North', valve:'Valve 8',location:'135cc late trays – 10% bloom',variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering',drainDrippers:null},
+  {id:'Z5N',label:'Zone 5 North', valve:'Valve 8',location:'135cc late trays – 10% bloom',variety:'Florida Beauty – 135cc late',hasPriva:false,stage:'to_flowering',drainDrippers:13},
   {id:'Z5S',label:'Zone 5 South', valve:'Valve 9',location:'22nd Tunnel, 5th row South',   variety:'Florida Beauty – Ambient',   hasPriva:false,stage:'first_crop', drainDrippers:15},
 ];
 const RAS_ZONES=[
@@ -2395,7 +2395,7 @@ function ZoneSummaryChart({zones,entry}){
   const DRAIN_LO=20,DRAIN_HI=30,DRAIN_CRIT=2.2,DRIP_EC_LO=1.2,DRIP_EC_HI=1.7,PH_LO=5.3,PH_HI=5.5;
   const cols=[
     {key:'drain',label:'Dr%',
-     val:(d)=>{const dr=parseFloat(d?.drip_ml)||parseFloat(d?.dripML)||0;const dn=parseFloat(d?.drain_ml)||parseFloat(d?.drainML)||0;return dr>0?Math.round(dn/dr*100):0;},
+     val:(d,z)=>{const dr=parseFloat(d?.drip_ml)||parseFloat(d?.dripML)||0;const dn=parseFloat(d?.drain_ml)||parseFloat(d?.drainML)||0;const dd=z?.drainDrippers||1;return(dr>0&&dd>0)?Math.round(dn/(dr*dd)*100):0;},
      color:(v)=>v===0?'#eeeeee':v<8||v>50?'#ffcdd2':v<DRAIN_LO||v>DRAIN_HI?'#fff8e1':'#e8f5e9'},
     {key:'drip_ec',label:'Drip EC',
      val:(d)=>parseFloat(d?.drip_ec)||0,
@@ -2426,7 +2426,7 @@ function ZoneSummaryChart({zones,entry}){
           return html`<tr key=${z.id}>
             <td style=${{padding:'3px 8px',fontWeight:600,fontSize:11,color:'#333',borderBottom:'1px solid #f9f9f9',whiteSpace:'nowrap'}}>${z.label||z.id}</td>
             ${cols.map(c=>{
-              const v=c.val(d);
+              const v=c.val(d,z);
               const bg=c.color(v);
               const isRed=bg==='#ffcdd2';
               return html`<td key=${c.key} style=${{padding:'3px 6px',textAlign:'center',background:bg,borderBottom:'1px solid #f9f9f9',borderRadius:3,fontSize:11,fontWeight:isRed?700:400,color:isRed?'#c62828':'#333'}}>
