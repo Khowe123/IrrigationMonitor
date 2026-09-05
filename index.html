@@ -3432,20 +3432,20 @@ async function uploadFarmFile(blob, storagePath, contentType='image/jpeg'){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
   if(!u||!k)return{ok:false,error:'Supabase not configured'};
   try{
-    const r=await fetch(u+'/storage/v1/object/farm-files/'+storagePath,{
+    const r=await fetch(u+'/storage/v1/object/Farm-files/'+storagePath,{
       method:'POST',
       headers:{'Authorization':'Bearer '+k,'Content-Type':contentType,'x-upsert':'true'},
       body:blob
     });
     if(!r.ok){const e=await r.text();return{ok:false,error:e};}
-    return{ok:true,path:storagePath,url:u+'/storage/v1/object/public/farm-files/'+storagePath};
+    return{ok:true,path:storagePath,url:u+'/storage/v1/object/public/Farm-files/'+storagePath};
   }catch(e){return{ok:false,error:e.message};}
 }
 
 // Get public URL for a stored file
 function farmFileUrl(storagePath){
   const u=LS.get('hff:sb_url','');
-  return u?u+'/storage/v1/object/public/farm-files/'+storagePath:null;
+  return u?u+'/storage/v1/object/public/Farm-files/'+storagePath:null;
 }
 
 // Full upload pipeline: resize → upload → return {url, thumbUrl, path}
