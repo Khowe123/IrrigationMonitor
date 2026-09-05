@@ -1983,7 +1983,7 @@ function OrderBrain(){
 
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(pickHorizon);
-  const TABS=[{id:'orders',lbl:'📦 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'}];
+  const TABS=[{id:'orders',lbl:'📦 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'},{id:'fields',lbl:'🗺 Fields'}];
 
   // Add/Edit form
   if(adding) return html`<div>
@@ -3603,6 +3603,479 @@ function FarmPhotoViewer({photos, onClose}){
 }
 
 
+
+// ════════════════════════════════════════════════════════════════════════
+// FIELD MAPPER — GPS field layout, section calc, variety assignment
+// ════════════════════════════════════════════════════════════════════════
+
+const FIELD_CROPS_CFG = {
+  sweetcorn: {
+    label:'Sweet Corn', icon:'🌽', color:'#e8a020',
+    rowsPerSection: 10,
+    rowSpacing: 5.5,      // ft between row centres
+    driveWay: 5.5,        // ft (1 row width)
+    twinRow: true,
+    twinRowSpacing: 11,   // inches between twin rows
+    plantSpacing: 10,     // inches within twin row
+    seedBuffer: 1.15,     // 15% buffer
+    plasticPerRow: false,
+    dripPerRow: false,
+    varieties: ['Kickoff','Gourmet Sweet 274','Stamina','Cadence','Superb'],
+  },
+  watermelon: {
+    label:'Watermelon', icon:'🍉', color:'#c0392b',
+    rowsPerSection: 8,
+    rowSpacing: 6.5,      // ft plastic bed centres
+    driveWay: 12,         // ft between sections
+    twinRow: false,
+    plantSpacing: 33,     // inches seedless
+    pollinatorSpacing: 108, // inches
+    pollinatorRatio: 1,   // 1 pollinator per bed
+    seedBuffer: 1.2,
+    plasticPerRow: true,
+    plasticWidthFt: 4,
+    dripPerRow: true,
+    dripLinesPerRow: 2,
+    varieties: ['Melody (Seedless)','Trusty (Seeded)','Yellow Doll','Sangria'],
+  },
+  pumpkin: {
+    label:'Pumpkin', icon:'🎃', color:'#e65100',
+    rowsPerSection: 1,
+    rowSpacing: 10,       // ft between rows
+    driveWay: 0,
+    twinRow: false,
+    plantSpacing: 96,     // 8 ft between hills
+    seedBuffer: 1.25,
+    plasticPerRow: false,
+    dripPerRow: false,
+    varieties: ['Atlantic Giant','Howden','Caribbean','Jarrahdale','Miniature'],
+  },
+  strawberry: {
+    label:'Field Strawberry', icon:'🍓', color:'#c0392b',
+    rowsPerSection: 2,    // twin-row beds
+    rowSpacing: 4,        // ft bed centres
+    driveWay: 3,
+    twinRow: true,
+    twinRowSpacing: 12,
+    plantSpacing: 12,     // inches
+    seedBuffer: 1.1,
+    plasticPerRow: true,
+    plasticWidthFt: 3,
+    dripPerRow: true,
+    dripLinesPerRow: 2,
+    varieties: ['Florida Beauty','Albion','Camarosa'],
+  },
+};
+
+function calcFieldStats(cfg, lengthFt, widthFt, orientation){
+  const along = orientation === 'NS' ? lengthFt : widthFt;   // rows run this direction
+  const across = orientation === 'NS' ? widthFt : lengthFt;  // sections stack this way
+  const sectionWidth = cfg.rowsPerSection * cfg.rowSpacing + cfg.driveWay;
+  const numSections = Math.floor(across / sectionWidth);
+  const numRows = numSections * cfg.rowsPerSection;
+  const acreage = (lengthFt * widthFt) / 43560;
+
+  // Plants
+  const rowLenFt = along;
+  const plantSpacingFt = cfg.plantSpacing / 12;
+  const plantsPerRow = Math.floor(rowLenFt / plantSpacingFt) + 1;
+  const totalPlants = numRows * plantsPerRow;
+  const seedsNeeded = Math.ceil(totalPlants * (cfg.seedBuffer || 1.1));
+
+  // Pollinators (watermelon)
+  let pollinators = 0;
+  if(cfg.pollinatorSpacing){
+    const pollSpFt = cfg.pollinatorSpacing / 12;
+    pollinators = numRows * (Math.floor(rowLenFt / pollSpFt) + 1);
+  }
+
+  // Inputs
+  const plasticFt = cfg.plasticPerRow ? numRows * rowLenFt : 0;
+  const dripFt = cfg.dripPerRow ? numRows * rowLenFt * (cfg.dripLinesPerRow || 1) : 0;
+  const totalRowFt = numRows * rowLenFt;
+
+  return{numSections,numRows,acreage,rowLenFt,totalRowFt,
+    plantsPerRow,totalPlants,seedsNeeded,pollinators,
+    plasticFt,dripFt,sectionWidth,across,along,
+    unusedFt: across - numSections * sectionWidth};
+}
+
+// Shoelace formula — area of a lat/lng polygon in sq ft
+function polyAreaSqFt(latlngs){
+  if(!latlngs||latlngs.length<3)return 0;
+  // Convert to approximate feet using local projection
+  const R=20925524; // earth radius in ft
+  const lat0=latlngs[0].lat*Math.PI/180;
+  const pts=latlngs.map(p=>({
+    x:(p.lng-latlngs[0].lng)*Math.PI/180*R*Math.cos(lat0),
+    y:(p.lat-latlngs[0].lat)*Math.PI/180*R
+  }));
+  let area=0;
+  for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+    area+=(pts[j].x+pts[i].x)*(pts[j].y-pts[i].y);
+  }
+  return Math.abs(area/2);
+}
+
+function polyBoundsFt(latlngs){
+  if(!latlngs||latlngs.length<2)return{widthFt:0,heightFt:0};
+  const R=20925524;
+  const lat0=latlngs[0].lat*Math.PI/180;
+  const xs=latlngs.map(p=>(p.lng-latlngs[0].lng)*Math.PI/180*R*Math.cos(lat0));
+  const ys=latlngs.map(p=>(p.lat-latlngs[0].lat)*Math.PI/180*R);
+  return{
+    widthFt:Math.max(...xs)-Math.min(...xs),
+    heightFt:Math.max(...ys)-Math.min(...ys)
+  };
+}
+
+function FieldMapper(){
+  const[fields,setFields]=useState(()=>LS.get('hff:fields',[]));
+  const[activeFid,setActiveFid]=useState(null);
+  const[mode,setMode]=useState('list'); // list | edit | view
+  const[draft,setDraft]=useState({name:'',crop:'sweetcorn',orientation:'NS',varieties:[],latlngs:[],notes:''});
+  const[stats,setStats]=useState(null);
+  const mapRef=useRef(null);
+  const leafletRef=useRef(null);
+  const polyRef=useRef(null);
+  const markersRef=useRef([]);
+  const[drawing,setDrawing]=useState(false);
+  const[mapLoaded,setMapLoaded]=useState(false);
+  const[manualLen,setManualLen]=useState('');
+  const[manualWid,setManualWid]=useState('');
+  const[useManual,setUseManual]=useState(false);
+
+  const cfg=FIELD_CROPS_CFG[draft.crop]||FIELD_CROPS_CFG.sweetcorn;
+
+  function recalc(latlngs,lenFt,widFt){
+    const{widthFt,heightFt}=latlngs&&latlngs.length>2?polyBoundsFt(latlngs):{widthFt:widFt||0,heightFt:lenFt||0};
+    const L=parseFloat(lenFt)||heightFt;const W=parseFloat(widFt)||widthFt;
+    if(L>0&&W>0)setStats(calcFieldStats(cfg,L,W,draft.orientation));
+    else setStats(null);
+  }
+
+  useEffect(()=>{
+    if(mode!=='edit')return;
+    let L=window.L;
+    if(!L){
+      // Load Leaflet CSS
+      if(!document.querySelector('link[href*="leaflet"]')){
+        const lnk=document.createElement('link');lnk.rel='stylesheet';
+        lnk.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(lnk);
+      }
+      // Load Leaflet JS
+      const scr=document.createElement('script');
+      scr.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.min.js';
+      scr.onload=()=>{setMapLoaded(true);};
+      document.body.appendChild(scr);
+      return;
+    }
+    setMapLoaded(true);
+  },[mode]);
+
+  useEffect(()=>{
+    if(mode!=='edit'||!mapLoaded||!mapRef.current)return;
+    const L=window.L;
+    if(!L||leafletRef.current)return;
+
+    const map=L.map(mapRef.current,{zoomControl:true}).setView([42.769,-80.985],15);
+    leafletRef.current=map;
+
+    // ESRI satellite tiles (free, no key needed)
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {attribution:'Esri',maxZoom:20}
+    ).addTo(map);
+
+    // Try to centre on farm GPS
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(pos=>{
+        map.setView([pos.coords.latitude,pos.coords.longitude],17);
+      },()=>{});
+    }
+
+    // Click to draw polygon vertices
+    map.on('click',e=>{
+      if(!drawing)return;
+      const newPts=[...(draft.latlngs||[]),{lat:e.latlng.lat,lng:e.latlng.lng}];
+      setDraft(d=>({...d,latlngs:newPts}));
+      // Marker
+      const m=L.circleMarker(e.latlng,{radius:5,color:'#fff',fillColor:'#e65100',fillOpacity:1,weight:2}).addTo(map);
+      markersRef.current.push(m);
+      // Update polygon
+      if(polyRef.current)map.removeLayer(polyRef.current);
+      if(newPts.length>=2){
+        polyRef.current=L.polygon(newPts,{color:'#e65100',fillColor:'#e65100',fillOpacity:.2,weight:2}).addTo(map);
+      }
+      if(newPts.length>=3){
+        const{widthFt,heightFt}=polyBoundsFt(newPts);
+        recalc(newPts,heightFt,widthFt);
+      }
+    });
+
+    return()=>{map.remove();leafletRef.current=null;polyRef.current=null;markersRef.current=[];};
+  },[mapLoaded,mode]);
+
+  // Recalc when crop/orientation/manual dims change
+  useEffect(()=>{
+    if(useManual)recalc(null,manualLen,manualWid);
+    else if(draft.latlngs&&draft.latlngs.length>=3){
+      const{widthFt,heightFt}=polyBoundsFt(draft.latlngs);
+      recalc(draft.latlngs,heightFt,widthFt);
+    }
+  },[draft.crop,draft.orientation,manualLen,manualWid,useManual]);
+
+  function clearDraw(){
+    if(leafletRef.current){
+      markersRef.current.forEach(m=>leafletRef.current.removeLayer(m));
+      markersRef.current=[];
+      if(polyRef.current){leafletRef.current.removeLayer(polyRef.current);polyRef.current=null;}
+    }
+    setDraft(d=>({...d,latlngs:[]}));setStats(null);
+  }
+
+  function saveField(){
+    if(!draft.name.trim())return;
+    const id=activeFid||'fld_'+Date.now();
+    const field={...draft,id,stats,savedAt:new Date().toISOString().slice(0,10)};
+    const upd=activeFid?fields.map(f=>f.id===id?field:f):[field,...fields];
+    setFields(upd);LS.set('hff:fields',upd);
+    setMode('list');setActiveFid(null);
+    // Sync to Supabase
+    const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+    if(u&&k){const row={id,team_id:t,entry_data:{...field,_type:'field'},updated_at:new Date().toISOString()};sbReq('POST','harvest_logs',row,u,k).catch(()=>{});}
+  }
+
+  function startNew(){
+    setDraft({name:'',crop:'sweetcorn',orientation:'NS',varieties:[],latlngs:[],notes:''});
+    setActiveFid(null);setStats(null);setDrawing(false);
+    setManualLen('');setManualWid('');setUseManual(false);
+    setMode('edit');
+  }
+  function editField(f){
+    setDraft({...f});setActiveFid(f.id);setStats(f.stats||null);
+    setMode('edit');
+  }
+  function deleteField(id){if(!confirm('Delete this field?'))return;const upd=fields.filter(f=>f.id!==id);setFields(upd);LS.set('hff:fields',upd);}
+
+  // ── FIELD LIST VIEW ───────────────────────────────────────────────────
+  if(mode==='list')return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+      <div><span style=${{fontWeight:700,fontSize:15}}>🗺 Field Library</span><span style=${{fontSize:12,color:'#aaa',marginLeft:8}}>${fields.length} fields</span></div>
+      <button onClick=${startNew} style=${{padding:'8px 16px',border:'none',borderRadius:8,background:'#2c3e50',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>+ New Field</button>
+    </div>
+    ${fields.length===0?html`
+    <div style=${{textAlign:'center',color:'#bbb',padding:'40px 20px'}}>
+      <div style=${{fontSize:36,marginBottom:8}}>🗺</div>
+      <div style=${{fontSize:14,fontWeight:600,color:'#999',marginBottom:4}}>No fields yet</div>
+      <div style=${{fontSize:12}}>Draw fields on the satellite map or enter dimensions manually</div>
+    </div>`:null}
+    ${fields.map(f=>{
+      const fc=FIELD_CROPS_CFG[f.crop]||{label:f.crop,icon:'🌱',color:'#555'};
+      const st=f.stats||{};
+      return html`
+      <div key=${f.id} class="card" style=${{marginBottom:8}}>
+        <div style=${{padding:'12px 14px'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+            <div>
+              <span style=${{fontWeight:700,fontSize:14}}>${fc.icon} ${f.name}</span>
+              <span style=${{fontSize:11,color:fc.color,background:fc.color+'22',borderRadius:4,padding:'1px 6px',marginLeft:6,fontWeight:600}}>${fc.label}</span>
+            </div>
+            <div style=${{display:'flex',gap:5}}>
+              <button onClick=${()=>editField(f)} class="btn btn-sm btn-out">Edit</button>
+              <button onClick=${()=>deleteField(f.id)} class="btn btn-sm btn-danger">×</button>
+            </div>
+          </div>
+          ${st.acreage?html`
+          <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:4}}>
+            ${[['Acres',st.acreage?.toFixed(2)],['Sections',st.numSections],['Rows',st.numRows]].map(([lbl,val])=>html`
+            <div style=${{background:'#f8f8f8',borderRadius:6,padding:'4px 8px',textAlign:'center'}}>
+              <div style=${{fontSize:13,fontWeight:700}}>${val}</div>
+              <div style=${{fontSize:10,color:'#aaa'}}>${lbl}</div>
+            </div>`)}
+          </div>
+          <div style=${{fontSize:11,color:'#888'}}>${f.orientation==='NS'?'N–S rows':'E–W rows'} · ${st.rowLenFt?.toFixed(0)} ft rows · ${st.totalRowFt?.toFixed(0)} ft total row</div>
+          `:null}
+          ${f.savedAt?html`<div style=${{fontSize:10,color:'#ccc',marginTop:3}}>${f.savedAt}</div>`:null}
+        </div>
+      </div>`;
+    })}
+  </div>`;
+
+  // ── FIELD EDIT VIEW ───────────────────────────────────────────────────
+  const sW=(cfg.rowsPerSection*cfg.rowSpacing+cfg.driveWay).toFixed(1);
+
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+      <button onClick=${()=>{setMode('list');leafletRef.current=null;}} style=${{padding:'6px 12px',border:'1.5px solid #ddd',borderRadius:7,background:'transparent',cursor:'pointer',fontFamily:'inherit',fontSize:12}}>← Back</button>
+      <span style=${{fontWeight:700,fontSize:14}}>🗺 ${activeFid?'Edit Field':'New Field'}</span>
+      <button onClick=${saveField} disabled=${!draft.name.trim()||!stats}
+        style=${{padding:'6px 14px',border:'none',borderRadius:7,
+          background:draft.name.trim()&&stats?'#2c3e50':'#e0e0e0',
+          color:draft.name.trim()&&stats?'#fff':'#aaa',
+          fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Save</button>
+    </div>
+
+    <!-- Field basics -->
+    <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
+      <div style=${{display:'flex',gap:8,marginBottom:8}}>
+        <div style=${{flex:2}}>
+          <label class="fl" style=${{fontSize:11}}>Field Name</label>
+          <input class="ti" type="text" value=${draft.name} onInput=${e=>setDraft(d=>({...d,name:e.target.value}))} placeholder="e.g. Cox South East"/>
+        </div>
+        <div style=${{flex:1}}>
+          <label class="fl" style=${{fontSize:11}}>Rows run</label>
+          <select style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}
+            value=${draft.orientation} onChange=${e=>{setDraft(d=>({...d,orientation:e.target.value}));setTimeout(()=>recalc(draft.latlngs,manualLen,manualWid),0);}}>
+            <option value="NS">N – S</option>
+            <option value="EW">E – W</option>
+          </select>
+        </div>
+      </div>
+      <!-- Crop selector -->
+      <label class="fl" style=${{fontSize:11}}>Crop</label>
+      <div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:4}}>
+        ${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`
+        <button key=${k} onClick=${()=>{setDraft(d=>({...d,crop:k}));}}
+          style=${{padding:'5px 10px',borderRadius:7,border:'1.5px solid '+(draft.crop===k?c.color:'#ddd'),
+            background:draft.crop===k?c.color:'transparent',color:draft.crop===k?'#fff':'#888',
+            fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+          ${c.icon} ${c.label}
+        </button>`)}
+      </div>
+      <div style=${{fontSize:11,color:'#888',marginTop:4}}>
+        Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>
+        ${cfg.twinRow?html` · Twin rows ${cfg.twinRowSpacing}" apart`:''}
+        ${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:''}
+      </div>
+    </div>
+
+    <!-- Map section -->
+    <div class="card" style=${{marginBottom:8,overflow:'hidden'}}>
+      <div style=${{padding:'8px 14px',borderBottom:'1px solid #f0f0f0',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style=${{fontWeight:600,fontSize:12}}>📍 Draw Field on Map</span>
+        <div style=${{display:'flex',gap:5}}>
+          <button onClick=${()=>setDrawing(d=>!d)}
+            style=${{padding:'4px 10px',borderRadius:6,border:'1.5px solid '+(drawing?'#e65100':'#ddd'),
+              background:drawing?'#e65100':'transparent',color:drawing?'#fff':'#888',
+              fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+            ${drawing?'● Drawing…':'Draw'}
+          </button>
+          <button onClick=${clearDraw} style=${{padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',background:'transparent',fontSize:11,cursor:'pointer',color:'#888',fontFamily:'inherit'}}>Clear</button>
+        </div>
+      </div>
+      <div ref=${mapRef} style=${{height:260,background:'#e0e8e0'}}>
+        ${!mapLoaded?html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#888',fontSize:12}}>Loading map…</div>`:null}
+      </div>
+      ${draft.latlngs&&draft.latlngs.length>0?html`<div style=${{padding:'4px 14px',fontSize:11,color:'#2e7d32',background:'#f0faf4'}}>${draft.latlngs.length} corners drawn${draft.latlngs.length<3?' — need at least 3 to close':' ✓'}</div>`:null}
+    </div>
+
+    <!-- Manual dimensions fallback -->
+    <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
+      <label style=${{display:'flex',gap:8,alignItems:'center',cursor:'pointer',marginBottom:8,fontSize:12}}>
+        <input type="checkbox" checked=${useManual} onChange=${e=>setUseManual(e.target.checked)}/>
+        Enter dimensions manually (if GPS not needed)
+      </label>
+      ${useManual?html`
+      <div style=${{display:'flex',gap:8}}>
+        <div style=${{flex:1}}>
+          <label class="fl" style=${{fontSize:11}}>Length (ft) — along rows</label>
+          <input class="ti" type="number" value=${manualLen} onInput=${e=>{setManualLen(e.target.value);recalc(null,e.target.value,manualWid);}} placeholder="e.g. 1320"/>
+        </div>
+        <div style=${{flex:1}}>
+          <label class="fl" style=${{fontSize:11}}>Width (ft) — across rows</label>
+          <input class="ti" type="number" value=${manualWid} onInput=${e=>{setManualWid(e.target.value);recalc(null,manualLen,e.target.value);}} placeholder="e.g. 660"/>
+        </div>
+      </div>`:null}
+    </div>
+
+    <!-- Calculation results -->
+    ${stats?html`
+    <div style=${{background:'linear-gradient(135deg,#1a2b1a,#2d4a30)',borderRadius:12,padding:'14px 16px',marginBottom:8,color:'#fff'}}>
+      <div style=${{fontSize:12,opacity:.7,marginBottom:8,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase'}}>Field Calculations</div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+        ${[
+          ['Acres',stats.acreage.toFixed(3)],
+          ['Sections',stats.numSections],
+          ['Rows',stats.numRows],
+        ].map(([lbl,val])=>html`
+        <div style=${{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'8px',textAlign:'center'}}>
+          <div style=${{fontSize:17,fontWeight:700}}>${val}</div>
+          <div style=${{fontSize:10,opacity:.7}}>${lbl}</div>
+        </div>`)}
+      </div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>
+        <div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}>
+          <div style=${{opacity:.6,fontSize:10}}>ROW LENGTH</div>
+          <div style=${{fontWeight:700}}>${stats.rowLenFt.toFixed(0)} ft</div>
+        </div>
+        <div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}>
+          <div style=${{opacity:.6,fontSize:10}}>TOTAL ROW FT</div>
+          <div style=${{fontWeight:700}}>${stats.totalRowFt.toFixed(0)} ft</div>
+        </div>
+        <div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}>
+          <div style=${{opacity:.6,fontSize:10}}>PLANTS NEEDED</div>
+          <div style=${{fontWeight:700}}>${stats.totalPlants.toLocaleString()}</div>
+        </div>
+        <div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}>
+          <div style=${{opacity:.6,fontSize:10}}>SEEDS (+ buffer)</div>
+          <div style=${{fontWeight:700}}>${stats.seedsNeeded.toLocaleString()}</div>
+        </div>
+        ${stats.pollinators?html`
+        <div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}>
+          <div style=${{opacity:.6,fontSize:10}}>POLLINATORS</div>
+          <div style=${{fontWeight:700}}>${stats.pollinators.toLocaleString()}</div>
+        </div>`:null}
+        ${stats.plasticFt?html`
+        <div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}>
+          <div style=${{opacity:.6,fontSize:10}}>PLASTIC MULCH</div>
+          <div style=${{fontWeight:700}}>${(stats.plasticFt/5280).toFixed(2)} mi · ${stats.plasticFt.toLocaleString()} ft</div>
+        </div>`:null}
+        ${stats.dripFt?html`
+        <div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}>
+          <div style=${{opacity:.6,fontSize:10}}>DRIP TAPE</div>
+          <div style=${{fontWeight:700}}>${(stats.dripFt/5280).toFixed(2)} mi · ${stats.dripFt.toLocaleString()} ft</div>
+        </div>`:null}
+        <div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px',gridColumn:stats.unusedFt>1?'auto':'1/-1'}}>
+          <div style=${{opacity:.6,fontSize:10}}>SECTION WIDTH</div>
+          <div style=${{fontWeight:700}}>${stats.sectionWidth.toFixed(1)} ft</div>
+        </div>
+        ${stats.unusedFt>1?html`
+        <div style=${{background:'rgba(255,200,0,.15)',borderRadius:7,padding:'7px 10px'}}>
+          <div style=${{opacity:.7,fontSize:10}}>UNUSED EDGE</div>
+          <div style=${{fontWeight:700,color:'#ffd'}}>${stats.unusedFt.toFixed(1)} ft</div>
+        </div>`:null}
+      </div>
+    </div>
+    <!-- Section variety assignment -->
+    ${stats.numSections>0?html`
+    <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
+      <div style=${{fontWeight:600,fontSize:12,marginBottom:8}}>Variety Assignment by Section</div>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:6}}>
+        ${Array.from({length:stats.numSections},(_, i)=>html`
+        <div key=${i} style=${{background:'#f8f8f5',borderRadius:7,padding:'6px 8px'}}>
+          <div style=${{fontSize:10,color:'#aaa',marginBottom:3}}>Section ${i+1}</div>
+          <select style=${{width:'100%',padding:'4px',border:'1px solid #ddd',borderRadius:5,fontSize:11,fontFamily:'inherit',outline:'none'}}
+            value=${(draft.varieties||[])[i]||''}
+            onChange=${e=>{const v=[...(draft.varieties||[])];v[i]=e.target.value;setDraft(d=>({...d,varieties:v}));}}>
+            <option value="">Any</option>
+            ${cfg.varieties.map(vr=>html`<option key=${vr} value=${vr}>${vr}</option>`)}
+          </select>
+        </div>`)}
+      </div>
+    </div>`:null}`:null}
+
+    <!-- Notes -->
+    <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
+      <label class="fl" style=${{fontSize:11}}>Notes</label>
+      <textarea value=${draft.notes} onInput=${e=>setDraft(d=>({...d,notes:e.target.value}))}
+        placeholder="Soil type, drainage notes, access points, previous crops…"
+        style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',height:55,resize:'vertical',boxSizing:'border-box'}}/>
+    </div>
+  </div>`;
+}
+
 // ── SPRAY BRAIN HELPERS ───────────────────────────────────────────────────────
 function SprayPill({name, frac, irac, rate, unit}){
   const cls = name ? (
@@ -5166,6 +5639,7 @@ function App(){
       ${view==='fert'?html`<${FertBrain}/>`:null}
       ${view==='orders'?html`<${OrderBrain}/>`:null}
       ${view==='tasks'?html`<${TaskBrain}/>`:null}
+      ${view==='fields'?html`<${FieldMapper}/>`:null}
       ${view==='settings'?html`
       <${SettingsView} strat=${strat} defaultStage=${defaultStage} onSaveStrat=${saveStrat}
         onSaveStage=${saveDefStage} cropLabel=${crop.label} isStraw=${isStraw}
