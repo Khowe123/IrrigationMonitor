@@ -3626,30 +3626,37 @@ const FIELD_CROPS_CFG = {
   },
   watermelon: {
     label:'Watermelon', icon:'🍉', color:'#c0392b',
+    // Howe Family Farms layout: 8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath.
     rowsPerSection:8,
     rowSpacing:6.5,       // ft plastic bed centres
-    driveWay:12,
+    driveWay:13,
     twinRow:false,
-    plantSpacing:33,      // inches seedless
-    pollinatorSpacing:108,// inches
+    plantSpacing:33,      // inches between seedless plants
+    pollinatorSpacing:156,// Premium pollinator about every 13 ft in-row (~4.5 seedless : 1 pollinator)
     seedBuffer:1.20,
     plasticPerRow:true,
     plasticWidthFt:4,
+    plasticRollFt:6000,
     dripPerRow:true,
-    dripLinesPerRow:2,
-    varieties:['Melody (Seedless)','Trusty (Seeded)','Yellow Doll','Sangria'],
+    dripLinesPerRow:1,    // default; editable per field in Watermelon Material Planner
+    dripRollFt:7000,
+    varieties:['Melody','Crimson Treat','Sugar Cube','MiniLove','Crackerjack','Yellow Doll','Sangria','Orange','Premium (Pollinator)','Trusty (Seeded)'],
   },
   pumpkin: {
     label:'Pumpkin', icon:'🎃', color:'#e65100',
-    rowsPerSection:1,
-    rowSpacing:10,
+    // 3-row Monosem planter on 5 ft centres. One section = one planter pass.
+    rowsPerSection:3,
+    planterRows:3,
+    rowSpacing:5,
     driveWay:0,
     twinRow:false,
-    plantSpacing:96,      // 8 ft between hills
-    seedBuffer:1.25,
+    plantSpacing:24,      // default only; each variety block can override 22/24/28/etc.
+    seedBuffer:1.00,      // exact hill count by default; optional buffer is set in Pumpkin Plan
+    headlandRows:6,       // 2 planter swaths perpendicular to the main A-B rows
+    headlandSwaths:2,
     plasticPerRow:false,
     dripPerRow:false,
-    varieties:['Atlantic Giant','Howden','Caribbean','Jarrahdale','Miniature'],
+    varieties:['Kratos','Gladiator','Mischief','Caribbean','Field Trip','Blanco','Olympus','Zeus','Styrian','Crystal Star 6a','White Gold','Atlantic Giant','Howden','Jarrahdale','Miniature'],
   },
   strawberry: {
     label:'Field Strawberry', icon:'🍓', color:'#c0392b',
@@ -3807,6 +3814,70 @@ function clipRowAtV(polyUV,vPos){
   return segs;
 }
 
+
+// Same polygon clipping operation for a line perpendicular to the main rows.
+// Pumpkin headland rows use constant-u lines and therefore run across the field.
+function clipRowAtU(polyUV,uPos){
+  const hits=[];
+  for(let i=0,j=polyUV.length-1;i<polyUV.length;j=i++){
+    const a=polyUV[j],b=polyUV[i];
+    if((a.u<=uPos&&b.u>uPos)||(b.u<=uPos&&a.u>uPos)){
+      const t=(uPos-a.u)/(b.u-a.u);
+      hits.push(a.v+t*(b.v-a.v));
+    }
+  }
+  hits.sort((a,b)=>a-b);
+  const segs=[];
+  for(let i=0;i+1<hits.length;i+=2){
+    if(hits[i+1]-hits[i]>.5)segs.push([{u:uPos,v:hits[i]},{u:uPos,v:hits[i+1]}]);
+  }
+  return segs;
+}
+
+function trimRowSegToU(seg,uLo,uHi){
+  const a=Math.max(seg[0].u,uLo),b=Math.min(seg[1].u,uHi);
+  return b-a>.5?[{u:a,v:seg[0].v},{u:b,v:seg[0].v}]:null;
+}
+
+function newPumpkinPlan(){
+  return{
+    seedBufferPct:0,
+    headlandA:{enabled:true,variety:'',spacingIn:24},
+    headlandB:{enabled:true,variety:'',spacingIn:24},
+    blocks:[{id:'pb1',variety:'Kratos',targetAcres:'',spacingIn:24}]
+  };
+}
+
+function normalizePumpkinPlan(p){
+  const d=newPumpkinPlan(),src=p||{};
+  const normHead=(v,def)=>({
+    enabled:v?.enabled!==false,
+    variety:v?.variety||'',
+    spacingIn:Math.max(1,parseFloat(v?.spacingIn)||def.spacingIn)
+  });
+  const blocks=(Array.isArray(src.blocks)&&src.blocks.length?src.blocks:d.blocks).map((b,i)=>({
+    id:b.id||('pb'+(i+1)),
+    variety:b.variety||'',
+    targetAcres:b.targetAcres??'',
+    spacingIn:Math.max(1,parseFloat(b.spacingIn)||24)
+  }));
+  return{
+    seedBufferPct:Math.max(0,parseFloat(src.seedBufferPct)||0),
+    headlandA:normHead(src.headlandA,d.headlandA),
+    headlandB:normHead(src.headlandB,d.headlandB),
+    blocks
+  };
+}
+
+const PUMPKIN_BLOCK_COLORS=['#e65100','#7b1fa2','#1976d2','#2e7d32','#c62828','#6d4c41','#00838f','#f9a825','#455a64','#ad1457','#5d4037','#558b2f'];
+function pumpkinBlockColor(i){return PUMPKIN_BLOCK_COLORS[((i||0)%PUMPKIN_BLOCK_COLORS.length+PUMPKIN_BLOCK_COLORS.length)%PUMPKIN_BLOCK_COLORS.length];}
+function pumpkinVarietyColor(variety,blocks=[]){
+  const i=blocks.findIndex(b=>b.variety&&b.variety===variety);
+  if(i>=0)return pumpkinBlockColor(i);
+  let h=0;for(const ch of String(variety||''))h=(h*31+ch.charCodeAt(0))>>>0;
+  return PUMPKIN_BLOCK_COLORS[h%PUMPKIN_BLOCK_COLORS.length];
+}
+
 function chooseFieldStartSide(latlngs,clicked,bearingDeg){
   const proj=fieldProjection([...(latlngs||[]),clicked]);
   if(!proj||proj.pts.length<4)return'min';
@@ -3820,7 +3891,7 @@ function chooseFieldStartSide(latlngs,clicked,bearingDeg){
 // Build section rows inside the ACTUAL field boundary at any GPS A–B heading.
 // Section numbering starts from startSide, so the operator can choose the fence/
 // headland that should become Section 1.
-function buildPolygonFieldPlan(cfg,latlngs,orientation,bearingDeg,startSide='min'){
+function buildPolygonFieldPlan(cfg,latlngs,orientation,bearingDeg,startSide='min',planOptions=null){
   const proj=fieldProjection(latlngs);
   if(!proj||proj.pts.length<3)return null;
   const bearing=orientation==='AB'?normalizeBearing(bearingDeg):(orientation==='EW'?90:0);
@@ -3831,47 +3902,222 @@ function buildPolygonFieldPlan(cfg,latlngs,orientation,bearingDeg,startSide='min
   const across=vMax-vMin,along=uMax-uMin;
   const sectionWidth=cfg.rowsPerSection*cfg.rowSpacing+cfg.driveWay;
   const plannedSections=Math.max(0,Math.floor(across/sectionWidth));
-  const rows=[];const usedSections=new Set();
-  let totalRowFt=0,totalPlants=0,pollinators=0;
+  const rows=[],headlandRows=[];const usedSections=new Set();
+  let mainRowFt=0,headlandRowFt=0,totalPlants=0,pollinators=0;
   const plantSpacingFt=cfg.plantSpacing/12;
   const pollSpacingFt=cfg.pollinatorSpacing?cfg.pollinatorSpacing/12:0;
   const plantingLinesPerRow=cfg.twinRow?2:1;
   const fromMax=startSide==='max';
 
-  for(let s=0;s<plannedSections;s++){
-    for(let r=0;r<cfg.rowsPerSection;r++){
-      const inset=s*sectionWidth+cfg.rowSpacing/2+r*cfg.rowSpacing;
-      const vPos=fromMax?vMax-inset:vMin+inset;
-      const uvSegs=clipRowAtV(polyUV,vPos);
-      const segments=[];let len=0,rowPlants=0,rowPoll=0;
-      uvSegs.forEach(seg=>{
-        const a=uvToXY(seg[0].u,seg[0].v,axes),b=uvToXY(seg[1].u,seg[1].v,axes);
-        const L=Math.abs(seg[1].u-seg[0].u);
-        if(L<=.5)return;
-        segments.push([a,b]);len+=L;
-        rowPlants+=(Math.floor(L/plantSpacingFt)+1)*plantingLinesPerRow;
-        if(pollSpacingFt)rowPoll+=Math.floor(L/pollSpacingFt)+1;
-      });
-      if(len>1){
-        usedSections.add(s+1);totalRowFt+=len;totalPlants+=rowPlants;pollinators+=rowPoll;
-        rows.push({section:s+1,row:r+1,lengthFt:len,segments,vPos});
+  const isPumpkin=!!cfg.planterRows;
+  const pp=isPumpkin?normalizePumpkinPlan(planOptions):null;
+  const hRows=isPumpkin?(cfg.headlandRows||6):0;
+  const reserveA=isPumpkin&&pp.headlandA.enabled?hRows*cfg.rowSpacing:0;
+  const reserveB=isPumpkin&&pp.headlandB.enabled?hRows*cfg.rowSpacing:0;
+  const mainUMin=uMin+reserveA,mainUMax=uMax-reserveB;
+
+  // Main rows. For pumpkin, remove the planted headland bands from the long rows
+  // so the perpendicular rows and main rows never double-count the same ground.
+  if(mainUMax-mainUMin>cfg.rowSpacing){
+    for(let s=0;s<plannedSections;s++){
+      for(let r=0;r<cfg.rowsPerSection;r++){
+        const inset=s*sectionWidth+cfg.rowSpacing/2+r*cfg.rowSpacing;
+        const vPos=fromMax?vMax-inset:vMin+inset;
+        const rawSegs=clipRowAtV(polyUV,vPos);
+        const uvSegs=isPumpkin?rawSegs.map(seg=>trimRowSegToU(seg,mainUMin,mainUMax)).filter(Boolean):rawSegs;
+        const segments=[];let len=0,rowPlants=0,rowPoll=0;
+        uvSegs.forEach(seg=>{
+          const a=uvToXY(seg[0].u,seg[0].v,axes),b=uvToXY(seg[1].u,seg[1].v,axes);
+          const L=Math.abs(seg[1].u-seg[0].u);if(L<=.5)return;
+          segments.push([a,b]);len+=L;
+          rowPlants+=(Math.floor(L/plantSpacingFt)+1)*plantingLinesPerRow;
+          if(pollSpacingFt)rowPoll+=Math.floor(L/pollSpacingFt)+1;
+        });
+        if(len>1){
+          usedSections.add(s+1);mainRowFt+=len;totalPlants+=rowPlants;pollinators+=rowPoll;
+          rows.push({section:s+1,row:r+1,lengthFt:len,segments,vPos,kind:'main'});
+        }
       }
     }
   }
 
-  const numRows=rows.length,numSections=usedSections.size,area=polyAreaXY(proj.pts);
+  function addPumpkinHeadland(which,enabled,fromMin){
+    if(!isPumpkin||!enabled)return;
+    for(let r=0;r<hRows;r++){
+      const uPos=fromMin?uMin+cfg.rowSpacing/2+r*cfg.rowSpacing:uMax-cfg.rowSpacing/2-r*cfg.rowSpacing;
+      const uvSegs=clipRowAtU(polyUV,uPos);
+      const segments=[];let len=0,rowPlants=0;
+      uvSegs.forEach(seg=>{
+        const a=uvToXY(seg[0].u,seg[0].v,axes),b=uvToXY(seg[1].u,seg[1].v,axes);
+        const L=Math.abs(seg[1].v-seg[0].v);if(L<=.5)return;
+        segments.push([a,b]);len+=L;rowPlants+=(Math.floor(L/plantSpacingFt)+1);
+      });
+      if(len>1){
+        headlandRowFt+=len;totalPlants+=rowPlants;
+        headlandRows.push({headland:which,row:r+1,pass:Math.floor(r/(cfg.planterRows||3))+1,lengthFt:len,segments,uPos,kind:'headland'});
+      }
+    }
+  }
+  addPumpkinHeadland('A',isPumpkin&&pp.headlandA.enabled,true);
+  addPumpkinHeadland('B',isPumpkin&&pp.headlandB.enabled,false);
+
+  const numSections=usedSections.size,area=polyAreaXY(proj.pts);
+  const totalRowFt=mainRowFt+headlandRowFt;
+  const numMainRows=rows.length,numHeadlandRows=headlandRows.length,numRows=numMainRows+numHeadlandRows;
   const plasticFt=cfg.plasticPerRow?totalRowFt:0;
   const dripFt=cfg.dripPerRow?totalRowFt*(cfg.dripLinesPerRow||1):0;
   const stats={
-    source:'polygon',numSections,numRows,acreage:area/43560,
-    rowLenFt:numRows?totalRowFt/numRows:0,totalRowFt,
+    source:'polygon',numSections,numRows,numMainRows,numHeadlandRows,acreage:area/43560,
+    rowLenFt:numRows?totalRowFt/numRows:0,totalRowFt,mainRowFt,headlandRowFt,
+    plantedAcreage:totalRowFt*cfg.rowSpacing/43560,
+    mainPlantedAcreage:mainRowFt*cfg.rowSpacing/43560,
+    headlandPlantedAcreage:headlandRowFt*cfg.rowSpacing/43560,
     plantingLineFt:totalRowFt*plantingLinesPerRow,
     plantsPerRow:numRows?Math.round(totalPlants/numRows):0,
     totalPlants,seedsNeeded:Math.ceil(totalPlants*(cfg.seedBuffer||1.1)),pollinators,
     plasticFt,dripFt,sectionWidth,across,along,
-    unusedFt:Math.max(0,across-plannedSections*sectionWidth),bearingDeg:bearing,startSide
+    unusedFt:Math.max(0,across-plannedSections*sectionWidth),bearingDeg:bearing,startSide,
+    headlandDepthFt:isPumpkin?hRows*cfg.rowSpacing:0,
+    headlandAEnabled:isPumpkin?pp.headlandA.enabled:false,
+    headlandBEnabled:isPumpkin?pp.headlandB.enabled:false
   };
-  return{stats,rows,projection:proj,axes,polyUV,vMin,vMax,uMin,uMax};
+  return{stats,rows,headlandRows,projection:proj,axes,polyUV,vMin,vMax,uMin,uMax,mainUMin,mainUMax};
+}
+
+function countPlantsOnRows(rows,spacingIn){
+  const spacingFt=Math.max(1,parseFloat(spacingIn)||24)/12;
+  let n=0,rowFt=0;
+  (rows||[]).forEach(r=>{rowFt+=r.lengthFt||0;(r.segments||[]).forEach(seg=>{const L=Math.hypot(seg[1].x-seg[0].x,seg[1].y-seg[0].y);if(L>.5)n+=Math.floor(L/spacingFt)+1;});});
+  return{plants:n,rowFt};
+}
+
+// Convert target acres into whole 3-row Monosem passes, in the same order they
+// appear from Section 1 toward the opposite field edge. Headland acreage assigned
+// to the same variety is credited against that variety's target before main passes.
+function calcPumpkinVarietyPlan(plan,pumpkinPlan){
+  if(!plan)return null;
+  const pp=normalizePumpkinPlan(pumpkinPlan),rowSpacing=FIELD_CROPS_CFG.pumpkin.rowSpacing;
+  const passMap={};(plan.rows||[]).forEach(r=>{(passMap[r.section]||(passMap[r.section]=[])).push(r);});
+  const passes=Object.keys(passMap).map(Number).sort((a,b)=>a-b).map(section=>{
+    const rows=passMap[section],rowFt=rows.reduce((s,r)=>s+r.lengthFt,0);
+    return{section,rows,rowFt,acres:rowFt*rowSpacing/43560};
+  });
+
+  const headlandResult={};const headlandCredit={};
+  for(const which of ['A','B']){
+    const hp=which==='A'?pp.headlandA:pp.headlandB;
+    const rows=(plan.headlandRows||[]).filter(r=>r.headland===which);
+    const m=countPlantsOnRows(rows,hp.spacingIn),acres=m.rowFt*rowSpacing/43560;
+    const seed=Math.ceil(m.plants*(1+pp.seedBufferPct/100));
+    headlandResult[which]={...hp,rows:rows.length,passes:Math.ceil(rows.length/3),rowFt:m.rowFt,acres,plants:m.plants,seeds:seed};
+    if(hp.enabled&&hp.variety)headlandCredit[hp.variety]=(headlandCredit[hp.variety]||0)+acres;
+  }
+
+  let passIdx=0;const assignmentBySection={};const results=[];const creditLeft={...headlandCredit};
+  pp.blocks.forEach((b,bi)=>{
+    const target=Math.max(0,parseFloat(b.targetAcres)||0);
+    const credit=Math.min(target,creditLeft[b.variety]||0);if(b.variety)creditLeft[b.variety]=Math.max(0,(creditLeft[b.variety]||0)-credit);
+    const mainTarget=Math.max(0,target-credit);
+    let count=0,cum=0;
+    if(mainTarget>0&&passIdx<passes.length){
+      const start=passIdx;let prevCum=0;
+      while(passIdx<passes.length&&cum<mainTarget){prevCum=cum;cum+=passes[passIdx].acres;passIdx++;}
+      if(passIdx>start+1&&Math.abs(prevCum-mainTarget)<Math.abs(cum-mainTarget)){passIdx--;cum=prevCum;}
+      count=passIdx-start;
+    }
+    const chosen=passes.slice(passIdx-count,passIdx);
+    chosen.forEach(p=>assignmentBySection[p.section]=bi);
+    const rows=chosen.flatMap(p=>p.rows),m=countPlantsOnRows(rows,b.spacingIn);
+    const actualAcres=chosen.reduce((s,p)=>s+p.acres,0),seeds=Math.ceil(m.plants*(1+pp.seedBufferPct/100));
+    const avgRow=plan.stats.numMainRows?plan.stats.mainRowFt/plan.stats.numMainRows:0;
+    const approxRows=mainTarget>0&&avgRow>0?Math.max(1,Math.round(mainTarget*43560/(rowSpacing*avgRow))):0;
+    results.push({...b,index:bi,targetAcres:target,headlandCreditAcres:credit,mainTargetAcres:mainTarget,approxRows,approxPasses:Math.ceil(approxRows/3),sections:chosen.map(p=>p.section),passes:chosen.length,rows:rows.length,rowFt:m.rowFt,actualAcres,plants:m.plants,seeds});
+  });
+  const unassigned=passes.slice(passIdx),unassignedAcres=unassigned.reduce((s,p)=>s+p.acres,0);
+  return{plan:pp,blocks:results,passes,assignmentBySection,headlands:headlandResult,unassignedPasses:unassigned.length,unassignedRows:unassigned.reduce((s,p)=>s+p.rows.length,0),unassignedAcres,mainPlantableAcres:passes.reduce((s,p)=>s+p.acres,0),headlandAcres:(headlandResult.A?.acres||0)+(headlandResult.B?.acres||0)};
+}
+
+
+function pumpkinVarietySummary(alloc){
+  if(!alloc)return[];
+  const m={};
+  const get=v=>m[v]||(m[v]={variety:v,targetAcres:0,actualAcres:0,plants:0,seeds:0,passes:0,rows:0});
+  alloc.blocks.forEach(b=>{
+    if(!b.variety)return;const x=get(b.variety);
+    x.targetAcres+=b.targetAcres||0;x.actualAcres+=b.actualAcres||0;x.plants+=b.plants||0;x.seeds+=b.seeds||0;x.passes+=b.passes||0;x.rows+=b.rows||0;
+  });
+  for(const which of ['A','B']){
+    const h=alloc.headlands?.[which];if(!h?.enabled||!h.variety)continue;
+    const x=get(h.variety);x.actualAcres+=h.acres||0;x.plants+=h.plants||0;x.seeds+=h.seeds||0;x.rows+=h.rows||0;
+  }
+  return Object.values(m);
+}
+
+
+// ── WATERMELON MATERIAL PLANNER ──────────────────────────────────────────────
+// Material ordering is based on the ACTUAL clipped bed-row footage in the field,
+// not acres × an average row length. This is especially useful for irregular ends.
+function newWatermelonPlan(){
+  return{
+    dripEmitterSpacingIn:12,
+    dripLinesPerBed:1,
+    plasticRollFt:6000,
+    dripRollFt:7000,
+    materialBufferPct:0
+  };
+}
+function normalizeWatermelonPlan(p){
+  const d=newWatermelonPlan(),x=p||{};
+  const emitter=parseInt(x.dripEmitterSpacingIn,10)===16?16:12;
+  return{
+    dripEmitterSpacingIn:emitter,
+    dripLinesPerBed:Math.max(1,parseInt(x.dripLinesPerBed,10)||d.dripLinesPerBed),
+    plasticRollFt:Math.max(100,parseFloat(x.plasticRollFt)||d.plasticRollFt),
+    dripRollFt:Math.max(100,parseFloat(x.dripRollFt)||d.dripRollFt),
+    materialBufferPct:Math.max(0,parseFloat(x.materialBufferPct)||0)
+  };
+}
+function watermelonMaxRunFt(p){return normalizeWatermelonPlan(p).dripEmitterSpacingIn===16?900:600;}
+function segmentLengthXY(seg){return Math.hypot(seg[1].x-seg[0].x,seg[1].y-seg[0].y);}
+function calcWatermelonMaterials(plan,p,fallbackStats=null){
+  const wp=normalizeWatermelonPlan(p),maxRunFt=watermelonMaxRunFt(wp),buffer=1+wp.materialBufferPct/100;
+  let totalBedFt=0,longestRunFt=0,rowsOverLimit=0,segmentsOverLimit=0,extraRunPieces=0;
+  const sections=[];
+  if(plan?.rows?.length){
+    const sm={};
+    plan.rows.forEach(r=>{
+      totalBedFt+=r.lengthFt||0;
+      const sec=sm[r.section]||(sm[r.section]={section:r.section,rows:0,rowFt:0,maxRunFt:0});
+      sec.rows+=1;sec.rowFt+=r.lengthFt||0;
+      let rowOver=false;
+      (r.segments||[]).forEach(seg=>{
+        const L=segmentLengthXY(seg);longestRunFt=Math.max(longestRunFt,L);sec.maxRunFt=Math.max(sec.maxRunFt,L);
+        if(L>maxRunFt){rowOver=true;segmentsOverLimit++;extraRunPieces+=Math.ceil(L/maxRunFt)-1;}
+      });
+      if(rowOver)rowsOverLimit++;
+    });
+    Object.values(sm).sort((a,b)=>a.section-b.section).forEach(x=>sections.push({...x,acres:x.rowFt*FIELD_CROPS_CFG.watermelon.rowSpacing/43560}));
+  }else if(fallbackStats){
+    totalBedFt=fallbackStats.totalRowFt||0;longestRunFt=fallbackStats.rowLenFt||0;
+    if(longestRunFt>maxRunFt){rowsOverLimit=fallbackStats.numRows||0;segmentsOverLimit=rowsOverLimit;extraRunPieces=rowsOverLimit*(Math.ceil(longestRunFt/maxRunFt)-1);}
+  }
+  const plasticRawFt=totalBedFt,dripRawFt=totalBedFt*wp.dripLinesPerBed;
+  const plasticOrderFt=plasticRawFt*buffer,dripOrderFt=dripRawFt*buffer;
+  return{
+    ...wp,maxRunFt,totalBedFt,longestRunFt,rowsOverLimit,segmentsOverLimit,extraRunPieces,sections,
+    plasticRawFt,dripRawFt,plasticOrderFt,dripOrderFt,
+    plasticRolls:plasticOrderFt?Math.ceil(plasticOrderFt/wp.plasticRollFt):0,
+    dripRolls:dripOrderFt?Math.ceil(dripOrderFt/wp.dripRollFt):0
+  };
+}
+function watermelonVarietySummary(materials,varieties=[]){
+  const m={};
+  (materials?.sections||[]).forEach(sec=>{
+    const v=varieties[sec.section-1]||'';if(!v)return;
+    const x=m[v]||(m[v]={variety:v,sections:0,rows:0,rowFt:0,acres:0});
+    x.sections++;x.rows+=sec.rows;x.rowFt+=sec.rowFt;x.acres+=sec.acres;
+  });
+  return Object.values(m);
 }
 
 function normalizeBoundary(points){
@@ -3970,7 +4216,7 @@ function FieldMapper(){
   const[fields,setFields]=useState(()=>LS.get('hff:fields',[]));
   const[activeFid,setActiveFid]=useState(null);
   const[mode,setMode]=useState('list'); // list | edit | view
-  const[draft,setDraft]=useState({name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],latlngs:[],notes:''});
+  const[draft,setDraft]=useState({name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),latlngs:[],notes:''});
   const[stats,setStats]=useState(null);
   const[mapTool,setMapTool]=useState(null); // draw | abA | abB | start
   const[abA,setAbA]=useState(null);
@@ -4022,7 +4268,7 @@ function FieldMapper(){
       const rectOri=d.orientation==='EW'?'EW':'NS';
       return L>0&&W>0?{stats:calcFieldStats(FIELD_CROPS_CFG[d.crop]||FIELD_CROPS_CFG.sweetcorn,L,W,rectOri),rows:[],projection:null}:null;
     }
-    return d.latlngs?.length>=3?buildPolygonFieldPlan(FIELD_CROPS_CFG[d.crop]||FIELD_CROPS_CFG.sweetcorn,d.latlngs,d.orientation,d.bearingDeg,d.startSide):null;
+    return d.latlngs?.length>=3?buildPolygonFieldPlan(FIELD_CROPS_CFG[d.crop]||FIELD_CROPS_CFG.sweetcorn,d.latlngs,d.orientation,d.bearingDeg,d.startSide,d.pumpkinPlan):null;
   }
 
   function recalcCurrent(d=draftRef.current){
@@ -4041,24 +4287,53 @@ function FieldMapper(){
     clearMapLayers();
     const pts=d.latlngs||[];if(pts.length<2)return;
     const c=FIELD_CROPS_CFG[d.crop]||FIELD_CROPS_CFG.sweetcorn;
-    polyRef.current=L.polygon(pts,{color:c.color,fillColor:c.color,fillOpacity:.16,weight:3}).addTo(map);
+    polyRef.current=L.polygon(pts,{color:c.color,fillColor:c.color,fillOpacity:.12,weight:3}).addTo(map);
     if(showVertices){
       markerLayerRef.current=L.layerGroup(pts.map(p=>L.circleMarker([p.lat,p.lng],{radius:4,color:'#fff',fillColor:c.color,fillOpacity:1,weight:2}))).addTo(map);
     }
     const layers=[];
     if(pts.length>=3){
-      const plan=buildPolygonFieldPlan(c,pts,d.orientation,d.bearingDeg,d.startSide);
+      const plan=buildPolygonFieldPlan(c,pts,d.orientation,d.bearingDeg,d.startSide,d.pumpkinPlan);
       if(plan){
+        const isPumpkin=d.crop==='pumpkin',alloc=isPumpkin?calcPumpkinVarietyPlan(plan,d.pumpkinPlan):null;
         plan.rows.forEach(row=>row.segments.forEach(seg=>{
           const a=plan.projection.toLatLng(seg[0].x,seg[0].y),b=plan.projection.toLatLng(seg[1].x,seg[1].y);
-          layers.push(L.polyline([a,b],{color:c.color,weight:row.section===1?2.6:1.35,opacity:row.section===1?1:.86}));
+          const bi=alloc?.assignmentBySection?.[row.section];
+          const co=isPumpkin&&Number.isInteger(bi)?pumpkinBlockColor(bi):c.color;
+          layers.push(L.polyline([a,b],{color:co,weight:isPumpkin?2.1:(row.section===1?2.6:1.35),opacity:Number.isInteger(bi)?.98:.78}));
         }));
-        for(let s=1;s<=plan.stats.numSections;s++){
-          const rr=plan.rows.filter(r=>r.section===s);if(!rr.length)continue;
-          const seg=rr[Math.floor(rr.length/2)].segments[0];if(!seg)continue;
-          const mid={x:(seg[0].x+seg[1].x)/2,y:(seg[0].y+seg[1].y)/2};
-          const ll=plan.projection.toLatLng(mid.x,mid.y);
-          layers.push(L.marker([ll.lat,ll.lng],{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:rgba(255,255,255,.9);border:1px solid '+c.color+';color:'+c.color+';font:bold 10px system-ui;border-radius:10px;padding:1px 5px;white-space:nowrap">S'+s+'</div>',iconSize:[28,18],iconAnchor:[14,9]})}));
+        (plan.headlandRows||[]).forEach(row=>row.segments.forEach(seg=>{
+          const a=plan.projection.toLatLng(seg[0].x,seg[0].y),b=plan.projection.toLatLng(seg[1].x,seg[1].y);
+          const hp=row.headland==='A'?alloc?.headlands?.A:alloc?.headlands?.B;
+          const co=hp?.variety?pumpkinVarietyColor(hp.variety,alloc?.plan?.blocks||[]):c.color;
+          layers.push(L.polyline([a,b],{color:co,weight:2.35,opacity:.98,dashArray:hp?.variety?null:'6 3'}));
+        }));
+
+        if(isPumpkin&&alloc){
+          alloc.blocks.forEach((b,bi)=>{
+            if(!b.sections?.length||!b.variety)return;
+            const sec=b.sections[Math.floor(b.sections.length/2)],rr=plan.rows.filter(r=>r.section===sec);
+            if(!rr.length)return;const seg=rr[Math.floor(rr.length/2)].segments[0];if(!seg)return;
+            const mid={x:(seg[0].x+seg[1].x)/2,y:(seg[0].y+seg[1].y)/2},ll=plan.projection.toLatLng(mid.x,mid.y);
+            const rng=b.sections.length===1?'P'+b.sections[0]:'P'+b.sections[0]+'–'+b.sections[b.sections.length-1];
+            const co=pumpkinBlockColor(bi),txt=b.variety+' · '+rng;
+            layers.push(L.marker([ll.lat,ll.lng],{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:rgba(255,255,255,.94);border:2px solid '+co+';color:'+co+';font:bold 10px system-ui;border-radius:10px;padding:2px 6px;white-space:nowrap">'+txt+'</div>',iconSize:[110,20],iconAnchor:[55,10]})}));
+          });
+          for(const which of ['A','B']){
+            const h=alloc.headlands?.[which],rr=(plan.headlandRows||[]).filter(r=>r.headland===which);if(!rr.length)continue;
+            const r=rr[Math.floor(rr.length/2)],seg=r.segments[0];if(!seg)continue;
+            const mid={x:(seg[0].x+seg[1].x)/2,y:(seg[0].y+seg[1].y)/2},ll=plan.projection.toLatLng(mid.x,mid.y);
+            const co=h?.variety?pumpkinVarietyColor(h.variety,alloc.plan.blocks):c.color,txt='Headland '+which+(h?.variety?' · '+h.variety:' · 6 rows');
+            layers.push(L.marker([ll.lat,ll.lng],{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:rgba(255,255,255,.94);border:2px solid '+co+';color:'+co+';font:bold 9px system-ui;border-radius:9px;padding:2px 5px;white-space:nowrap">'+txt+'</div>',iconSize:[112,19],iconAnchor:[56,9]})}));
+          }
+        }else{
+          for(let sec=1;sec<=plan.stats.numSections;sec++){
+            const rr=plan.rows.filter(r=>r.section===sec);if(!rr.length)continue;
+            const seg=rr[Math.floor(rr.length/2)].segments[0];if(!seg)continue;
+            const mid={x:(seg[0].x+seg[1].x)/2,y:(seg[0].y+seg[1].y)/2};
+            const ll=plan.projection.toLatLng(mid.x,mid.y);
+            layers.push(L.marker([ll.lat,ll.lng],{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:rgba(255,255,255,.9);border:1px solid '+c.color+';color:'+c.color+';font:bold 10px system-ui;border-radius:10px;padding:1px 5px;white-space:nowrap">S'+sec+'</div>',iconSize:[28,18],iconAnchor:[14,9]})}));
+          }
         }
       }
     }
@@ -4080,7 +4355,7 @@ function FieldMapper(){
 
   function applyDraft(nd,redraw=true){
     draftRef.current=nd;setDraft(nd);
-    const p=useManual?null:(nd.latlngs?.length>=3?buildPolygonFieldPlan(FIELD_CROPS_CFG[nd.crop]||FIELD_CROPS_CFG.sweetcorn,nd.latlngs,nd.orientation,nd.bearingDeg,nd.startSide):null);
+    const p=useManual?null:(nd.latlngs?.length>=3?buildPolygonFieldPlan(FIELD_CROPS_CFG[nd.crop]||FIELD_CROPS_CFG.sweetcorn,nd.latlngs,nd.orientation,nd.bearingDeg,nd.startSide,nd.pumpkinPlan):null);
     if(!useManual)setStats(p?.stats||null);
     if(redraw&&leafletRef.current&&!useManual)renderPlanOnMap(nd,mode==='edit');
   }
@@ -4112,6 +4387,40 @@ function FieldMapper(){
   function flipStartSide(){
     const cur=draftRef.current;const nd={...cur,startSide:cur.startSide==='max'?'min':'max',startEdgePoint:null};
     setImportMsg('✓ Section 1 flipped to '+startSideLabel(nd)+'.');applyDraft(nd);
+  }
+
+
+  function setPumpkinPlan(next){
+    const nd={...draftRef.current,pumpkinPlan:normalizePumpkinPlan(next)};applyDraft(nd);
+  }
+  function patchPumpkinHead(which,patch){
+    const pp=normalizePumpkinPlan(draftRef.current.pumpkinPlan),key=which==='A'?'headlandA':'headlandB';
+    setPumpkinPlan({...pp,[key]:{...pp[key],...patch}});
+  }
+  function patchPumpkinBlock(id,patch){
+    const pp=normalizePumpkinPlan(draftRef.current.pumpkinPlan);
+    setPumpkinPlan({...pp,blocks:pp.blocks.map(b=>b.id===id?{...b,...patch}:b)});
+  }
+  function addPumpkinBlock(){
+    const pp=normalizePumpkinPlan(draftRef.current.pumpkinPlan);
+    setPumpkinPlan({...pp,blocks:[...pp.blocks,{id:'pb_'+Date.now().toString(36),variety:'',targetAcres:'',spacingIn:24}]});
+  }
+  function removePumpkinBlock(id){
+    const pp=normalizePumpkinPlan(draftRef.current.pumpkinPlan),blocks=pp.blocks.filter(b=>b.id!==id);
+    setPumpkinPlan({...pp,blocks:blocks.length?blocks:[{id:'pb1',variety:'',targetAcres:'',spacingIn:24}]});
+  }
+  function movePumpkinBlock(id,dir){
+    const pp=normalizePumpkinPlan(draftRef.current.pumpkinPlan),a=[...pp.blocks],i=a.findIndex(b=>b.id===id),j=i+dir;
+    if(i<0||j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];setPumpkinPlan({...pp,blocks:a});
+  }
+
+  function setWatermelonPlan(next){
+    const nd={...draftRef.current,watermelonPlan:normalizeWatermelonPlan(next)};
+    draftRef.current=nd;setDraft(nd);
+  }
+  function patchWatermelonPlan(patch){
+    const wp=normalizeWatermelonPlan(draftRef.current.watermelonPlan);
+    setWatermelonPlan({...wp,...patch});
   }
 
   useEffect(()=>{
@@ -4161,7 +4470,7 @@ function FieldMapper(){
   useEffect(()=>{
     recalcCurrent(draft);
     if(leafletRef.current&&!useManual&&draft.latlngs?.length>=3)renderPlanOnMap(draft,mode==='edit');
-  },[draft.crop,draft.orientation,draft.bearingDeg,draft.startSide,draft.latlngs,manualLen,manualWid,useManual]);
+  },[draft.crop,draft.orientation,draft.bearingDeg,draft.startSide,draft.latlngs,draft.pumpkinPlan,draft.watermelonPlan,manualLen,manualWid,useManual]);
 
   function clearDraw(){
     const nd={...draftRef.current,latlngs:[],startEdgePoint:null};applyDraft(nd,false);setStats(null);clearMapLayers();
@@ -4181,11 +4490,11 @@ function FieldMapper(){
     const crop=FIELD_CROPS_CFG[f.crop]?f.crop:'sweetcorn';
     const orientation=['NS','EW','AB'].includes(f.orientation)?f.orientation:'NS';
     const bearingDeg=isFinite(parseFloat(f.bearingDeg))?normalizeBearing(f.bearingDeg):(orientation==='EW'?90:0);
-    return{...f,crop,orientation,bearingDeg,startSide:f.startSide==='max'?'max':'min',abLine:f.abLine||[],startEdgePoint:f.startEdgePoint||null,varieties:f.varieties||[],latlngs:f.latlngs||[]};
+    return{...f,crop,orientation,bearingDeg,startSide:f.startSide==='max'?'max':'min',abLine:f.abLine||[],startEdgePoint:f.startEdgePoint||null,varieties:f.varieties||[],pumpkinPlan:normalizePumpkinPlan(f.pumpkinPlan),watermelonPlan:normalizeWatermelonPlan(f.watermelonPlan),latlngs:f.latlngs||[]};
   }
 
   function startNew(){
-    const nd={name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],latlngs:[],notes:''};
+    const nd={name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),latlngs:[],notes:''};
     draftRef.current=nd;setDraft(nd);setActiveFid(null);setStats(null);setMapTool(null);setAbA(null);
     setManualLen('');setManualWid('');setUseManual(false);setImportMsg('');setMode('edit');
   }
@@ -4196,7 +4505,7 @@ function FieldMapper(){
   }
   function viewField(f){
     const nd=migratedField(f);draftRef.current=nd;setDraft(nd);setActiveFid(f.id);setMapTool(null);setAbA(null);setUseManual(false);
-    const p=nd.latlngs?.length>=3?buildPolygonFieldPlan(FIELD_CROPS_CFG[nd.crop]||FIELD_CROPS_CFG.sweetcorn,nd.latlngs,nd.orientation,nd.bearingDeg,nd.startSide):null;
+    const p=nd.latlngs?.length>=3?buildPolygonFieldPlan(FIELD_CROPS_CFG[nd.crop]||FIELD_CROPS_CFG.sweetcorn,nd.latlngs,nd.orientation,nd.bearingDeg,nd.startSide,nd.pumpkinPlan):null;
     setStats(p?.stats||f.stats||null);setMode('view');
   }
   async function deleteField(id){
@@ -4219,7 +4528,7 @@ function FieldMapper(){
         return;
       }
       const now=new Date().toISOString();
-      const added=imported.map((x,i)=>({id:'fld_imp_'+Date.now().toString(36)+'_'+i,name:x.name,crop:'',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],latlngs:x.latlngs,notes:'Imported from '+file.name,stats:null,source:'Fieldmargin import',savedAt:now.slice(0,10),updatedAt:now}));
+      const added=imported.map((x,i)=>({id:'fld_imp_'+Date.now().toString(36)+'_'+i,name:x.name,crop:'',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),latlngs:x.latlngs,notes:'Imported from '+file.name,stats:null,source:'Fieldmargin import',savedAt:now.slice(0,10),updatedAt:now}));
       const merged=[...added,...fields.filter(f=>!added.some(a=>a.name===f.name))];
       setFields(merged);LS.set('hff:fields',merged);setSyncSt('syncing');
       const results=await Promise.all(added.map(sbFieldPush));setSyncSt(results.every(r=>r.ok)?'ok':'err');
@@ -4229,6 +4538,17 @@ function FieldMapper(){
 
   const syncBadge=syncSt==='syncing'?'⟳ syncing':syncSt==='ok'?'☁ synced':syncSt==='err'?'⚠ sync error':syncSt==='off'?'local only':'☁';
   const syncColor=syncSt==='ok'?'#2e7d32':syncSt==='err'?'#c62828':'#888';
+  const polygonPlan=(!useManual&&draft.latlngs?.length>=3)?buildPolygonFieldPlan(cfg,draft.latlngs,draft.orientation,draft.bearingDeg,draft.startSide,draft.pumpkinPlan):null;
+  const pumpkinAlloc=draft.crop==='pumpkin'&&polygonPlan?calcPumpkinVarietyPlan(polygonPlan,draft.pumpkinPlan):null;
+  const pumpkinSummary=pumpkinVarietySummary(pumpkinAlloc);
+  const pumpkinPP=normalizePumpkinPlan(draft.pumpkinPlan);
+  const pumpkinPlannedPlants=pumpkinSummary.reduce((a,x)=>a+x.plants,0);
+  const pumpkinPlannedSeeds=pumpkinSummary.reduce((a,x)=>a+x.seeds,0);
+  const watermelonPP=normalizeWatermelonPlan(draft.watermelonPlan);
+  const watermelonMaterials=draft.crop==='watermelon'&&stats?calcWatermelonMaterials(polygonPlan,watermelonPP,useManual?stats:null):null;
+  const watermelonVarieties=watermelonVarietySummary(watermelonMaterials,draft.varieties||[]);
+  const displayPlants=draft.crop==='pumpkin'&&pumpkinPlannedPlants>0?pumpkinPlannedPlants:(stats?.totalPlants||0);
+  const displaySeeds=draft.crop==='pumpkin'&&pumpkinPlannedSeeds>0?pumpkinPlannedSeeds:(stats?.seedsNeeded||0);
 
   if(mode==='list')return html`<div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}>
@@ -4264,8 +4584,8 @@ function FieldMapper(){
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <label class="fl" style=${{fontSize:11}}>Field Name</label><input class="ti" type="text" value=${draft.name} onInput=${e=>setDraft(d=>({...d,name:e.target.value}))} placeholder="e.g. Cox South East"/>
-      <label class="fl" style=${{fontSize:11,marginTop:9}}>Crop</label><div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:6}}>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>setDraft(d=>({...d,crop:k,varieties:[]}))} style=${{padding:'5px 10px',borderRadius:7,border:'1.5px solid '+(draft.crop===k?c.color:'#ddd'),background:draft.crop===k?c.color:'transparent',color:draft.crop===k?'#fff':'#888',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>${c.icon} ${c.label}</button>`)}</div>
-      <div style=${{fontSize:11,color:'#888'}}>Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>${cfg.twinRow?html` · ${cfg.twinRowSpacing}" twin-row spacing`:null}${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:null}</div>
+      <label class="fl" style=${{fontSize:11,marginTop:9}}>Crop</label><div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:6}}>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>{const cur=draftRef.current,nd={...cur,crop:k,varieties:[],pumpkinPlan:k==='pumpkin'?normalizePumpkinPlan(cur.pumpkinPlan):cur.pumpkinPlan,watermelonPlan:k==='watermelon'?normalizeWatermelonPlan(cur.watermelonPlan):cur.watermelonPlan};applyDraft(nd);}} style=${{padding:'5px 10px',borderRadius:7,border:'1.5px solid '+(draft.crop===k?c.color:'#ddd'),background:draft.crop===k?c.color:'transparent',color:draft.crop===k?'#fff':'#888',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>${c.icon} ${c.label}</button>`)}</div>
+      <div style=${{fontSize:11,color:'#888'}}>${draft.crop==='pumpkin'?html`<strong>3-row Monosem</strong> · 5 ft row centres · 15 ft/pass · default 2 swaths (6 rows) planted perpendicular at each headland`:draft.crop==='watermelon'?html`<strong>8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath</strong> · seedless 33" · Premium pollinator ~13 ft in-row`:html`Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>${cfg.twinRow?html` · ${cfg.twinRowSpacing}" twin-row spacing`:null}${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:null}`}</div>
     </div>
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
@@ -4290,8 +4610,49 @@ function FieldMapper(){
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}><label style=${{display:'flex',gap:8,alignItems:'center',cursor:'pointer',marginBottom:useManual?8:0,fontSize:12}}><input type="checkbox" checked=${useManual} onChange=${e=>setUseManual(e.target.checked)}/>Enter dimensions manually instead of GPS boundary</label>${useManual?html`<div style=${{display:'flex',gap:8}}><div style=${{flex:1}}><label class="fl" style=${{fontSize:11}}>Length (ft)</label><input class="ti" type="number" value=${manualLen} onInput=${e=>setManualLen(e.target.value)} placeholder="1320"/></div><div style=${{flex:1}}><label class="fl" style=${{fontSize:11}}>Width (ft)</label><input class="ti" type="number" value=${manualWid} onInput=${e=>setManualWid(e.target.value)} placeholder="660"/></div></div>`:null}</div>
 
-    ${stats?html`<div style=${{background:'linear-gradient(135deg,#1a2b1a,#2d4a30)',borderRadius:12,padding:'14px 16px',marginBottom:8,color:'#fff'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><div style=${{fontSize:12,opacity:.75,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase'}}>Field Calculations</div><span style=${{fontSize:9,opacity:.6}}>${stats.source==='polygon'?'actual polygon rows · '+bearingLabel(draft):'manual rectangle'}</span></div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>${[['Acres',stats.acreage.toFixed(3)],['Sections',stats.numSections],['Rows',stats.numRows]].map(([lbl,val])=>html`<div style=${{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'8px',textAlign:'center'}}><div style=${{fontSize:17,fontWeight:700}}>${val}</div><div style=${{fontSize:10,opacity:.7}}>${lbl}</div></div>`)}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>${[['AVG ROW LENGTH',stats.rowLenFt.toFixed(0)+' ft'],['TOTAL ROW FT',Math.round(stats.totalRowFt).toLocaleString()+' ft'],['PLANTS / HILLS',stats.totalPlants.toLocaleString()],['SEEDS (+ buffer)',stats.seedsNeeded.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>${l}</div><div style=${{fontWeight:700}}>${v}</div></div>`)}${cfg.twinRow?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>TWIN-ROW PLANTING LINE</div><div style=${{fontWeight:700}}>${Math.round(stats.plantingLineFt).toLocaleString()} ft</div></div>`:null}${stats.pollinators?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>POLLINATORS</div><div style=${{fontWeight:700}}>${stats.pollinators.toLocaleString()}</div></div>`:null}${stats.plasticFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>PLASTIC MULCH</div><div style=${{fontWeight:700}}>${(stats.plasticFt/5280).toFixed(2)} mi · ${Math.round(stats.plasticFt).toLocaleString()} ft</div></div>`:null}${stats.dripFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>DRIP TAPE</div><div style=${{fontWeight:700}}>${(stats.dripFt/5280).toFixed(2)} mi · ${Math.round(stats.dripFt).toLocaleString()} ft</div></div>`:null}<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>SECTION WIDTH</div><div style=${{fontWeight:700}}>${stats.sectionWidth.toFixed(1)} ft</div></div>${stats.unusedFt>1?html`<div style=${{background:'rgba(255,200,0,.15)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.7,fontSize:10}}>UNUSED EDGE</div><div style=${{fontWeight:700,color:'#ffd'}}>${stats.unusedFt.toFixed(1)} ft</div></div>`:null}</div></div>
-      ${stats.numSections>0?html`<div class="card" style=${{padding:'10px 14px',marginBottom:8}}><div style=${{fontWeight:600,fontSize:12,marginBottom:8}}>Variety Assignment by Section</div><div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:6}}>${Array.from({length:stats.numSections},(_,i)=>html`<div key=${i} style=${{background:'#f8f8f5',borderRadius:7,padding:'6px 8px'}}><div style=${{fontSize:10,color:'#aaa',marginBottom:3}}>Section ${i+1}</div><select style=${{width:'100%',padding:'4px',border:'1px solid #ddd',borderRadius:5,fontSize:11,fontFamily:'inherit',outline:'none'}} value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draft.varieties||[])];v[i]=e.target.value;setDraft(d=>({...d,varieties:v}));}}><option value="">Any</option>${cfg.varieties.map(vr=>html`<option key=${vr} value=${vr}>${vr}</option>`)}</select></div>`)}</div></div>`:null}`:null}
+    ${draft.crop==='pumpkin'?html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,borderColor:'#f1c29d'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:4}}><div style=${{fontWeight:800,fontSize:13,color:'#b84300'}}>🎃 Pumpkin Planting Plan</div><div style=${{fontSize:10,color:'#999'}}>3-row Monosem · whole passes</div></div>
+      <div style=${{fontSize:10,color:'#777',lineHeight:1.45,marginBottom:9}}>Main rows are 5 ft centres. Two 3-row swaths (6 rows) are planted perpendicular across each enabled headland. Variety blocks snap to complete 3-row planter passes.</div>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:7,marginBottom:10}}>
+        ${[['A',pumpkinPP.headlandA],['B',pumpkinPP.headlandB]].map(([which,hp])=>{const hr=pumpkinAlloc?.headlands?.[which];return html`<div style=${{background:'#fff8f2',border:'1px solid #f2d3bc',borderRadius:8,padding:'8px'}}>
+          <label style=${{display:'flex',alignItems:'center',gap:5,fontSize:11,fontWeight:700,marginBottom:6}}><input type="checkbox" checked=${hp.enabled} onChange=${e=>patchPumpkinHead(which,{enabled:e.target.checked})}/> Headland ${which} · 6 rows</label>
+          <select class="ti" style=${{fontSize:11,padding:'6px',marginBottom:5}} value=${hp.variety} onChange=${e=>patchPumpkinHead(which,{variety:e.target.value})}><option value="">— variety —</option>${cfg.varieties.map(v=>html`<option value=${v}>${v}</option>`)}</select>
+          <div style=${{display:'flex',alignItems:'center',gap:5}}><span style=${{fontSize:10,color:'#777'}}>in-row</span><input class="ti" type="number" min="6" step="1" style=${{width:66,fontSize:11,padding:'5px'}} value=${hp.spacingIn} onInput=${e=>patchPumpkinHead(which,{spacingIn:e.target.value})}/><span style=${{fontSize:10}}>&quot;</span></div>
+          ${hr&&hp.enabled?html`<div style=${{fontSize:9,color:'#777',marginTop:5}}>${hr.rowFt.toFixed(0)} row ft · ${hr.acres.toFixed(2)} ac · ${hr.seeds.toLocaleString()} seeds</div>`:null}
+        </div>`;})}
+      </div>
+      <div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:8}}><span style=${{fontSize:11,fontWeight:700}}>Seed order buffer</span><input class="ti" type="number" min="0" step="1" style=${{width:70,padding:'5px',fontSize:11}} value=${pumpkinPP.seedBufferPct} onInput=${e=>setPumpkinPlan({...pumpkinPP,seedBufferPct:e.target.value})}/><span style=${{fontSize:11}}>%</span></div>
+      ${pumpkinPP.blocks.map((b,bi)=>{const r=pumpkinAlloc?.blocks?.[bi];return html`<div style=${{border:'1px solid #eee',borderLeft:'4px solid '+pumpkinBlockColor(bi),borderRadius:8,padding:'8px 9px',marginBottom:6}}>
+        <div style=${{display:'flex',gap:5,alignItems:'center',marginBottom:6}}><strong style=${{fontSize:11,flex:1}}>Planting block ${bi+1}</strong><button class="btn btn-sm btn-out" style=${{padding:'3px 7px'}} disabled=${bi===0} onClick=${()=>movePumpkinBlock(b.id,-1)}>↑</button><button class="btn btn-sm btn-out" style=${{padding:'3px 7px'}} disabled=${bi===pumpkinPP.blocks.length-1} onClick=${()=>movePumpkinBlock(b.id,1)}>↓</button><button class="btn btn-sm btn-danger" style=${{padding:'3px 7px'}} onClick=${()=>removePumpkinBlock(b.id)}>×</button></div>
+        <div style=${{display:'grid',gridTemplateColumns:'1.45fr .75fr .65fr',gap:6}}><div><label class="fl">Variety</label><select class="ti" style=${{fontSize:11,padding:'6px'}} value=${b.variety} onChange=${e=>patchPumpkinBlock(b.id,{variety:e.target.value})}><option value="">— variety —</option>${cfg.varieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></div><div><label class="fl">Target ac</label><input class="ti" type="number" step="0.1" min="0" style=${{fontSize:11,padding:'6px'}} value=${b.targetAcres} onInput=${e=>patchPumpkinBlock(b.id,{targetAcres:e.target.value})}/></div><div><label class="fl">Spacing</label><div style=${{display:'flex',alignItems:'center',gap:2}}><input class="ti" type="number" min="6" step="1" style=${{fontSize:11,padding:'6px'}} value=${b.spacingIn} onInput=${e=>patchPumpkinBlock(b.id,{spacingIn:e.target.value})}/><span style=${{fontSize:10}}>&quot;</span></div></div></div>
+        ${r?html`<div style=${{fontSize:10,color:'#666',marginTop:6,lineHeight:1.45}}><strong>${r.approxRows} approx rows (${r.approxPasses} passes)</strong> → allocated ${r.rows} rows / ${r.passes} passes · ${r.actualAcres.toFixed(2)} main ac${r.headlandCreditAcres?` + ${r.headlandCreditAcres.toFixed(2)} headland ac`:''} · ${r.rowFt.toFixed(0)} row ft · ${r.seeds.toLocaleString()} seed</div>`:html`<div style=${{fontSize:10,color:'#aaa',marginTop:5}}>Draw/import the GPS boundary to calculate planter passes.</div>`}
+      </div>`;})}
+      <button class="btn btn-sm btn-out" onClick=${addPumpkinBlock}>+ Variety block</button>
+      ${pumpkinAlloc?html`<div style=${{marginTop:9,padding:'8px 10px',background:pumpkinAlloc.unassignedPasses?'#fff8e1':'#edf7ed',borderRadius:7,fontSize:10,color:pumpkinAlloc.unassignedPasses?'#8a6100':'#2e7d32'}}>${pumpkinAlloc.unassignedPasses?`Unassigned main field: ${pumpkinAlloc.unassignedPasses} planter passes / ${pumpkinAlloc.unassignedRows} rows · ${pumpkinAlloc.unassignedAcres.toFixed(2)} ac`:'✓ Main field passes allocated'}${pumpkinSummary.length?html`<div style=${{marginTop:5,color:'#555'}}>${pumpkinSummary.map(x=>`${x.variety}: ${x.actualAcres.toFixed(2)} ac · ${x.seeds.toLocaleString()} seed`).join('  |  ')}</div>`:null}</div>`:null}
+    </div>`:null}
+
+    ${draft.crop==='watermelon'&&watermelonMaterials?html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,borderColor:'#efc4c1'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',marginBottom:4}}><div style=${{fontWeight:800,fontSize:13,color:'#a72d24'}}>🍉 Watermelon Material Planner</div><div style=${{fontSize:10,color:'#999'}}>actual clipped row footage</div></div>
+      <div style=${{fontSize:10,color:'#777',marginBottom:9,lineHeight:1.45}}>8 plastic beds × 6.5 ft + 13 ft driveway = <strong>65 ft/section</strong>. Plastic and drip orders use the exact linear feet of mapped rows rather than acreage estimates.</div>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:6,marginBottom:9}}>
+        <div><label class="fl">Drip emitter spacing</label><select class="ti" style=${{fontSize:11,padding:'6px'}} value=${watermelonPP.dripEmitterSpacingIn} onChange=${e=>patchWatermelonPlan({dripEmitterSpacingIn:+e.target.value})}><option value="12">12&quot; — 600 ft max</option><option value="16">16&quot; — 900 ft max</option></select></div>
+        <div><label class="fl">Drip lines / bed</label><input class="ti" type="number" min="1" step="1" style=${{fontSize:11,padding:'6px'}} value=${watermelonPP.dripLinesPerBed} onInput=${e=>patchWatermelonPlan({dripLinesPerBed:e.target.value})}/></div>
+        <div><label class="fl">Order buffer</label><div style=${{display:'flex',alignItems:'center',gap:3}}><input class="ti" type="number" min="0" step="1" style=${{fontSize:11,padding:'6px'}} value=${watermelonPP.materialBufferPct} onInput=${e=>patchWatermelonPlan({materialBufferPct:e.target.value})}/><span style=${{fontSize:10}}>%</span></div></div>
+      </div>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:6,marginBottom:8}}>
+        <div style=${{background:'#fff7f6',borderRadius:8,padding:'8px'}}><div style=${{fontSize:9,color:'#999'}}>ACTUAL BED ROW FOOTAGE</div><div style=${{fontSize:17,fontWeight:800}}>${Math.round(watermelonMaterials.totalBedFt).toLocaleString()} ft</div><div style=${{fontSize:9,color:'#777'}}>${(watermelonMaterials.totalBedFt/5280).toFixed(2)} miles</div></div>
+        <div style=${{background:watermelonMaterials.rowsOverLimit?'#fff8e1':'#edf7ed',borderRadius:8,padding:'8px'}}><div style=${{fontSize:9,color:'#999'}}>LONGEST CONTINUOUS RUN</div><div style=${{fontSize:17,fontWeight:800,color:watermelonMaterials.rowsOverLimit?'#9a6800':'#2e7d32'}}>${watermelonMaterials.longestRunFt.toFixed(0)} ft</div><div style=${{fontSize:9,color:'#777'}}>limit ${watermelonMaterials.maxRunFt} ft</div></div>
+      </div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:8}}>
+        <div style=${{border:'1px solid #eee',borderRadius:8,padding:'8px'}}><div style=${{fontSize:10,fontWeight:700}}>Plastic mulch</div><div style=${{fontSize:16,fontWeight:800}}>${Math.round(watermelonMaterials.plasticOrderFt).toLocaleString()} ft</div><div style=${{fontSize:10,color:'#777'}}><strong>${watermelonMaterials.plasticRolls} rolls</strong> @ <input type="number" value=${watermelonPP.plasticRollFt} onInput=${e=>patchWatermelonPlan({plasticRollFt:e.target.value})} style=${{width:62,padding:'2px 3px',border:'1px solid #ddd',borderRadius:4,fontSize:10}}/> ft/roll</div></div>
+        <div style=${{border:'1px solid #eee',borderRadius:8,padding:'8px'}}><div style=${{fontSize:10,fontWeight:700}}>Drip tape</div><div style=${{fontSize:16,fontWeight:800}}>${Math.round(watermelonMaterials.dripOrderFt).toLocaleString()} ft</div><div style=${{fontSize:10,color:'#777'}}><strong>${watermelonMaterials.dripRolls} rolls</strong> @ <input type="number" value=${watermelonPP.dripRollFt} onInput=${e=>patchWatermelonPlan({dripRollFt:e.target.value})} style=${{width:62,padding:'2px 3px',border:'1px solid #ddd',borderRadius:4,fontSize:10}}/> ft/roll</div></div>
+      </div>
+      ${watermelonMaterials.rowsOverLimit?html`<div style=${{background:'#fff4e5',border:'1px solid #ffd59a',borderRadius:8,padding:'8px 10px',fontSize:10,color:'#8a5600',lineHeight:1.45}}><strong>⚠ ${watermelonMaterials.rowsOverLimit} rows exceed the ${watermelonMaterials.maxRunFt} ft one-end drip limit.</strong> Longest is ${watermelonMaterials.longestRunFt.toFixed(0)} ft. Plan a cross-main / centre feed / split before laying tape. The row geometry needs ${watermelonMaterials.extraRunPieces} additional tape-run split${watermelonMaterials.extraRunPieces===1?'':'s'} if every run is kept at or below the limit.</div>`:html`<div style=${{background:'#edf7ed',borderRadius:8,padding:'7px 10px',fontSize:10,color:'#2e7d32'}}>✓ All continuous mapped rows are within the ${watermelonMaterials.maxRunFt} ft drip-run limit.</div>`}
+      ${watermelonVarieties.length?html`<div style=${{marginTop:8,borderTop:'1px solid #eee',paddingTop:7}}><div style=${{fontSize:10,fontWeight:700,marginBottom:4}}>Assigned variety totals</div>${watermelonVarieties.map(x=>html`<div style=${{display:'flex',justifyContent:'space-between',gap:8,fontSize:10,padding:'2px 0'}}><span>${x.variety} · ${x.sections} section${x.sections===1?'':'s'}</span><span><strong>${x.acres.toFixed(2)} ac</strong> · ${Math.round(x.rowFt).toLocaleString()} row ft</span></div>`)}</div>`:null}
+    </div>`:null}
+
+    ${stats?html`<div style=${{background:'linear-gradient(135deg,#1a2b1a,#2d4a30)',borderRadius:12,padding:'14px 16px',marginBottom:8,color:'#fff'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><div style=${{fontSize:12,opacity:.75,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase'}}>Field Calculations</div><span style=${{fontSize:9,opacity:.6}}>${stats.source==='polygon'?'actual polygon rows · '+bearingLabel(draft):'manual rectangle'}</span></div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>${[['Acres',stats.acreage.toFixed(3)],['Sections',stats.numSections],['Rows',stats.numRows]].map(([lbl,val])=>html`<div style=${{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'8px',textAlign:'center'}}><div style=${{fontSize:17,fontWeight:700}}>${val}</div><div style=${{fontSize:10,opacity:.7}}>${lbl}</div></div>`)}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>${[['AVG ROW LENGTH',stats.rowLenFt.toFixed(0)+' ft'],['TOTAL ROW FT',Math.round(stats.totalRowFt).toLocaleString()+' ft'],['PLANTS / HILLS',displayPlants.toLocaleString()],['SEEDS (+ buffer)',displaySeeds.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>${l}</div><div style=${{fontWeight:700}}>${v}</div></div>`)}${cfg.twinRow?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>TWIN-ROW PLANTING LINE</div><div style=${{fontWeight:700}}>${Math.round(stats.plantingLineFt).toLocaleString()} ft</div></div>`:null}${stats.pollinators?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>POLLINATORS</div><div style=${{fontWeight:700}}>${stats.pollinators.toLocaleString()}</div></div>`:null}${stats.plasticFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>PLASTIC MULCH</div><div style=${{fontWeight:700}}>${(stats.plasticFt/5280).toFixed(2)} mi · ${Math.round(stats.plasticFt).toLocaleString()} ft</div></div>`:null}${stats.dripFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>DRIP TAPE</div><div style=${{fontWeight:700}}>${(stats.dripFt/5280).toFixed(2)} mi · ${Math.round(stats.dripFt).toLocaleString()} ft</div></div>`:null}<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>SECTION WIDTH</div><div style=${{fontWeight:700}}>${stats.sectionWidth.toFixed(1)} ft</div></div>${stats.unusedFt>1?html`<div style=${{background:'rgba(255,200,0,.15)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.7,fontSize:10}}>UNUSED EDGE</div><div style=${{fontWeight:700,color:'#ffd'}}>${stats.unusedFt.toFixed(1)} ft</div></div>`:null}</div></div>
+      ${stats.numSections>0&&draft.crop!=='pumpkin'?html`<div class="card" style=${{padding:'10px 14px',marginBottom:8}}><div style=${{fontWeight:600,fontSize:12,marginBottom:3}}>${draft.crop==='watermelon'?'Watermelon Variety Assignment by 65 ft Section':'Variety Assignment by Section'}</div>${draft.crop==='watermelon'?html`<div style=${{fontSize:10,color:'#999',marginBottom:8}}>Each section shows its actual clipped row footage and planted acreage. Assigning varieties here builds the variety totals above.</div>`:null}<div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(145px,1fr))',gap:6}}>${Array.from({length:stats.numSections},(_,i)=>{const wm=watermelonMaterials?.sections?.find(x=>x.section===i+1);return html`<div key=${i} style=${{background:'#f8f8f5',borderRadius:7,padding:'6px 8px'}}><div style=${{fontSize:10,color:'#aaa',marginBottom:3}}>Section ${i+1}${wm?` · ${Math.round(wm.rowFt).toLocaleString()} ft · ${wm.acres.toFixed(2)} ac`:''}</div><select style=${{width:'100%',padding:'4px',border:'1px solid #ddd',borderRadius:5,fontSize:11,fontFamily:'inherit',outline:'none'}} value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draft.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Any</option>${cfg.varieties.map(vr=>html`<option key=${vr} value=${vr}>${vr}</option>`)}</select></div>`;})}</div></div>`:null}`:null}
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}><label class="fl" style=${{fontSize:11}}>Notes</label><textarea value=${draft.notes} onInput=${e=>setDraft(d=>({...d,notes:e.target.value}))} placeholder="Soil type, drainage, access points, previous crop…" style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',height:55,resize:'vertical',boxSizing:'border-box'}}/></div>
   </div>`;
