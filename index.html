@@ -2489,7 +2489,7 @@ function buildSeasonWeeks(year){
 const TASK_WEEKS=buildSeasonWeeks(new Date().getFullYear());
 
 
-const TASK_MONTH_COLORS={'March':'#4a7c59','April':'#3d6e9f','Apr/May':'#5b7a3d','May':'#2d7a4f','May/Jun':'#4a7a2e','June':'#c07830'};
+const TASK_MONTH_COLORS={'Mar':'#4a7c59','Apr':'#3d6e9f','May':'#2d7a4f','Jun':'#c07830','Jul':'#c05c00','Aug':'#c08000','Sep':'#8a4a00','Oct':'#6b3a00','Nov':'#4a3030','March':'#4a7c59','April':'#3d6e9f','Apr/May':'#5b7a3d','May/Jun':'#4a7a2e','June':'#c07830'};
 const TASK_STAFF=['Any','Julio','Jose','Bob','Chicken','Kumar','Dycks','Hildebrandts','Roger','Abzal','Nero','Binod','Kevin','Glenn'];
 
 const TASKS_DATA=[
@@ -2736,6 +2736,7 @@ function TaskCardHtm({task}){
 }
 
 function WeekSectionHtm({weekData,tasks,open,onToggle}){
+  if(!weekData)return null;
   const monthColor=TASK_MONTH_COLORS[weekData.month]||'#555';
   const high=tasks.filter(t=>t.pri==='high').length;
   return html`
@@ -2881,8 +2882,8 @@ function TaskBrain(){
         const SE={Spring:'🌱',Summer:'☀️',Fall:'🍂'};
         return seasons.map(season=>{
           const sWeeks=TASK_WEEKS.filter(w=>w.season===season);
-          const sTasks=allTasks.filter(t=>sWeeks.some(w=>w.week===t.week));
-          if(!sTasks.length&&(catFilter||assignFilter||search)&&!filtered.some(t=>sWeeks.some(w=>w.week===t.week)))return null;
+          const sTasks=allTasks.filter(t=>sWeeks.some(w=>w&&w.week===t&&t.week));
+          if(!sTasks.length&&(catFilter||assignFilter||search)&&!filtered.some(t=>sWeeks.some(w=>w&&w.week===t&&t.week)))return null;
           return html`<div key=${season} style=${{marginBottom:4}}>
             <div style=${{display:'flex',alignItems:'center',gap:8,padding:'8px 4px 6px',
               borderBottom:'2px solid '+(SC[season]||'#ddd'),marginBottom:6}}>
@@ -2890,9 +2891,9 @@ function TaskBrain(){
               <span style=${{fontSize:11,color:'#aaa'}}>${sWeeks.length} weeks</span>
             </div>
             ${sWeeks.map(wd=>{
-              const wTasks=filtered.filter(t=>t.week===wd.week);
+              const wTasks=filtered.filter(t=>t&&t.week===wd.week);
               if(!wTasks.length&&(catFilter||assignFilter||search))return null;
-              const displayTasks=wTasks.length?wTasks:allTasks.filter(t=>t.week===wd.week&&(!catFilter&&!assignFilter&&!search));
+              const displayTasks=wTasks.length?wTasks:allTasks.filter(t=>t&&t.week===wd.week&&(!catFilter&&!assignFilter&&!search));
               return html`<${WeekSectionHtm} key=${wd.week} weekData=${wd}
                 tasks=${displayTasks} open=${openWeeks.has(wd.week)} onToggle=${()=>toggleWeek(wd.week)}/>`;
             })}
@@ -2906,7 +2907,7 @@ function TaskBrain(){
     ${taskView==='weekly'?html`
     <div>
       ${TASK_WEEKS.map(wd=>{
-        const wTasks=allTasks.filter(t=>t.week===wd.week);
+        const wTasks=allTasks.filter(t=>t&&t.week===wd.week);
         const high=wTasks.filter(t=>t.pri==='high').length;
         return html`
         <div key=${wd.week} class="card" style=${{marginBottom:8}}>
