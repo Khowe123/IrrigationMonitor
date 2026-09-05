@@ -2461,21 +2461,33 @@ const TASK_CATS={
   harvest:    {label:'Harvest/Pack',color:'#b02020',bg:'#fce8e8',icon:'🍓'},
   planting:   {label:'Planting',    color:'#2a6030',bg:'#e0f2e5',icon:'🌱'},
   greenhouse: {label:'Greenhouse',  color:'#7a4000',bg:'#fef0e0',icon:'🌿'},
+  planning:   {label:'Planning',    color:'#2d4870',bg:'#e4ecf8',icon:'📊'},
 };
 
-const TASK_WEEKS=[
-  {week:1, label:'Mar 25–31',    month:'March'},
-  {week:2, label:'Apr 1–3',      month:'April'},
-  {week:3, label:'Apr 6–11',     month:'April'},
-  {week:4, label:'Apr 13–16',    month:'April'},
-  {week:5, label:'Apr 17–23',    month:'April'},
-  {week:6, label:'Apr 28–May 3', month:'Apr/May'},
-  {week:7, label:'May 6–11',     month:'May'},
-  {week:8, label:'May 12–18',    month:'May'},
-  {week:9, label:'May 19–25',    month:'May'},
-  {week:10,label:'May 26–Jun 1', month:'May/Jun'},
-  {week:11,label:'Jun 2–8',      month:'June'},
-];
+// Dynamic week dates — recomputes every year so days stay accurate
+function buildSeasonWeeks(year){
+  // Anchor: week containing March 25 of the given year
+  const anchor=new Date(year,2,25); // March 25
+  // Go back to Monday of that week
+  const dow=anchor.getDay();
+  const start=new Date(anchor);
+  start.setDate(anchor.getDate()-(dow===0?6:dow-1));
+  const MONTH_ABBR=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmt=d=>MONTH_ABBR[d.getMonth()]+' '+d.getDate();
+  const weeks=[];
+  // 35 weeks = Mar → late Nov
+  for(let w=1;w<=35;w++){
+    const s=new Date(start);s.setDate(start.getDate()+(w-1)*7);
+    const e=new Date(s);e.setDate(s.getDate()+6);
+    const mo=s.getMonth();
+    const season=mo<=5?'Spring':mo<=8?'Summer':'Fall';
+    weeks.push({week:w,label:fmt(s)+' – '+fmt(e),month:MONTH_ABBR[mo],
+      season,startDate:s.toISOString().slice(0,10)});
+  }
+  return weeks;
+}
+const TASK_WEEKS=buildSeasonWeeks(new Date().getFullYear());
+
 
 const TASK_MONTH_COLORS={'March':'#4a7c59','April':'#3d6e9f','Apr/May':'#5b7a3d','May':'#2d7a4f','May/Jun':'#4a7a2e','June':'#c07830'};
 const TASK_STAFF=['Any','Julio','Jose','Bob','Chicken','Kumar','Dycks','Hildebrandts','Roger','Abzal','Nero','Binod','Kevin','Glenn'];
@@ -2599,7 +2611,88 @@ const TASKS_DATA=[
   {id:"s095",week:11,cat:"compliance",pri:"high",  rec:true,  assign:"Kevin",title:"Book flights — ag stream workers", notes:"Book ASAP once workers confirmed."},
   {id:"s096",week:11,cat:"equipment", pri:"normal",rec:true,  assign:"Any",  title:"Power wash big cooler before main harvest", notes:""},
   {id:"s097",week:11,cat:"planting",  pri:"normal",rec:true,  assign:"Any",  title:"Plant out lavender, milkweed, cosmos, foxglove, zinnia, marigold", notes:""},
-  {id:"s098",week:11,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",  title:"Pull trusses to tray edge — Zone 4", notes:""},
+  {id:"s098",week:11,cat:"tunnel",    pri:"normal",rec:true,  assign:"Any",  title:"Pull trusses to tray edge — Zone 4", notes:""},,
+  // ── SUMMER / FALL TASKS (Weeks 12–35) ──────────────────────────────────
+  // Week 12 — June-bearer renovation begins
+  {id:'f001',week:12,cat:'field_prep',pri:'high',title:'June-bearer strawberry renovation — mow and till between rows',assign:'Julio',rec:true,
+   notes:'Mow crowns to 1" above substrate. Rototill or disc between rows. Burn or remove debris to reduce disease pressure. Begin renovation within 7–10 days of last pick. 2026: Started week of June 9 — waited slightly too long.'},
+  {id:'f002',week:12,cat:'fertility',pri:'high',title:'Post-renovation fertility — high N to push runner development',assign:'Bob',rec:true,
+   notes:'Switch to high-NH4 programme after renovation. Target 25 lbs N/ac in first 3 weeks post-renovation. Blue 15-30-15 at 25 lbs/ac/week. KNO3 reduced. Monitor Brix and plant colour.'},
+  {id:'f003',week:12,cat:'ipm',pri:'normal',title:'Scout renovated June-bearer fields — watch for mites and aphids in new growth',assign:'Kevin',rec:true,
+   notes:'New runner leaves are highly susceptible. Check 2-spotted spider mite. Spray Agri-Mek or Nexter if threshold exceeded. Aphid pressure often spikes post-renovation — monitor weekly.'},
+  // Week 13 — Watermelon planting window
+  {id:'f004',week:13,cat:'planting',pri:'high',title:'Watermelon transplant — first planting',assign:'Julio',rec:true,
+   notes:'Target soil temp >18°C at 2". Bare ground: plant on 6ft centres, 2 rows/bed. Plastic mulch: 5ft bed centres. Set drip tape before plastic. Water in at 1–2 L per plant. 2026: Planted Seeded (Trusty) and Seedless (Melody) on June 16. Do NOT overwater first week — caused stem rot in 2025.'},
+  {id:'f005',week:13,cat:'tunnel',pri:'normal',title:'Day-neutral tunnels — thin flowers and runners for 2nd crop establishment',assign:'Julio',rec:true,
+   notes:'After July renovation, remove first flush of flowers to direct energy to crown. Keep 2–3 healthy runners per plant. Side-dress with Ca nitrate to build crown before 2nd crop fruit set.'},
+  // Week 14 — Watermelon 2nd planting
+  {id:'f006',week:14,cat:'planting',pri:'normal',title:'Watermelon transplant — second planting (stagger for extended harvest)',assign:'Julio',rec:true,
+   notes:'Plant 7–10 days after first planting to extend harvest window. Same protocol. Mark rows clearly for tracking planting dates.'},
+  {id:'f007',week:14,cat:'compliance',pri:'normal',title:'CanadaGAP mid-season field walk and documentation review',assign:'Kevin',rec:true,
+   notes:'Review spray records for completeness. Check PHI compliance on any recent applications. Confirm field maps are current. Document any label deviations.'},
+  // Week 15–16 — Pumpkin planting
+  {id:'f008',week:15,cat:'planting',pri:'high',title:'Pumpkin direct seeding — Cox, Debrab, Pete Dujardin',assign:'Glenn',rec:true,
+   notes:'Target last week of June / first week of July for Halloween harvest. Seeding depth: 1.5–2". Population: 2–4 seeds/hill, 8–10ft between hills, 10–12ft rows. Field locations per planting plan. 2026: seeded June 26 at Cox, July 1 at Debrab.'},
+  {id:'f009',week:15,cat:'ipm',pri:'normal',title:'Pumpkin pre-emergent weed control — Sandea pre-plant',assign:'Glenn',rec:true,
+   notes:'Apply Sandea (halosulfuron) pre-emergence. Rate: 17–26 g/ac. Use in combination with Command pre-plant. Do not use on Acorn squash — phytotoxicity. Record field and application in spray log.'},
+  {id:'f010',week:16,cat:'field_prep',pri:'normal',title:'Pumpkin fields — cultivate between rows before vine set',assign:'Glenn',rec:true,
+   notes:'Last chance to cultivate before vines spread across row middles. Typically 3–4 weeks after seeding. Also check stand — replant gaps if needed.'},
+  // Week 17–18 — June-bearer runner and plug management
+  {id:'f011',week:17,cat:'planting',pri:'high',title:'June-bearer runner pinning — root runner tips into plug trays',assign:'Julio',rec:true,
+   notes:'Pin earliest runners at appropriate node. Aim for 30–40 days of rooting before digging. Target dig date mid-August. Use 50-cell trays, pre-wetted coir. Mark tray date and zone. 2026: Need to start earlier — late pinning delayed tunnel plant-in.'},
+  {id:'f012',week:17,cat:'greenhouse',pri:'normal',title:'Plug house prep — clean benches, check misting system, calibrate',assign:'Kevin',rec:true,
+   notes:'Clean benches with dilute bleach. Check misting nozzles for blockages. Calibrate timer: target 30s mist every 8 min daytime. Shade cloth should be in place before tray arrival.'},
+  // Week 19–20 — Watermelon in-season
+  {id:'f013',week:19,cat:'ipm',pri:'high',title:'Watermelon vine — scout for squash vine borer and cucumber beetles',assign:'Kevin',rec:true,
+   notes:'Vine borer eggs on stem base. Cucumber beetle transmits bacterial wilt — threshold 1/plant. Spray Imidan or Assail if threshold exceeded. Check weekly from vine set to fruit set.'},
+  {id:'f014',week:19,cat:'fertility',pri:'normal',title:'Watermelon fertility — switch to K-dominant stage 4–5 blend',assign:'Bob',rec:true,
+   notes:'Once fruit reaches softball size, reduce N/NH4 and increase K. Target: 10 kg KNO3 + 5 kg Blue + 0 UAN. NH4 should be <14% of total N. High NH4 at this stage reduces Brix. Monitor drain EC — hold below 2.2.'},
+  // Week 21–22 — Tunnel plant-in
+  {id:'f015',week:21,cat:'tunnel',pri:'high',title:'Day-neutral tunnel plant-in — 2nd crop plugs from field runners',assign:'Julio',rec:true,
+   notes:'Remove spent 1st crop plants. Clean coir slabs — check for root disease. Backfill slab surface if needed. Plant into plugs from June-bearer runners. Target 3–4 plants/slab. Drip rate: 50–80 mL/plant/day to start. 2026 target: plant third week of August.'},
+  {id:'f016',week:21,cat:'ipm',pri:'high',title:'Pre-plant-in tunnel scouting and biocontrol release',assign:'Kevin',rec:true,
+   notes:'Before new plants go in: release Phytoseiulus and Amblyseius into empty tunnels. Check for residual mite populations on old root zones. Place sticky traps for thrips and fungus gnats. Record biocontrol release date and quantities.'},
+  // Week 23–25 — Watermelon harvest
+  {id:'f017',week:23,cat:'harvest',pri:'high',title:'Watermelon harvest begins — check fruit for maturity',assign:'Julio',rec:true,
+   notes:'Check: ground spot yellow/cream, tendrils brown, thump sounds dull. Brix target: Seedless >10, Yellow >12. Pull sample fruit per variety per field. Arrange harvest crew and wagons. Have bins and forklift staged at field entrance. 2026 first pick target: week of Aug 15–20.'},
+  {id:'f018',week:23,cat:'compliance',pri:'normal',title:'Watermelon harvest — confirm PHI compliance for all products',assign:'Kevin',rec:true,
+   notes:'Check all spray records. Confirm no applications within PHI window. Document harvest dates in spray log. For Loblaws/Costco loads: pull LOT CODE sheet and confirm traceability (Vishnu).'},
+  {id:'f019',week:24,cat:'harvest',pri:'high',title:'Watermelon harvest — peak volume, coordinate all crews',assign:'Kevin',rec:true,
+   notes:'Coordinate harvest crew, bin transport, and shipping schedule. Check Orders tab for customer POs. Pick list should reflect inventory vs upcoming shipments. Confirm grading standards with shipping crew.'},
+  // Week 25–28 — Pumpkin harvest
+  {id:'f020',week:25,cat:'harvest',pri:'high',title:'Pumpkin harvest begins — check skin hardness and colour',assign:'Glenn',rec:true,
+   notes:'Target skin hardness: withstands thumbnail scratch. Handle colour should be fully tan/brown. Pick all mature fruit — do not leave on vine past maturity (rots quickly in wet weather). Windrow then bin. 2026 target: first pick Labour Day weekend.'},
+  {id:'f021',week:25,cat:'harvest',pri:'normal',title:'Pumpkin sort and inventory — update Orders app barn count',assign:'Kumar',rec:true,
+   notes:'After each wagon: sort by type (Standard, Specialty, Caribbean, SDLS). Count by SKU. Update Inventory tab in app. Key staff can see pick list vs what is needed. Flag any quality issues.'},
+  {id:'f022',week:26,cat:'harvest',pri:'normal',title:'Second-crop strawberry harvest — organise for farm market and wholesale',assign:'Julio',rec:true,
+   notes:'Day-neutral second crop typically peaks late August through September. Arrange picking schedule. Grade for farm market (premium), wholesale (commercial grade). Track weights. 2026: watch for botrytis in wet weeks — adjust picking frequency.'},
+  {id:'f023',week:27,cat:'ipm',pri:'normal',title:'Day-neutral tunnels — late season mite and botrytis management',assign:'Kevin',rec:true,
+   notes:'Second crop is often more susceptible to mites and powdery mildew in September. Maintain biocontrol programmes. Spot spray Gatten/Nexter if mites flare. Vent tunnels aggressively to reduce humidity. Watch for SWD (spotted wing drosophila) late September.'},
+  {id:'f024',week:28,cat:'harvest',pri:'normal',title:'Pumpkin and watermelon — wrap-up harvest, confirm all POs filled',assign:'Kevin',rec:true,
+   notes:'Check outstanding customer POs in Orders tab. Arrange pickup for unsold inventory or donate/discount. Final field walk — any remaining fruit that can be picked. Note field conditions for cover crop timing.'},
+  // Week 29–30 — Renovation and cover crops
+  {id:'f025',week:29,cat:'field_prep',pri:'normal',title:'Post-harvest field renovation — disc and incorporate vines',assign:'Glenn',rec:true,
+   notes:'Shred watermelon and pumpkin vines. Disc in 2 passes. Allow to break down before seeding cover crop. Remove plastic mulch and drip tape — store drip tape if reusing. Bag or pile plastic for disposal.'},
+  {id:'f026',week:29,cat:'planting',pri:'normal',title:'Cover crop seeding — cereal rye and/or radish into pumpkin/watermelon fields',assign:'Glenn',rec:true,
+   notes:'Cereal rye: 56–90 kg/ha. Can interseed radish for tillage radish benefit. Rye winter-kills in deep soil but provides good spring suppression. Seed before Oct 15 for good establishment. 2026: Trial no-till rye into pumpkin stubble at Cox.'},
+  {id:'f027',week:30,cat:'tunnel',pri:'high',title:'Day-neutral tunnels — prepare for winter cover/shutdown or renovation',assign:'Julio',rec:true,
+   notes:'Decision: continue 2nd crop into October or shut down? If shutting down: remove plants, clean coir slabs, rinse drip tape, check structure. If continuing: ensure heating cables functional, reduce humidity, prep for frost. Record decision and rationale.'},
+  {id:'f028',week:30,cat:'equipment',pri:'normal',title:'Tractor and sprayer winterisation — drain fluids, service, storage',assign:'Glenn',rec:true,
+   notes:'Drain sprayer tanks and lines (all 3 sprayers). Run antifreeze through pumps. Grease all fittings. Change oil and filters on tractors. Check tyre pressures. Park in shed. Service invoice needed for records.'},
+  // Week 31–33 — End of season
+  {id:'f029',week:31,cat:'compliance',pri:'high',title:'Annual CanadaGAP documentation review and record filing',assign:'Kevin',rec:true,
+   notes:'Compile all spray records, field maps, water testing, staff training records. File in binder and digital backup. Confirm CanadaGAP renewal date. Update any policies that changed this season.'},
+  {id:'f030',week:31,cat:'tunnel',pri:'normal',title:'Tunnel coir slab assessment — mark slabs for replacement vs reuse',assign:'Julio',rec:true,
+   notes:'Check root disease levels in slabs. Fusarium-affected slabs should be replaced. Healthy slabs can carry another year with flushing. Mark with coloured tape. Order new slabs for marked zones — lead time 6–8 weeks.'},
+  {id:'f031',week:32,cat:'fertility',pri:'normal',title:'Soil tests — field berry areas and pumpkin/watermelon fields',assign:'Kevin',rec:true,
+   notes:'Pull soil samples from June-bearer beds, bare-ground fields. Send to lab. Review for pH, P, K, Mg. Plan lime or fertility amendments for spring. Results take 2–3 weeks — order any amendments before December.'},
+  {id:'f032',week:33,cat:'field_prep',pri:'normal',title:'Drainage and tile maintenance check before freeze-up',assign:'Kevin',rec:true,
+   notes:'Walk drainage outlets and check for blockages. Identify any wet spots that developed this season. Mark for tile work in spring or fall. Ensure field entrances are accessible and not rutted before freeze.'},
+  {id:'f033',week:34,cat:'planning',pri:'normal',title:'2027 season planning — varieties, fields, planting schedules',assign:'Kevin',rec:true,
+   notes:'Review 2026 yields by variety and field. Order seeds for next year (December deadline for some). Draft watermelon and pumpkin planting plans. Review labour needs and SAWP crew dates. Update calendar app with target dates.'},
+  {id:'f034',week:35,cat:'equipment',pri:'normal',title:'Irrigation system shutdown — drain mains, blow out laterals',assign:'Bob',rec:true,
+   notes:'Before hard freeze: drain main supply lines. Blow laterals with compressor. Drain pressure tanks. Plug inlets. Document which zones have issues for spring. DREAM 2 controller: note any programming needed.'},
+
 ];
 
 function TaskCardHtm({task}){
@@ -2782,13 +2875,30 @@ function TaskBrain(){
     <!-- Season view -->
     ${taskView==='season'?html`
     <div>
-      ${TASK_WEEKS.map(wd=>{
-        const wTasks=filtered.filter(t=>t.week===wd.week);
-        if(!wTasks.length&&(catFilter||assignFilter||search))return null;
-        return html`<${WeekSectionHtm} key=${wd.week} weekData=${wd}
-          tasks=${wTasks.length?wTasks:TASKS_DATA.filter(t=>t.week===wd.week&&(!catFilter&&!assignFilter&&!search))}
-          open=${openWeeks.has(wd.week)} onToggle=${()=>toggleWeek(wd.week)}/>`;
-      })}
+      ${(()=>{
+        const seasons=[...new Set(TASK_WEEKS.map(w=>w.season))].filter(Boolean);
+        const SC={Spring:'#2e7d32',Summer:'#bf6000',Fall:'#795548'};
+        const SE={Spring:'🌱',Summer:'☀️',Fall:'🍂'};
+        return seasons.map(season=>{
+          const sWeeks=TASK_WEEKS.filter(w=>w.season===season);
+          const sTasks=allTasks.filter(t=>sWeeks.some(w=>w.week===t.week));
+          if(!sTasks.length&&(catFilter||assignFilter||search)&&!filtered.some(t=>sWeeks.some(w=>w.week===t.week)))return null;
+          return html`<div key=${season} style=${{marginBottom:4}}>
+            <div style=${{display:'flex',alignItems:'center',gap:8,padding:'8px 4px 6px',
+              borderBottom:'2px solid '+(SC[season]||'#ddd'),marginBottom:6}}>
+              <span style=${{fontSize:14,fontWeight:700,color:SC[season]||'#555'}}>${SE[season]||'📅'} ${season}</span>
+              <span style=${{fontSize:11,color:'#aaa'}}>${sWeeks.length} weeks</span>
+            </div>
+            ${sWeeks.map(wd=>{
+              const wTasks=filtered.filter(t=>t.week===wd.week);
+              if(!wTasks.length&&(catFilter||assignFilter||search))return null;
+              const displayTasks=wTasks.length?wTasks:allTasks.filter(t=>t.week===wd.week&&(!catFilter&&!assignFilter&&!search));
+              return html`<${WeekSectionHtm} key=${wd.week} weekData=${wd}
+                tasks=${displayTasks} open=${openWeeks.has(wd.week)} onToggle=${()=>toggleWeek(wd.week)}/>`;
+            })}
+          </div>`;
+        });
+      })()}
     </div>`:null}
 
     <!-- Stats view -->
@@ -2835,10 +2945,10 @@ function TaskBrain(){
     <!-- Monthly view -->
     ${taskView==='monthly'?html`
     <div>
-      ${['March','April','Apr/May','May','May/Jun','June'].map(month=>{
+      ${[...new Set(TASK_WEEKS.map(w=>w.month))].map(month=>{
         const monthTasks=allTasks.filter(t=>TASK_WEEKS[t.week-1]?.month===month||(month==='Apr/May'&&TASK_WEEKS[t.week-1]?.month==='Apr/May'));
         const uniq=[...new Set(allTasks.filter(t=>TASK_WEEKS[t.week-1]?.month===month).map(t=>t.id))];
-        const mTasks=allTasks.filter(t=>TASK_WEEKS[t.week-1]?.month===month);
+        const mTasks=allTasks.filter(t=>TASK_WEEKS.find(w=>w.week===t.week)?.month===month);
         if(!mTasks.length)return null;
         const mc=TASK_MONTH_COLORS[month]||'#555';
         return html`
