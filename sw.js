@@ -1,5 +1,5 @@
-// hff-v25 — Field Mapper GPS A-B rollout; network-first HTML, offline app shell
-const CACHE='hff-v25';
+// hff-v26 — Pumpkin headlands + Watermelon material planner; network-first HTML, offline app shell
+const CACHE='hff-v26';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
