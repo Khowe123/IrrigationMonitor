@@ -1,5 +1,5 @@
-// hff-v24 — Field Mapper v2 rollout; network-first HTML, offline app shell
-const CACHE='hff-v24';
+// hff-v25 — Field Mapper GPS A-B rollout; network-first HTML, offline app shell
+const CACHE='hff-v25';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
