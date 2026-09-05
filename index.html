@@ -1983,7 +1983,7 @@ function OrderBrain(){
 
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(pickHorizon);
-  const TABS=[{id:'orders',lbl:'📦 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'},{id:'fields',lbl:'🗺 Fields'}];
+  const ORD_TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'}];
 
   // Add/Edit form
   if(adding) return html`<div>
@@ -2073,7 +2073,7 @@ function OrderBrain(){
 
     <!-- Sub-tabs -->
     <div style=${{display:'flex',gap:4,marginBottom:12,overflowX:'auto'}}>
-      ${TABS.map(t=>html`
+      ${ORD_TABS.map(t=>html`
       <button key=${t.id} onClick=${()=>{setView(t.id);LS.set('hff:ord:view',t.id);}}
         style=${{flex:1,minWidth:80,padding:'7px 4px',borderRadius:8,border:'1.5px solid '+(view===t.id?oc:'#ddd'),
           background:view===t.id?oc:'transparent',color:view===t.id?'#fff':'#888',
@@ -5519,7 +5519,7 @@ function App(){
   const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
 
   const{bg,acc,act,actTxt}=crop;
-  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'Orders 📦'},{id:'tasks',lbl:'Tasks 📋'}];
+  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'📦 Orders'},{id:'tasks',lbl:'📋 Tasks'},{id:'fields',lbl:'🗺 Fields'}];
 
   const FlagBox=({level,items})=>items.length===0?null:html`
   <div class=${'flag-box '+level}>
