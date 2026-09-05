@@ -1,5 +1,5 @@
-// hff-v23 — app shell cache with network-first HTML updates
-const CACHE='hff-v23';
+// hff-v24 — Field Mapper v2 rollout; network-first HTML, offline app shell
+const CACHE='hff-v24';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
@@ -22,6 +22,8 @@ self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
   if(e.request.url.includes('api.anthropic.com'))return;
   if(e.request.url.includes('supabase.co'))return;
+  // Satellite tiles can be numerous; rely on the browser/Esri cache instead of filling the PWA cache.
+  if(e.request.url.includes('arcgisonline.com')){e.respondWith(fetch(e.request));return;}
 
   const url=new URL(e.request.url);
   const isHtml=e.request.mode==='navigate'||url.pathname.endsWith('/index.html')||url.pathname.endsWith('/');
@@ -30,10 +32,7 @@ self.addEventListener('fetch',e=>{
     e.respondWith(
       fetch(e.request)
         .then(res=>{
-          if(res.ok){
-            const copy=res.clone();
-            caches.open(CACHE).then(c=>c.put(e.request,copy));
-          }
+          if(res.ok){const copy=res.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));}
           return res;
         })
         .catch(()=>caches.match(e.request).then(hit=>hit||caches.match('./index.html')))
@@ -41,14 +40,12 @@ self.addEventListener('fetch',e=>{
     return;
   }
 
+  // Cache-first for libraries, map support files, icons, and other static assets.
   e.respondWith(
     caches.match(e.request).then(hit=>{
       if(hit)return hit;
       return fetch(e.request).then(res=>{
-        if(res.ok){
-          const copy=res.clone();
-          caches.open(CACHE).then(c=>c.put(e.request,copy));
-        }
+        if(res.ok){const copy=res.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));}
         return res;
       });
     })
