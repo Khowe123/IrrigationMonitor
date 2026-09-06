@@ -1,30 +1,53 @@
--- ============================================================
--- Howe Family Farms — Irrigation Monitor
--- Run this ONCE in Supabase: Dashboard → SQL Editor → New query
--- ============================================================
+// hff-v28 — Farm Map year planning + Supabase auth refresh; network-first HTML
+const CACHE='hff-v28';
+const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
-CREATE TABLE IF NOT EXISTS irrigation_entries (
-    id          TEXT PRIMARY KEY,           -- "{team_id}:{crop}:{date}"
-    team_id     TEXT        NOT NULL,       -- your Farm ID, e.g. "howe-farms-2026"
-    crop        TEXT        NOT NULL,       -- "str" or "ras"
-    date        DATE        NOT NULL,
-    entry_data  JSONB       NOT NULL,       -- full day entry (EC, pH, mL, notes, etc.)
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+self.addEventListener('install',e=>{
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c=>c.addAll(SHELL))
+      .then(()=>self.skipWaiting())
+  );
+});
 
--- Index for fast per-farm lookups
-CREATE INDEX IF NOT EXISTS idx_irr_team_crop ON irrigation_entries (team_id, crop, date DESC);
+self.addEventListener('activate',e=>{
+  e.waitUntil(
+    caches.keys()
+      .then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
+      .then(()=>self.clients.claim())
+  );
+});
 
--- Row Level Security: allow the app's anon key full read/write
-ALTER TABLE irrigation_entries ENABLE ROW LEVEL SECURITY;
+self.addEventListener('fetch',e=>{
+  if(e.request.method!=='GET')return;
+  if(e.request.url.includes('api.anthropic.com'))return;
+  if(e.request.url.includes('supabase.co'))return;
+  // Satellite tiles can be numerous; rely on the browser/Esri cache instead of filling the PWA cache.
+  if(e.request.url.includes('arcgisonline.com')){e.respondWith(fetch(e.request));return;}
 
-DROP POLICY IF EXISTS "allow_anon_all" ON irrigation_entries;
-CREATE POLICY "allow_anon_all" ON irrigation_entries
-    FOR ALL
-    TO anon
-    USING (true)
-    WITH CHECK (true);
+  const url=new URL(e.request.url);
+  const isHtml=e.request.mode==='navigate'||url.pathname.endsWith('/index.html')||url.pathname.endsWith('/');
 
--- ============================================================
--- Done. Go to Project Settings → API to copy your URL and anon key.
--- ============================================================
+  if(isHtml){
+    e.respondWith(
+      fetch(e.request)
+        .then(res=>{
+          if(res.ok){const copy=res.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));}
+          return res;
+        })
+        .catch(()=>caches.match(e.request).then(hit=>hit||caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Cache-first for libraries, map support files, icons, and other static assets.
+  e.respondWith(
+    caches.match(e.request).then(hit=>{
+      if(hit)return hit;
+      return fetch(e.request).then(res=>{
+        if(res.ok){const copy=res.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));}
+        return res;
+      });
+    })
+  );
+});
