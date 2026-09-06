@@ -1,5 +1,5 @@
-// hff-v27 — Farm Map overview + boundary editing + shared variety library; network-first HTML
-const CACHE='hff-v27';
+// hff-v29 — Farm Map grouped planner + batched field sync; network-first HTML, offline app shell
+const CACHE='hff-v29';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
