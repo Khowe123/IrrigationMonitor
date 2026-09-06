@@ -244,6 +244,25 @@ hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
 .sp-sync-ok{color:#2e7d32}
 .sp-sync-err{color:#c62828}
 .sp-ai-out{margin-top:10px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:12px;font-size:13px;line-height:1.7;white-space:pre-wrap}
+
+/* ── FARM MAP DESKTOP / MOBILE LAYOUT ───────────────────────────────────── */
+.field-overview-layout{display:grid;grid-template-columns:310px minmax(0,1fr);gap:10px;align-items:start}
+.field-map-sidebar{background:#fff;border:1.5px solid #e4e7e1;border-radius:12px;overflow:hidden;max-height:min(72vh,700px);display:flex;flex-direction:column}
+.field-map-sidebar-scroll{overflow:auto;min-height:0}
+.field-map-search{width:100%;padding:9px 10px;border:1.5px solid #ddd;border-radius:8px;background:#fafaf8;font-size:12px;outline:none}
+.field-crop-group{border-top:1px solid #eceee9}
+.field-crop-group:first-child{border-top:none}
+.field-crop-head{display:flex;align-items:center;gap:6px;padding:8px 9px;background:#fafbf8}
+.field-crop-fields{padding:0 5px 5px}
+.field-side-field{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 7px;border:none;border-radius:6px;background:transparent;text-align:left;font-size:11px;color:#25313a;cursor:pointer}
+.field-side-field:hover{background:#f3f5f1}
+.field-side-field.selected{background:#e9eef2;font-weight:700}
+.farm-map-canvas{height:min(72vh,700px);min-height:500px;background:#dfe7dc;position:relative}
+@media(max-width:860px){
+  .field-overview-layout{grid-template-columns:1fr}
+  .field-map-sidebar{max-height:360px;order:2}
+  .farm-map-canvas{height:58vh;min-height:380px}
+}
 </style>
 </head>
 <body>
@@ -4185,13 +4204,48 @@ function parseKMLFields(text){
 
 // ── FIELD MAPPER — SUPABASE SHARING ─────────────────────────────────────────
 let SB_FIELD_LAST_ERROR='';
-async function sbFieldPush(field){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
-  if(!u||!k)return{ok:false,reason:'not-configured'};
+function sbFieldRow(field){
+  const t=LS.get('hff:sb_team','howe-farms-2026');
   const updatedAt=field.updatedAt||new Date().toISOString();
-  const row={id:field.id,team_id:t,entry_data:{...field,_type:'field',updatedAt},updated_at:updatedAt};
-  try{const r=await sbReq('POST','harvest_logs',row,u,k);if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||('HTTP '+r.status)};}return{ok:true,status:r.status};}
-  catch(e){return{ok:false,reason:e.message};}
+  return{id:field.id,team_id:t,entry_data:{...field,_type:'field',updatedAt},updated_at:updatedAt};
+}
+
+async function sbFieldPush(field){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
+  if(!u||!k)return{ok:false,reason:'not-configured'};
+  try{const r=await sbReq('POST','harvest_logs',sbFieldRow(field),u,k);if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||e?.details||('HTTP '+r.status)};}return{ok:true,status:r.status};}
+  catch(e){return{ok:false,reason:e.message,msg:e.message};}
+}
+
+// Large Fieldmargin imports can contain 100+ fields. v28 fired one POST for every
+// field at the same instant, which can leave a few requests rate-limited or dropped.
+// v29 upserts fields in small batches. If a batch fails it retries those records
+// one-by-one so the UI can report the exact field/error instead of a generic warning.
+async function sbFieldPushBatch(fields,batchSize=25){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
+  if(!u||!k)return{ok:false,uploaded:0,failures:(fields||[]).map(f=>({id:f.id,name:f.name||f.id,reason:'not-configured',msg:'Cloud Sync is not configured'}))};
+  const src=(fields||[]).filter(f=>f?.id);let uploaded=0;const failures=[];
+  for(let i=0;i<src.length;i+=batchSize){
+    const batch=src.slice(i,i+batchSize),rows=batch.map(sbFieldRow);
+    try{
+      const r=await sbReq('POST','harvest_logs',rows,u,k);
+      if(r.ok){uploaded+=batch.length;continue;}
+      // Retry the failed batch sequentially. This handles transient rate limits
+      // and also identifies an individual bad record if one exists.
+      const be=await r.json().catch(()=>({}));
+      for(const f of batch){
+        const one=await sbFieldPush(f);
+        if(one.ok)uploaded++;
+        else failures.push({id:f.id,name:f.name||f.id,status:one.status||r.status,msg:one.msg||one.reason||be?.message||('HTTP '+r.status)});
+      }
+    }catch(e){
+      for(const f of batch){
+        const one=await sbFieldPush(f);
+        if(one.ok)uploaded++;else failures.push({id:f.id,name:f.name||f.id,status:one.status,msg:one.msg||one.reason||e.message});
+      }
+    }
+  }
+  return{ok:failures.length===0,uploaded,failures};
 }
 
 // Deletions are synced as tombstones so another phone knows to remove its local copy.
@@ -4331,6 +4385,8 @@ function FieldMapper(){
   const[mapSelectedId,setMapSelectedId]=useState(null);
   const[boundaryEdit,setBoundaryEdit]=useState(false);
   const[selectedVertex,setSelectedVertex]=useState(null);
+  const[fieldSearch,setFieldSearch]=useState('');
+  const[openCropGroups,setOpenCropGroups]=useState({});
 
   const mapRef=useRef(null);
   const leafletRef=useRef(null);
@@ -4375,21 +4431,30 @@ function FieldMapper(){
       const lt=l.updatedAt||l.savedAt||'1970-01-01T00:00:00Z',rt=r.updatedAt||'1970-01-01T00:00:00Z';
       return lt>rt;
     });
-    const pushResults=await Promise.all(toPush.map(sbFieldPush));
+    if(toPush.length)setCloudMsg('☁ Uploading '+toPush.length+' local field change'+(toPush.length===1?'':'s')+'…');
+    const pushBatch=await sbFieldPushBatch(toPush,25);
 
-    // Retry any deletion that happened while this phone was offline.
-    const delResults=await Promise.all((pendingDeletes||[]).map(x=>sbFieldDelete(x.id)));
-    const stillPending=(pendingDeletes||[]).filter((x,i)=>!delResults[i]?.ok);LS.set('hff:field_delete_queue',stillPending);
-    const pendingTombstones=(pendingDeletes||[]).map(x=>({id:x.id,_type:'field',_deleted:true,updatedAt:x.updatedAt}));
-    const merged=mergeSharedFields(localNow,[...remote,...pendingTombstones]);setFields(merged);LS.set('hff:fields',merged);
+    // Retry offline deletes as tombstones, also in controlled batches.
+    const pendingTombstones=(pendingDeletes||[]).map(x=>({id:x.id,name:x.name||x.id,_deleted:true,updatedAt:x.updatedAt}));
+    const delBatch=await sbFieldPushBatch(pendingTombstones,25);
+    const failedDeleteIds=new Set((delBatch.failures||[]).map(x=>x.id));
+    const stillPending=(pendingDeletes||[]).filter(x=>failedDeleteIds.has(x.id));LS.set('hff:field_delete_queue',stillPending);
+    const mergeTombstones=(pendingDeletes||[]).map(x=>({id:x.id,_type:'field',_deleted:true,updatedAt:x.updatedAt}));
+    const merged=mergeSharedFields(localNow,[...remote,...mergeTombstones]);setFields(merged);LS.set('hff:fields',merged);
 
     const localVars=normalizeFieldVarietyLibrary(LS.get('hff:field_varieties',varietyLib));
     const mergedVars=mergeFieldVarietyLibraries(localVars,remoteVars||{});setVarietyLib(mergedVars);LS.set('hff:field_varieties',mergedVars);
-    if(JSON.stringify(mergedVars)!==JSON.stringify(remoteVars||{}))await sbFieldVarietiesPush(mergedVars);
+    let varietyResult={ok:true};
+    if(JSON.stringify(mergedVars)!==JSON.stringify(remoteVars||{}))varietyResult=await sbFieldVarietiesPush(mergedVars);
 
-    const pushOk=pushResults.every(r=>r?.ok),deleteOk=stillPending.length===0;
-    if(pushOk&&deleteOk){setSyncSt('ok');setCloudMsg('☁ Field maps, crop assignments, boundaries and variety lists are synced across connected devices.');}
-    else{setSyncSt('err');setCloudMsg('⚠ Some local field changes are still waiting to sync. They remain safe on this device and will retry automatically.');}
+    const failures=[...(pushBatch.failures||[]),...(delBatch.failures||[])];
+    if(pushBatch.ok&&delBatch.ok&&varietyResult?.ok!==false){
+      setSyncSt('ok');setCloudMsg('☁ Field maps, crop assignments, boundaries and variety lists are synced across connected devices.');
+    }else{
+      const first=failures[0];
+      const detail=first?((first.name?first.name+': ':'')+(first.status?'Supabase '+first.status+' — ':'')+(first.msg||'upload failed')):(varietyResult?.msg||varietyResult?.reason||'upload failed');
+      setSyncSt('err');setCloudMsg('⚠ '+(failures.length||1)+' cloud record'+((failures.length||1)===1?'':'s')+' still waiting to sync — '+detail+'. Local changes remain safe and Sync will retry them.');
+    }
   }
   useEffect(()=>{
     syncFields();
@@ -4434,6 +4499,12 @@ function FieldMapper(){
   }
   function showAllCrops(){const all=[...allVisibilityKeys];setVisibleCrops(all);LS.set('hff:field_visible_crops',all);}
   function showOnlyCrop(k){const next=[k];setVisibleCrops(next);LS.set('hff:field_visible_crops',next);}
+  function toggleCropGroup(k){setOpenCropGroups(prev=>({...prev,[k]:prev[k]===false?true:false}));}
+  function focusOverviewField(id){
+    setMapSelectedId(id);
+    const raw=fields.find(f=>f.id===id),pts=raw?.latlngs||[],map=leafletRef.current,L=window.L;
+    if(map&&L&&pts.length>=3)setTimeout(()=>map.fitBounds(L.latLngBounds(pts.map(p=>[p.lat,p.lng])),{padding:[35,35],maxZoom:18}),20);
+  }
 
   function renderOverviewMap(doFit=false){
     const map=leafletRef.current,L=window.L;if(!map||!L||mode!=='overview')return;
@@ -4444,7 +4515,7 @@ function FieldMapper(){
       if(pts.length<3||!visibleCrops.includes(key))return;
       const c=FIELD_CROPS_CFG[f.crop],co=c?.color||'#77828c',selected=raw.id===mapSelectedId;
       const poly=L.polygon(pts,{color:selected?'#10283d':co,fillColor:co,fillOpacity:selected?.34:.20,weight:selected?4:2.2});
-      poly.on('click',e=>{L.DomEvent.stopPropagation(e);setMapSelectedId(raw.id);});
+      poly.on('click',e=>{L.DomEvent.stopPropagation(e);focusOverviewField(raw.id);});
       poly.bindTooltip((raw.name||'Field')+' · '+fieldDisplayAcres(raw).toFixed(2)+' ac',{sticky:true,direction:'top'});
       layers.push(poly);pts.forEach(p=>boundsPts.push([p.lat,p.lng]));
       const center=poly.getBounds().getCenter();
@@ -4850,6 +4921,9 @@ function FieldMapper(){
   const cropTotals=allVisibilityKeys.map(k=>{
     const fs=activeYearFields.filter(f=>fieldCropKey(f)===k);return{key:k,count:fs.length,acres:fs.reduce((s,f)=>s+fieldDisplayAcres(f),0)};
   });
+  const cropGroups=cropTotals.map(g=>({
+    ...g,fields:activeYearFields.filter(f=>fieldCropKey(f)===g.key&&(!fieldSearch.trim()||(f.name||'').toLowerCase().includes(fieldSearch.trim().toLowerCase()))).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+  }));
   const knownYears=Array.from(new Set([
     ...Array.from({length:11},(_,i)=>2020+i),fieldYear,
     ...fields.flatMap(f=>Object.keys(f.yearPlans||{}).map(Number).filter(Number.isFinite))
@@ -4874,15 +4948,37 @@ function FieldMapper(){
       <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>${cropTotals.map(x=>{const c=FIELD_CROPS_CFG[x.key],on=visibleCrops.includes(x.key),co=c?.color||'#77828c';return html`<button key=${x.key} onClick=${()=>toggleCropVisibility(x.key)} style=${{padding:'5px 8px',borderRadius:7,border:'1.5px solid '+(on?co:'#ddd'),background:on?co+'20':'#fff',color:on?co:'#999',fontWeight:700,fontSize:9,cursor:'pointer'}}>${c?.icon||'⬜'} ${c?.label||'Not selected'} · ${x.acres.toFixed(1)} ac</button>`;})}</div>
     </div>
 
-    <div class="card" style=${{overflow:'hidden',marginBottom:8}}>
-      <div ref=${mapRef} style=${{height:'min(62vh,560px)',minHeight:390,background:'#dfe7dc',position:'relative'}}>${!mapLoaded?html`<div style=${{display:'flex',height:'100%',alignItems:'center',justifyContent:'center',fontSize:12,color:'#777'}}>Loading satellite map…</div>`:null}</div>
-    </div>
+    <div class="field-overview-layout">
+      <div class="field-map-sidebar">
+        <div style=${{padding:'9px 9px 8px',borderBottom:'1px solid #eceee9'}}>
+          <input class="field-map-search" type="text" placeholder="Search fields…" value=${fieldSearch} onInput=${e=>setFieldSearch(e.target.value)}/>
+          <div style=${{fontSize:9,color:'#999',marginTop:5}}>Grouped by ${fieldYear} crop · click a field to zoom and assign</div>
+        </div>
+        <div class="field-map-sidebar-scroll">
+          ${cropGroups.map(g=>{const c=FIELD_CROPS_CFG[g.key],co=c?.color||'#77828c',open=openCropGroups[g.key]!==false,visible=visibleCrops.includes(g.key);return html`
+            <div class="field-crop-group" key=${g.key}>
+              <div class="field-crop-head" style=${{borderLeft:'5px solid '+co}}>
+                <button title=${visible?'Hide crop on map':'Show crop on map'} onClick=${()=>toggleCropVisibility(g.key)} style=${{border:'none',background:'transparent',fontSize:13,cursor:'pointer',padding:'1px 2px'}}>${visible?'◉':'○'}</button>
+                <button onClick=${()=>showOnlyCrop(g.key)} style=${{flex:1,border:'none',background:'transparent',textAlign:'left',fontSize:11,fontWeight:800,color:'#25313a',cursor:'pointer'}}>${c?.icon||'⬜'} ${c?.label||'Not selected'}</button>
+                <span style=${{fontSize:9,fontWeight:700,color:'#6f7780'}}>${g.acres.toFixed(1)} ac</span>
+                <button onClick=${()=>toggleCropGroup(g.key)} style=${{border:'none',background:'transparent',fontSize:11,cursor:'pointer',padding:'2px'}}> ${open?'▾':'▸'} </button>
+              </div>
+              ${open?html`<div class="field-crop-fields">${g.fields.length?g.fields.map(f=>html`<button key=${f.id} class=${'field-side-field'+(mapSelectedId===f.id?' selected':'')} onClick=${()=>focusOverviewField(f.id)}><span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.name}</span><span style=${{fontSize:9,color:'#8a9299',whiteSpace:'nowrap'}}>${fieldDisplayAcres(f).toFixed(2)} ac ›</span></button>`):html`<div style=${{padding:'7px',fontSize:9,color:'#aaa'}}>No matching fields</div>`}</div>`:null}
+            </div>`;})}
+        </div>
+      </div>
 
-    ${selectedMapField?html`<div class="card" style=${{padding:'10px 12px',marginBottom:8,border:'2px solid #cfd8dc'}}>
-      <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start',marginBottom:7}}><div><div style=${{fontSize:14,fontWeight:800}}>${selectedMapField.name}</div><div style=${{fontSize:10,color:'#777'}}>${fieldDisplayAcres(selectedMapField).toFixed(2)} ac · ${FIELD_CROPS_CFG[selectedMapField.crop]?.label||'Not selected'}</div></div><div style=${{display:'flex',gap:4}}><button onClick=${()=>viewField(selectedMapField)} class="btn btn-sm btn-out">Plan</button><button onClick=${()=>editField(selectedMapField)} class="btn btn-sm">Edit</button></div></div>
-      <div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Assign crop for ${fieldYear} from the map</div>
-      <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button onClick=${()=>assignFieldCrop(selectedMapField.id,'')} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid #999',background:!FIELD_CROPS_CFG[selectedMapField.crop]?'#eceff1':'#fff',fontSize:9,fontWeight:700}}>⬜ Not selected</button>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>assignFieldCrop(selectedMapField.id,k)} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid '+c.color,background:selectedMapField.crop===k?c.color:c.color+'12',color:selectedMapField.crop===k?'#fff':c.color,fontSize:9,fontWeight:700}}>${c.icon} ${c.label}</button>`)}</div>
-    </div>`:html`<div style=${{fontSize:10,color:'#888',textAlign:'center',padding:'4px 0 10px'}}>Tap a field on the map to assign its crop or open its planting plan.</div>`}
+      <div>
+        <div class="card" style=${{overflow:'hidden',marginBottom:8}}>
+          <div ref=${mapRef} class="farm-map-canvas">${!mapLoaded?html`<div style=${{display:'flex',height:'100%',alignItems:'center',justifyContent:'center',fontSize:12,color:'#777'}}>Loading satellite map…</div>`:null}</div>
+        </div>
+        ${selectedMapField?html`<div class="card" style=${{padding:'10px 12px',marginBottom:8,border:'2px solid #cfd8dc'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start',marginBottom:7}}><div><div style=${{fontSize:14,fontWeight:800}}>${selectedMapField.name}</div><div style=${{fontSize:10,color:'#777'}}>${fieldDisplayAcres(selectedMapField).toFixed(2)} ac · ${FIELD_CROPS_CFG[selectedMapField.crop]?.label||'Not selected'}</div></div><div style=${{display:'flex',gap:4}}><button onClick=${()=>viewField(selectedMapField)} class="btn btn-sm btn-out">Plan</button><button onClick=${()=>editField(selectedMapField)} class="btn btn-sm">Edit</button></div></div>
+          <div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Assign crop for ${fieldYear}</div>
+          <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button onClick=${()=>assignFieldCrop(selectedMapField.id,'')} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid #999',background:!FIELD_CROPS_CFG[selectedMapField.crop]?'#eceff1':'#fff',fontSize:9,fontWeight:700}}>⬜ Not selected</button>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>assignFieldCrop(selectedMapField.id,k)} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid '+c.color,background:selectedMapField.crop===k?c.color:c.color+'12',color:selectedMapField.crop===k?'#fff':c.color,fontSize:9,fontWeight:700}}>${c.icon} ${c.label}</button>`)}</div>
+        </div>`:html`<div style=${{fontSize:10,color:'#888',textAlign:'center',padding:'4px 0 10px'}}>Tap a field on the map or sidebar to assign its crop or open its planting plan.</div>`}
+      </div>
+    </div>
   </div>`;
 
   if(mode==='list')return html`<div>
@@ -6451,7 +6547,7 @@ function App(){
   </div>`;
 
   return html`
-  <div style=${{fontFamily:'-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif',maxWidth:680,margin:'0 auto',paddingBottom:40}}>
+  <div style=${{fontFamily:'-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif',maxWidth:view==='fields'?1280:680,margin:'0 auto',paddingBottom:40}}>
 
     <div class="hdr" style=${{background:bg}}>
       <div class="hdr-row">
