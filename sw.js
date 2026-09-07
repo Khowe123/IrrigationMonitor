@@ -1,5 +1,5 @@
-// hff-v31 — Ask Farm Map + Simple Map + shared custom crop library; network-first HTML, offline app shell
-const CACHE='hff-v31';
+// hff-v32 — Ask Farm Map + Simple Map + shared custom crop library; network-first HTML, offline app shell
+const CACHE='hff-v32';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
