@@ -515,7 +515,7 @@ async function sbLogin(email,password){
     });
     const d=await r.json();
     if(!r.ok)return{ok:false,msg:d?.error_description||d?.msg||'Login failed'};
-    LS.set('hff:sb_session',{access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at,email:d.user?.email});
+    LS.set('hff:sb_session',{access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at,email:d.user?.email,user_id:d.user?.id});
     return{ok:true,email:d.user?.email};
   }catch(e){return{ok:false,msg:e.message};}
 }
@@ -532,7 +532,7 @@ async function sbRefreshSession(){
     });
     if(!r.ok)return false;
     const d=await r.json();
-    LS.set('hff:sb_session',{access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at,email:sess.email});
+    LS.set('hff:sb_session',{access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at,email:sess.email,user_id:d.user?.id||sess.user_id});
     return true;
   }catch(e){return false;}
 }
@@ -572,6 +572,53 @@ async function sbReq(method,path,body,url,key){
     }
   }
   return r;
+}
+
+// ── STAFF ACCESS / PERMISSIONS ───────────────────────────────────────────────
+const STAFF_PERMISSION_FIELDS=['can_map','can_tasks','can_resources','can_irrigation','can_spray','can_fert','can_orders','can_edit_fields'];
+const STAFF_PERMISSION_LABELS={can_map:'Farm Map',can_tasks:'Tasks',can_resources:'Resources',can_irrigation:'Irrigation',can_spray:'Spray',can_fert:'Fertility',can_orders:'Orders',can_edit_fields:'Edit Fields'};
+function staffCan(profile,key){return !!(profile&&profile.is_active&&(profile.role==='owner'||profile[key]));}
+function sbSessionUserId(){
+  const sess=LS.get('hff:sb_session',null);
+  if(sess?.user_id)return sess.user_id;
+  try{
+    const tok=sess?.access_token||'';const part=tok.split('.')[1];if(!part)return null;
+    const b64=part.replace(/-/g,'+').replace(/_/g,'/');
+    return JSON.parse(atob(b64.padEnd(Math.ceil(b64.length/4)*4,'=')))?.sub||null;
+  }catch{return null;}
+}
+async function sbProfilePull(){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),uid=sbSessionUserId();
+  if(!u||!k||!uid)return{ok:false,msg:'Not logged in'};
+  try{const r=await sbReq('GET','staff_profiles?user_id=eq.'+encodeURIComponent(uid)+'&select=*',null,u,k);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||('HTTP '+r.status)};}
+    const rows=await r.json();return{ok:true,profile:rows?.[0]||null};
+  }catch(e){return{ok:false,msg:e.message};}
+}
+async function sbBootstrapTeam(displayName){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms-2026');
+  try{const r=await sbReq('POST','rpc/bootstrap_team',{p_team_id:team,p_display_name:displayName||'Owner'},u,k);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||('HTTP '+r.status)};}
+    const d=await r.json().catch(()=>({}));return{ok:true,created:d?.created===true};
+  }catch(e){return{ok:false,msg:e.message};}
+}
+async function sbRequestTeamAccess(displayName){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms-2026');
+  try{const r=await sbReq('POST','rpc/request_team_access',{p_team_id:team,p_display_name:displayName||'Staff'},u,k);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||('HTTP '+r.status)};}return{ok:true};
+  }catch(e){return{ok:false,msg:e.message};}
+}
+async function sbStaffList(){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),team=LS.get('hff:sb_team','howe-farms-2026');
+  try{const r=await sbReq('GET','staff_profiles?team_id=eq.'+encodeURIComponent(team)+'&select=*&order=display_name.asc',null,u,k);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,msg:e?.message||('HTTP '+r.status)};}return{ok:true,rows:await r.json()};
+  }catch(e){return{ok:false,msg:e.message};}
+}
+async function sbUpdateStaffMember(userId,patch){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
+  try{const r=await sbReq('POST','rpc/update_staff_member',{p_user_id:userId,p_patch:patch},u,k);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,msg:e?.message||('HTTP '+r.status)};}return{ok:true};
+  }catch(e){return{ok:false,msg:e.message};}
 }
 
 async function sbPush(entry,cropId){
@@ -2812,12 +2859,14 @@ function WeekSectionHtm({weekData,tasks,open,onToggle}){
   </div>`;
 }
 
-function TaskBrain(){
+function TaskBrain({staffProfile}){
+  const allowTasks=staffCan(staffProfile,'can_tasks');
+  const allowResources=staffCan(staffProfile,'can_resources');
   const[openWeeks,setOpenWeeks]=useState(()=>new Set([1,2,3]));
   const[catFilter,setCatFilter]=useState(null);
   const[assignFilter,setAssignFilter]=useState(null);
   const[search,setSearch]=useState('');
-  const[taskView,setTaskView]=useState('season'); // season | weekly | monthly | stats
+  const[taskView,setTaskView]=useState(()=>allowTasks?'season':'resources'); // season | weekly | monthly | stats | resources
   const[customTasks,setCustomTasks]=useState(()=>LS.get('hff:tasks:custom',[]));
   const[showAddTask,setShowAddTask]=useState(false);
   const[editingTask,setEditingTask]=useState(null);
@@ -2864,24 +2913,24 @@ function TaskBrain(){
       <div style=${{fontSize:11,color:'#6a9a78',fontFamily:'monospace'}}>Spring 2026 · 11 weeks · ${TASKS_DATA.length} tasks</div>
       <!-- View toggle -->
       <div style=${{display:'flex',gap:6,marginTop:10}}>
-        ${[['season','📅 Season'],['weekly','📆 Week'],['monthly','🗓 Month'],['stats','📊 Stats'],['resources','📎 Resources']].map(([v,lbl])=>html`
+        ${[['season','📅 Season'],['weekly','📆 Week'],['monthly','🗓 Month'],['stats','📊 Stats'],['resources','📎 Resources']].filter(([v])=>v==='resources'?allowResources:allowTasks).map(([v,lbl])=>html`
         <button key=${v} onClick=${()=>setTaskView(v)}
           style=${{padding:'5px 12px',border:'1.5px solid '+(taskView===v?'#8ab898':'rgba(255,255,255,.25)'),
             borderRadius:6,background:taskView===v?'rgba(255,255,255,.15)':'transparent',
             color:'#fff',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
           ${lbl}
         </button>`)}
-        <button onClick=${expandAll} style=${{padding:'5px 10px',border:'1px solid rgba(255,255,255,.2)',borderRadius:6,background:'transparent',color:'rgba(255,255,255,.6)',fontSize:11,cursor:'pointer',fontFamily:'inherit',marginLeft:'auto'}}>Expand all</button>
+        ${allowTasks?html`<button onClick=${expandAll} style=${{padding:'5px 10px',border:'1px solid rgba(255,255,255,.2)',borderRadius:6,background:'transparent',color:'rgba(255,255,255,.6)',fontSize:11,cursor:'pointer',fontFamily:'inherit',marginLeft:'auto'}}>Expand all</button>
         <button onClick=${collapseAll} style=${{padding:'5px 10px',border:'1px solid rgba(255,255,255,.2)',borderRadius:6,background:'transparent',color:'rgba(255,255,255,.6)',fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>Collapse</button>
         <button onClick=${()=>{setDraftTask({title:'',cat:'tunnel',pri:'normal',week:1,assign:'Any',notes:'',rec:false,photos:[]});setShowAddTask(true);setEditingTask(null);}}
           style=${{padding:'5px 12px',border:'none',borderRadius:6,background:'#4a9a5a',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',marginLeft:4}}>
           + Add Task
-        </button>
+        </button>`:null}
       </div>
     </div>
 
     <!-- Filters -->
-    <div style=${{marginBottom:10}}>
+    ${allowTasks?html`<div style=${{marginBottom:10}}>
       <input placeholder="🔍 Search tasks…" value=${search} onInput=${e=>setSearch(e.target.value)}
         style=${{width:'100%',padding:'8px 12px',border:'1.5px solid #ddd',borderRadius:8,
           fontSize:14,fontFamily:'inherit',outline:'none',background:'#faf8f5',boxSizing:'border-box',marginBottom:8}}/>
@@ -2907,7 +2956,7 @@ function TaskBrain(){
         </select>
         <span style=${{fontSize:12,color:'#aaa',alignSelf:'center'}}>${filtered.length} tasks shown</span>
       </div>
-    </div>
+    </div>`:null}
 
     <!-- Season view -->
     ${taskView==='season'?html`
@@ -3104,7 +3153,7 @@ function TaskBrain(){
       </div>
     </div>`:null}
 
-    ${taskView==='resources'?html`<${ResourceLibrary}/>`:null}
+    ${taskView==='resources'&&allowResources?html`<${ResourceLibrary}/>`:null}
     ${taskView==='stats'?html`
     <div>
       <div class="card" style=${{padding:'12px 14px',marginBottom:10}}>
@@ -3468,10 +3517,15 @@ async function uploadFarmFile(blob, storagePath, contentType='image/jpeg'){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
   if(!u||!k)return{ok:false,error:'Supabase not configured'};
   try{
+    // Storage writes use the remembered staff session when available. Never rely
+    // on a publishable key as the user's identity.
+    if(LS.get('hff:sb_session',null)?.refresh_token)await sbRefreshSession();
+    const a=sbAuthToken();
+    const headers={'apikey':k,'Content-Type':contentType,'x-upsert':'true'};
+    if(a.isUser&&a.token)headers['Authorization']='Bearer '+a.token;
+    else if(a.token&&!sbKeyIsPublishable(k))headers['Authorization']='Bearer '+a.token;
     const r=await fetch(u+'/storage/v1/object/Farm-files/'+storagePath,{
-      method:'POST',
-      headers:{'Authorization':'Bearer '+k,'Content-Type':contentType,'x-upsert':'true'},
-      body:blob
+      method:'POST',headers,body:blob
     });
     if(!r.ok){const e=await r.text();return{ok:false,error:e};}
     return{ok:true,path:storagePath,url:u+'/storage/v1/object/public/Farm-files/'+storagePath};
@@ -4411,7 +4465,8 @@ async function sbFieldCropsPull(){
   try{const path='harvest_logs?id=eq.'+encodeURIComponent(t+':field-crops')+'&select=entry_data,updated_at&limit=1';const r=await sbReq('GET',path,null,u,k);if(!r.ok)return null;const rows=await r.json();return normalizeCustomCropLibrary(rows?.[0]?.entry_data?.crops||[]);}catch(e){return null;}
 }
 
-function FieldMapper(){
+function FieldMapper({staffProfile}){
+  const canEditFields=staffCan(staffProfile,'can_edit_fields');
   const[fields,setFields]=useState(()=>LS.get('hff:fields',[]));
   // The permanent field boundary is shared by all years; crop/layout details
   // live in yearPlans. Default to the coming crop year (2027 in Sep 2026).
@@ -5064,9 +5119,9 @@ function FieldMapper(){
       <div style=${{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
         <span style=${{fontSize:10,fontWeight:700,color:syncColor}}>${syncBadge}</span>
         <button class="btn btn-sm btn-out" onClick=${syncFields} disabled=${syncSt==='syncing'}>↻ Sync</button>
-        ${!simpleMap?html`<button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('list')}>☷ List</button>`:null}
-        ${!simpleMap?html`<label style=${{padding:'7px 10px',border:'1.5px solid #2c3e50',borderRadius:8,color:'#2c3e50',fontWeight:700,fontSize:10,cursor:'pointer',background:'#fff'}}>↑ Import<input type="file" accept=".geojson,.json,.kml" style=${{display:'none'}} onChange=${e=>{importBoundaryFile(e.target.files?.[0],false);e.target.value='';}}/></label>`:null}
-        ${!simpleMap?html`<button onClick=${startNew} style=${{padding:'8px 12px',border:'none',borderRadius:8,background:'#2c3e50',color:'#fff',fontWeight:700,fontSize:11,cursor:'pointer'}}>+ Field</button>`:null}
+        ${!simpleMap&&canEditFields?html`<button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('list')}>☷ List</button>`:null}
+        ${!simpleMap&&canEditFields?html`<label style=${{padding:'7px 10px',border:'1.5px solid #2c3e50',borderRadius:8,color:'#2c3e50',fontWeight:700,fontSize:10,cursor:'pointer',background:'#fff'}}>↑ Import<input type="file" accept=".geojson,.json,.kml" style=${{display:'none'}} onChange=${e=>{importBoundaryFile(e.target.files?.[0],false);e.target.value='';}}/></label>`:null}
+        ${!simpleMap&&canEditFields?html`<button onClick=${startNew} style=${{padding:'8px 12px',border:'none',borderRadius:8,background:'#2c3e50',color:'#fff',fontWeight:700,fontSize:11,cursor:'pointer'}}>+ Field</button>`:null}
       </div>
     </div>
     ${cloudMsg?html`<div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,marginBottom:8,background:cloudMsg.startsWith('⚠')?'#fff1f1':'#edf7ed',color:cloudMsg.startsWith('⚠')?'#b42318':'#2e7d32'}}>${cloudMsg}</div>`:null}
@@ -5075,7 +5130,7 @@ function FieldMapper(){
     <div class="card" style=${{padding:'10px 11px',marginBottom:8,borderColor:'#c9d7e3'}}>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:6}}>
         <div><strong style=${{fontSize:12}}>🎤 Ask the Farm Map</strong><span style=${{fontSize:9,color:'#999',marginLeft:6}}>voice or type a question</span></div>
-        <div style=${{display:'flex',gap:5}}><button onClick=${()=>{const v=!simpleMap;setSimpleMap(v);LS.set('hff:field_simple_map',v);}} style=${{padding:'4px 8px',borderRadius:6,border:'1px solid #9aa9b6',background:simpleMap?'#2c3e50':'#fff',color:simpleMap?'#fff':'#586774',fontSize:9,fontWeight:700}}>${simpleMap?'Simple Map ON':'Simple Map'}</button>${!simpleMap?html`<button onClick=${()=>setShowCropManager(v=>!v)} style=${{padding:'4px 8px',borderRadius:6,border:'1px solid #9aa9b6',background:'#fff',fontSize:9,fontWeight:700}}>+ Crop</button>`:null}</div>
+        <div style=${{display:'flex',gap:5}}><button onClick=${()=>{const v=!simpleMap;setSimpleMap(v);LS.set('hff:field_simple_map',v);}} style=${{padding:'4px 8px',borderRadius:6,border:'1px solid #9aa9b6',background:simpleMap?'#2c3e50':'#fff',color:simpleMap?'#fff':'#586774',fontSize:9,fontWeight:700}}>${simpleMap?'Simple Map ON':'Simple Map'}</button>${!simpleMap&&canEditFields?html`<button onClick=${()=>setShowCropManager(v=>!v)} style=${{padding:'4px 8px',borderRadius:6,border:'1px solid #9aa9b6',background:'#fff',fontSize:9,fontWeight:700}}>+ Crop</button>`:null}</div>
       </div>
       <div style=${{display:'flex',gap:5}}><input class="ti" type="text" value=${farmAsk} onInput=${e=>setFarmAsk(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'){e.preventDefault();askFarmMap(false);}}} placeholder='Try: “What fields are we growing rye in in 2027?”' style=${{flex:1,fontSize:12,padding:'8px 9px'}}/><button onClick=${startVoiceAsk} title="Speak question" style=${{width:38,borderRadius:8,border:'1.5px solid #2c3e50',background:listening?'#ffe8e8':'#fff',fontSize:16}}>${listening?'●':'🎤'}</button><button onClick=${()=>askFarmMap(false)} disabled=${farmAskLoading||!farmAsk.trim()} class="btn btn-sm" style=${{padding:'7px 11px'}}>${farmAskLoading?'…':'Ask'}</button></div>
       <div style=${{display:'flex',gap:5,marginTop:5,flexWrap:'wrap'}}><button onClick=${()=>askFarmMap(true,`Give me a summary of the ${fieldYear} planting plan`)} class="btn btn-sm btn-out" style=${{padding:'5px 8px',fontSize:9}}>AI farm report</button><button onClick=${()=>{const q=`What fields are not selected in ${fieldYear}?`;setFarmAsk(q);const a=directFarmMapAnswer(q);if(a)applyFarmAnswer(a);}} class="btn btn-sm btn-out" style=${{padding:'5px 8px',fontSize:9}}>Unassigned fields</button><span style=${{fontSize:9,color:'#999',alignSelf:'center'}}>Crop/acreage questions don't use AI. Broader reports use the API key already in Settings.</span></div>
@@ -5114,7 +5169,7 @@ function FieldMapper(){
         </div>
         ${selectedMapField?html`<div class="card" style=${{padding:'10px 12px',marginBottom:8,border:'2px solid #cfd8dc'}}>
           <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start',marginBottom:7}}><div><div style=${{fontSize:14,fontWeight:800}}>${selectedMapField.name}</div><div style=${{fontSize:10,color:'#777'}}>${fieldDisplayAcres(selectedMapField).toFixed(2)} ac · ${FIELD_CROPS_CFG[selectedMapField.crop]?.label||'Not selected'}</div></div>${!simpleMap?html`<div style=${{display:'flex',gap:4}}><button onClick=${()=>viewField(selectedMapField)} class="btn btn-sm btn-out">Plan</button><button onClick=${()=>editField(selectedMapField)} class="btn btn-sm">Edit</button></div>`:null}</div>
-          ${!simpleMap?html`<div><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Assign crop for ${fieldYear}</div><div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button onClick=${()=>assignFieldCrop(selectedMapField.id,'')} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid #999',background:!FIELD_CROPS_CFG[selectedMapField.crop]?'#eceff1':'#fff',fontSize:9,fontWeight:700}}>⬜ Not selected</button>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>assignFieldCrop(selectedMapField.id,k)} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid '+c.color,background:selectedMapField.crop===k?c.color:c.color+'12',color:selectedMapField.crop===k?'#fff':c.color,fontSize:9,fontWeight:700}}>${c.icon} ${c.label}</button>`)}</div></div>`:html`<div style=${{fontSize:10,color:'#777'}}>Simple Map is view-only. Use Ask Farm Map or the crop visibility controls above.</div>`}
+          ${!simpleMap&&canEditFields?html`<div><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Assign crop for ${fieldYear}</div><div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button onClick=${()=>assignFieldCrop(selectedMapField.id,'')} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid #999',background:!FIELD_CROPS_CFG[selectedMapField.crop]?'#eceff1':'#fff',fontSize:9,fontWeight:700}}>⬜ Not selected</button>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>assignFieldCrop(selectedMapField.id,k)} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid '+c.color,background:selectedMapField.crop===k?c.color:c.color+'12',color:selectedMapField.crop===k?'#fff':c.color,fontSize:9,fontWeight:700}}>${c.icon} ${c.label}</button>`)}</div></div>`:html`<div style=${{fontSize:10,color:'#777'}}>Simple Map is view-only. Use Ask Farm Map or the crop visibility controls above.</div>`}
         </div>`:html`<div style=${{fontSize:10,color:'#888',textAlign:'center',padding:'4px 0 10px'}}>Tap a field on the map or sidebar to assign its crop or open its planting plan.</div>`}
       </div>
     </div>
@@ -5141,7 +5196,7 @@ function FieldMapper(){
 
   if(mode==='view'){
     const fc=FIELD_CROPS_CFG[draft.crop]||{icon:'📍',label:'Not selected',color:'#77828c'};
-    return html`<div><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><button onClick=${()=>switchFieldMode('overview')} class="btn btn-sm btn-out">← Farm Map</button><span style=${{fontWeight:700,fontSize:14}}>${fc.icon} ${draft.name}</span><button onClick=${()=>editField(draft)} class="btn btn-sm">Edit</button></div>
+    return html`<div><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><button onClick=${()=>switchFieldMode('overview')} class="btn btn-sm btn-out">← Farm Map</button><span style=${{fontWeight:700,fontSize:14}}>${fc.icon} ${draft.name}</span>${canEditFields?html`<button onClick=${()=>editField(draft)} class="btn btn-sm">Edit</button>`:null}</div>
       <div class="card" style=${{overflow:'hidden',marginBottom:8}}><div ref=${mapRef} style=${{height:420,background:'#e0e8e0',position:'relative'}}>${!mapLoaded?html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:12,color:'#888'}}>Loading satellite map…</div>`:null}</div></div>
       <div style=${{fontSize:11,color:'#666',margin:'-1px 0 8px',padding:'0 4px'}}><strong>${bearingLabel(draft)}</strong> · Section 1 from ${startSideLabel(draft)}</div>
       ${stats?html`<div class="card" style=${{padding:'10px 14px'}}><div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:7}}>${[['Acres',stats.acreage.toFixed(2)],['Sections',stats.numSections],['Rows',stats.numRows],['Total row ft',Math.round(stats.totalRowFt).toLocaleString()],['Plants',stats.totalPlants.toLocaleString()],['Seeds + buffer',stats.seedsNeeded.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'#f7f7f5',borderRadius:7,padding:'7px',textAlign:'center'}}><div style=${{fontSize:13,fontWeight:700}}>${v}</div><div style=${{fontSize:9,color:'#999'}}>${l}</div></div>`)}</div>${draft.notes?html`<div style=${{fontSize:12,color:'#666',marginTop:9}}>${draft.notes}</div>`:null}</div>`:null}
@@ -6365,7 +6420,22 @@ function ZoneEditor({zones,onSave}){
   </div>`;
 }
 
-function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isStraw,syncSt,lastSync,onSyncNow}){
+function StaffPermissionsPanel({staffProfile,onProfileRefresh}){
+  const isAdmin=staffProfile?.role==='owner'||staffProfile?.role==='manager';
+  const[rows,setRows]=useState([]);const[loading,setLoading]=useState(false);const[msg,setMsg]=useState('');
+  async function load(){if(!isAdmin)return;setLoading(true);const r=await sbStaffList();setLoading(false);if(r.ok)setRows(r.rows||[]);else setMsg('⚠ '+r.msg);}
+  useEffect(()=>{load();},[isAdmin]);
+  async function patchMember(row,patch){
+    setMsg('Saving…');const r=await sbUpdateStaffMember(row.user_id,patch);
+    if(!r.ok){setMsg('⚠ '+r.msg);return;}
+    setMsg('✓ Permissions saved');await load();if(row.user_id===staffProfile.user_id&&onProfileRefresh)onProfileRefresh();
+    setTimeout(()=>setMsg(''),1800);
+  }
+  if(!isAdmin)return html`<div class="sbox"><div class="sbox-title">👤 My Access</div><div class="sbox-hint">Your farm permissions are managed by an owner or manager.</div><div style=${{fontSize:12,lineHeight:1.8}}><strong>${staffProfile?.display_name||staffProfile?.email||'Staff'}</strong> · ${staffProfile?.role||'staff'}<br/>${STAFF_PERMISSION_FIELDS.filter(k=>staffCan(staffProfile,k)).map(k=>STAFF_PERMISSION_LABELS[k]).join(' · ')||'No modules assigned'}</div></div>`;
+  return html`<div class="sbox"><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><div><div class="sbox-title">👥 Staff & Permissions</div><div class="sbox-hint">Staff sign in once per device. Supabase enforces these permissions even if someone tries to call the API directly.</div></div><button class="btn btn-sm btn-out" onClick=${load} disabled=${loading}>↻ Refresh</button></div>${msg?html`<div class=${'test-result '+(msg.startsWith('⚠')?'test-err':'test-ok')}>${msg}</div>`:null}${rows.map(r=>html`<div key=${r.user_id} style=${{border:'1px solid #e5e7e5',borderRadius:9,padding:'9px 10px',marginTop:8,background:r.is_active?'#fff':'#faf5f5'}}><div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',flexWrap:'wrap'}}><div><strong style=${{fontSize:12}}>${r.display_name||r.email||'Staff'}</strong><div style=${{fontSize:10,color:'#999'}}>${r.email||''}${r.user_id===staffProfile.user_id?' · you':''}</div></div><div style=${{display:'flex',gap:5,alignItems:'center'}}><select value=${r.role||'staff'} disabled=${r.user_id===staffProfile.user_id} onChange=${e=>patchMember(r,{role:e.target.value})} style=${{padding:'5px',fontSize:10,border:'1px solid #ccc',borderRadius:6}}><option value="staff">Staff</option><option value="viewer">Viewer</option><option value="manager">Manager</option>${staffProfile.role==='owner'?html`<option value="owner">Owner</option>`:null}</select><label style=${{fontSize:10,fontWeight:700}}><input type="checkbox" checked=${!!r.is_active} disabled=${r.user_id===staffProfile.user_id} onChange=${e=>patchMember(r,{is_active:e.target.checked})}/> Active</label></div></div><div style=${{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>${STAFF_PERMISSION_FIELDS.map(k=>html`<label key=${k} style=${{fontSize:10,padding:'4px 6px',border:'1px solid #ddd',borderRadius:6,background:r[k]?'#edf7ed':'#fff',color:r[k]?'#2e7d32':'#777'}}><input type="checkbox" checked=${!!r[k]} disabled=${r.role==='owner'||r.user_id===staffProfile.user_id} onChange=${e=>patchMember(r,{[k]:e.target.checked})}/> ${STAFF_PERMISSION_LABELS[k]}</label>`)}</div>${!r.is_active?html`<div style=${{fontSize:9,color:'#b36b00',marginTop:5}}>Pending/inactive — this user cannot open farm data until activated.</div>`:null}</div>`)}</div>`;
+}
+
+function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isStraw,syncSt,lastSync,onSyncNow,staffProfile,onProfileRefresh}){
   const[apiDraft,setApiDraft]=useState(()=>LS.get('hff:apikey',''));
   const[stratDraft,setStratDraft]=useState(strat);
   const[apiSaved,setApiSaved]=useState(false);
@@ -6399,7 +6469,7 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
   <div>
     <div class="sbox">
       <div class="sbox-title">☁ Cloud Sync — Supabase</div>
-      <div class="sbox-hint">Connection config. The anon key is required for the connection; log in below to keep your data private.</div>
+      <div class="sbox-hint">The Project URL and publishable/anon key identify the Supabase project but are not secrets. Staff authentication + Row Level Security provide the actual protection.</div>
       <label class="fl" style=${{fontSize:11,marginTop:2}}>Supabase Project URL</label>
       <input class="apikey-in" type="url" value=${sbUrl} onInput=${e=>setSbUrl(e.target.value)} placeholder="https://xxxxxxxxxxxx.supabase.co"/>
       <label class="fl" style=${{fontSize:11}}>Anon / Public Key</label>
@@ -6423,14 +6493,14 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
       </p>
     </div>
     <div class="sbox">
-      <div class="sbox-title">🔒 Account Login</div>
-      <div class="sbox-hint">Log in with your Supabase account to make your data private. Without login, anyone with your anon key can read your records.</div>
+      <div class="sbox-title">🔒 Account</div>
+      <div class="sbox-hint">This device stays signed in using a refresh token. Access is enforced by Supabase Row Level Security, not by the public project key.</div>
       ${sbIsLoggedIn()?html`
         <div style=${{background:'#e8f5e9',border:'1.5px solid #a5d6a7',borderRadius:8,padding:'10px 12px',marginBottom:10}}>
           <p style=${{fontSize:13,fontWeight:600,color:'#2e7d32',marginBottom:2}}>✓ Logged in</p>
           <p style=${{fontSize:12,color:'#555'}}>${LS.get('hff:sb_session',{}).email||'authenticated'}</p>
         </div>
-        <button class="btn btn-sm btn-danger" onClick=${()=>{sbLogout();forceUpdate();}}>Log out</button>
+        <button class="btn btn-sm btn-danger" onClick=${()=>{sbLogout();location.reload();}}>Log out</button>
       `:html`
         <label class="fl" style=${{fontSize:11}}>Email</label>
         <input class="apikey-in" type="email" value=${loginEmail} onInput=${e=>setLoginEmail(e.target.value)} placeholder="you@example.com"/>
@@ -6444,11 +6514,11 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
           ${loginResult?html`<span class=${'test-result '+(loginResult.ok?'test-ok':'test-err')} style=${{marginTop:0}}>${loginResult.ok?'✓ Logged in':'✗ '+loginResult.msg}</span>`:null}
         </div>
         <p style=${{fontSize:11,color:'#bbb',marginTop:8,lineHeight:1.5}}>
-          Use the email and password from your Supabase account (supabase.com → Account settings),
-          or create a user in Supabase Authentication → Users.
+          Use a farm login created in Supabase Authentication → Users. This is separate from access to the Supabase dashboard.
         </p>
       `}
     </div>
+    <${StaffPermissionsPanel} staffProfile=${staffProfile} onProfileRefresh=${onProfileRefresh}/>
     <div class="sbox">
       <div class="sbox-title">Anthropic API Key</div>
       <div class="sbox-hint">Required for AI briefings and chart analysis. Get one free at console.anthropic.com — costs under $1/month at daily use.</div>
@@ -6503,7 +6573,7 @@ function SettingsView({strat,defaultStage,onSaveStrat,onSaveStage,cropLabel,isSt
 }
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
-function App(){
+function App({staffProfile,onProfileRefresh}){
   const[cropId,setCropId]=useState('str');
   // Migrate old view keys to new top-level structure
   const[view,setView]=useState(()=>{
@@ -6537,6 +6607,19 @@ function App(){
   const[newSkuCrop,setNewSkuCrop]=useState('pumpkin'); // idle|syncing|ok|err
   const[lastSync,setLastSync]=useState(null);
   const sbOn=()=>!!(LS.get('hff:sb_url','')&&LS.get('hff:sb_key',''));
+  const canIrrigation=staffCan(staffProfile,'can_irrigation');
+  const canSpray=staffCan(staffProfile,'can_spray');
+  const canFert=staffCan(staffProfile,'can_fert');
+  const canOrders=staffCan(staffProfile,'can_orders');
+  const canTasks=staffCan(staffProfile,'can_tasks');
+  const canResources=staffCan(staffProfile,'can_resources');
+  const canMap=staffCan(staffProfile,'can_map');
+  const allowedViews=[...(canIrrigation?['irrigation']:[]),...(canSpray?['spray']:[]),...(canFert?['fert']:[]),...(canOrders?['orders']:[]),...((canTasks||canResources)?['tasks']:[]),...(canMap?['fields']:[])];
+
+  useEffect(()=>{
+    if(view==='settings')return;
+    if(!allowedViews.includes(view)){const nv=allowedViews[0]||'settings';setView(nv);LS.set('hff:view',nv);}
+  },[view,staffProfile]);
 
   const crop=CROPS[cropId];
   const isStraw=cropId==='str';
@@ -6559,7 +6642,7 @@ function App(){
     setStrat(LS.get('hff:'+cropId+':strat',crop.strat));
     setDefaultStage(LS.get('hff:'+cropId+':defstage','first_crop'));
     // Pull from Supabase and merge with local (async, non-blocking)
-    if(sbOn()){
+    if(sbOn()&&canIrrigation){
       setSyncSt('syncing');
       sbPull(cropId).then(rows=>{
         if(rows){
@@ -6574,7 +6657,7 @@ function App(){
         }else{setSyncSt('err');}
       });
     }
-  },[cropId]);
+  },[cropId,canIrrigation]);
 
   const entry=entries[date]||emptyDay(zones,date);
   const history=Object.values(entries).sort((a,b)=>b.date.localeCompare(a.date));
@@ -6619,12 +6702,12 @@ function App(){
   function switchView(v){
     setView(v);
     LS.set('hff:view',v);
-    if(sbOn()&&v==='irrigation')syncNow();
+    if(sbOn()&&v==='irrigation'&&canIrrigation)syncNow();
   }
 
   // Poll Supabase every 5 minutes while the app is open
   useEffect(()=>{
-    if(!sbOn())return;
+    if(!sbOn()||!canIrrigation)return;
     const id=setInterval(()=>{
       sbPull(cropId).then(rows=>{
         if(!rows)return;
@@ -6637,7 +6720,7 @@ function App(){
       });
     }, 5*60*1000); // every 5 minutes
     return ()=>clearInterval(id);
-  },[cropId]);
+  },[cropId,canIrrigation]);
 
   function saveZones(nz){setZones(nz);LS.set('hff:'+cropId+':zones',nz);}
 
@@ -6674,7 +6757,7 @@ function App(){
   const histLvl=h=>zones.reduce((w,z)=>{const{overall}=zoneStatus(h[z.id]||emptyZone(),isStraw?(z.stage||null):null,z.drainDrippers,z.privaDrippers);return overall==='danger'?'danger':w==='danger'?'danger':overall==='warn'?'warn':w;},'ok');
 
   const{bg,acc,act,actTxt}=crop;
-  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation'},{id:'spray',lbl:'Spray'},{id:'fert',lbl:'Fert 🌱'},{id:'orders',lbl:'📦 Orders'},{id:'tasks',lbl:'📋 Tasks'},{id:'fields',lbl:'🗺 Fields'}];
+  const TABS=[{id:'irrigation',lbl:'🌿 Irrigation',ok:canIrrigation},{id:'spray',lbl:'Spray',ok:canSpray},{id:'fert',lbl:'Fert 🌱',ok:canFert},{id:'orders',lbl:'📦 Orders',ok:canOrders},{id:'tasks',lbl:'📋 Tasks',ok:canTasks||canResources},{id:'fields',lbl:'🗺 Fields',ok:canMap}].filter(t=>t.ok);
 
   const FlagBox=({level,items})=>items.length===0?null:html`
   <div class=${'flag-box '+level}>
@@ -6791,21 +6874,53 @@ function App(){
 
       ${view==='irrigation'&&irrView==='zones'?html`<${ZoneEditor} zones=${zones} onSave=${saveZones}/>`:null}
 
-      ${view==='fert'?html`<${FertBrain}/>`:null}
-      ${view==='orders'?html`<${OrderBrain}/>`:null}
-      ${view==='tasks'?html`<${TaskBrain}/>`:null}
-      ${view==='fields'?html`<${FieldMapper}/>`:null}
+      ${view==='fert'&&canFert?html`<${FertBrain}/>`:null}
+      ${view==='orders'&&canOrders?html`<${OrderBrain}/>`:null}
+      ${view==='tasks'&&(canTasks||canResources)?html`<${TaskBrain} staffProfile=${staffProfile}/>`:null}
+      ${view==='fields'&&canMap?html`<${FieldMapper} staffProfile=${staffProfile}/>`:null}
       ${view==='settings'?html`
       <${SettingsView} strat=${strat} defaultStage=${defaultStage} onSaveStrat=${saveStrat}
         onSaveStage=${saveDefStage} cropLabel=${crop.label} isStraw=${isStraw}
-        syncSt=${syncSt} lastSync=${lastSync} onSyncNow=${syncNow}/>`:null}
+        syncSt=${syncSt} lastSync=${lastSync} onSyncNow=${canIrrigation?syncNow:null} staffProfile=${staffProfile} onProfileRefresh=${onProfileRefresh}/>`:null}
 
-      ${view==='spray'?html`<${SprayBrain}/>`:null}
+      ${view==='spray'&&canSpray?html`<${SprayBrain}/>`:null}
     </div>
   </div>`;
 }
 
-prender(html`<${App}/>`,document.getElementById('app'));
+function SecureApp(){
+  const[status,setStatus]=useState('checking'); // checking | login | pending | ready | error
+  const[profile,setProfile]=useState(null);const[msg,setMsg]=useState('');
+  const[email,setEmail]=useState('');const[pw,setPw]=useState('');const[displayName,setDisplayName]=useState('');const[busy,setBusy]=useState(false);
+  const[sbUrl,setSbUrl]=useState(()=>LS.get('hff:sb_url',''));const[sbKey,setSbKey]=useState(()=>LS.get('hff:sb_key',''));const[sbTeam,setSbTeam]=useState(()=>LS.get('hff:sb_team','howe-farms-2026'));
+  async function refreshProfile(){
+    if(!LS.get('hff:sb_url','')||!LS.get('hff:sb_key','')){setStatus('login');setMsg('Enter the farm cloud connection once on this device.');return;}
+    if(!LS.get('hff:sb_session',null)?.refresh_token){setStatus('login');return;}
+    await sbRefreshSession();
+    if(!sbIsLoggedIn()){setStatus('login');return;}
+    let r=await sbProfilePull();
+    if(!r.ok){setStatus('error');setMsg(r.msg||'Could not read staff profile. Run the v31 security SQL in Supabase first.');return;}
+    if(!r.profile){
+      const sess=LS.get('hff:sb_session',{}),name=displayName||String(sess.email||'Staff').split('@')[0];
+      const boot=await sbBootstrapTeam(name);
+      if(!boot.ok){setStatus('error');setMsg(boot.msg||'Could not initialize staff security.');return;}
+      if(!boot.created){const req=await sbRequestTeamAccess(name);if(!req.ok){setStatus('error');setMsg(req.msg||'Could not request farm access.');return;}}
+      r=await sbProfilePull();
+    }
+    if(r.profile){setProfile(r.profile);setStatus(r.profile.is_active?'ready':'pending');setMsg('');}
+    else{setStatus('error');setMsg('No staff profile was created.');}
+  }
+  useEffect(()=>{refreshProfile();},[]);
+  async function login(){
+    if(!email||!pw){setMsg('Enter email and password.');return;}setBusy(true);setMsg('');
+    LS.set('hff:sb_url',sbUrl);LS.set('hff:sb_key',sbKey);LS.set('hff:sb_team',sbTeam);
+    const r=await sbLogin(email,pw);if(!r.ok){setMsg(r.msg);setBusy(false);return;}await refreshProfile();setBusy(false);
+  }
+  if(status==='ready')return html`<${App} staffProfile=${profile} onProfileRefresh=${refreshProfile}/>`;
+  return html`<div style=${{maxWidth:520,margin:'40px auto',padding:'0 14px',fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif'}}><div class="card" style=${{padding:'18px'}}><div style=${{fontSize:11,fontWeight:800,color:'#5a7b62',letterSpacing:1.5,textTransform:'uppercase'}}>Howe Family Farms</div><h2 style=${{fontSize:20,margin:'4px 0 6px'}}>🔒 IrrigationScout</h2>${status==='checking'?html`<p style=${{color:'#777'}}>Checking this device's farm access…</p>`:status==='pending'?html`<div><p style=${{fontWeight:700,color:'#b36b00'}}>Access request pending</p><p style=${{fontSize:13,color:'#666',lineHeight:1.6}}>This device is signed in, but a farm owner or manager must activate your account and choose which modules you can see.</p><button class="btn btn-sm btn-out" onClick=${refreshProfile}>Check again</button><button class="btn btn-sm btn-danger" style=${{marginLeft:6}} onClick=${()=>{sbLogout();setStatus('login');}}>Use another account</button></div>`:status==='error'?html`<div><div class="test-result test-err">${msg}</div><button class="btn btn-sm btn-out" onClick=${()=>setStatus('login')}>Back to sign in</button></div>`:html`<div><p style=${{fontSize:13,color:'#666',lineHeight:1.55,marginBottom:12}}>Sign in once on this phone or computer. The session is remembered and refreshes automatically; you should not need to enter the password every day.</p><details style=${{marginBottom:10}} open=${!sbUrl||!sbKey}><summary style=${{fontSize:12,fontWeight:700,cursor:'pointer'}}>Farm cloud connection</summary><div style=${{marginTop:7}}><label class="fl">Project URL</label><input class="apikey-in" value=${sbUrl} onInput=${e=>setSbUrl(e.target.value)}/><label class="fl">Publishable / anon key</label><input class="apikey-in" type="password" value=${sbKey} onInput=${e=>setSbKey(e.target.value)}/><label class="fl">Farm ID</label><input class="apikey-in" value=${sbTeam} onInput=${e=>setSbTeam(e.target.value)}/></div></details><label class="fl">Name</label><input class="apikey-in" value=${displayName} onInput=${e=>setDisplayName(e.target.value)} placeholder="e.g. Julio"/><label class="fl">Email</label><input class="apikey-in" type="email" value=${email} onInput=${e=>setEmail(e.target.value)}/><label class="fl">Password</label><input class="apikey-in" type="password" value=${pw} onInput=${e=>setPw(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter')login();}}/><button class=${'btn'+(busy?' loading':'')} onClick=${login} disabled=${busy}>${busy?'Signing in…':'Sign in'}</button>${msg?html`<div class="test-result test-err">${msg}</div>`:null}<p style=${{fontSize:10,color:'#aaa',marginTop:10,lineHeight:1.5}}>Accounts are created in Supabase Authentication. New staff automatically appear as pending until an owner/manager approves their permissions.</p></div>`}</div></div>`;
+}
+
+prender(html`<${SecureApp}/>`,document.getElementById('app'));
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 </body>
