@@ -1,5 +1,5 @@
-// hff-v29 — Farm Map grouped planner + batched field sync; network-first HTML, offline app shell
-const CACHE='hff-v29';
+// hff-v30 — Ask Farm Map + Simple Map + shared custom crop library; network-first HTML, offline app shell
+const CACHE='hff-v30';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
