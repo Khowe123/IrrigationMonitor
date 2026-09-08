@@ -4537,6 +4537,15 @@ function normalizeEmergency(e={},fieldName=''){
   const lat=parseFloat(e.lat??p.lat),lng=parseFloat(e.lng??p.lng);
   return{address:String(e.address||p.address||''),lat:isFinite(lat)?lat:null,lng:isFinite(lng)?lng:null,accessNotes:String(e.accessNotes||''),updatedAt:e.updatedAt||null};
 }
+const EMERGENCY_REQUIRED_CROPS=new Set(['strawberry','watermelon','pumpkin','sweetcorn']);
+function emergencyRequiredForCrop(cropId){return EMERGENCY_REQUIRED_CROPS.has(String(cropId||''));}
+async function reverseGeocodeEmergency(lat,lng){
+  try{
+    const url='https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=pjson&location='+encodeURIComponent(lng+','+lat)+'&distance=250&outSR=4326';
+    const r=await fetch(url);if(!r.ok)return'';const d=await r.json();
+    const a=d?.address||{};return String(a.LongLabel||a.Match_addr||a.Address||'').trim();
+  }catch{return'';}
+}
 function defaultFarmLocations(){return DEFAULT_FARM_LOCATIONS.map(x=>({...x,updatedAt:'2026-09-07T00:00:00.000Z'}));}
 function normalizeFarmLocations(v=[]){
   const a=Array.isArray(v)?v:[];return a.filter(x=>x&&x.id&&x.name).map(x=>{const lat=parseFloat(x.lat),lng=parseFloat(x.lng);return{id:String(x.id),category:String(x.category||'Other'),name:String(x.name),address:String(x.address||''),lat:isFinite(lat)?lat:null,lng:isFinite(lng)?lng:null,notes:String(x.notes||''),updatedAt:x.updatedAt||new Date().toISOString()};});
@@ -4848,13 +4857,32 @@ function FieldMapper({staffProfile}){
     if(layers.length)layoutLayerRef.current=L.layerGroup(layers).addTo(map);
   }
 
+  async function updateEmergencyMeetingPoint(fieldId,lat,lng,source='marker'){
+    const raw=fields.find(f=>f.id===fieldId);if(!raw)return;
+    setCloudMsg('Looking up emergency address…');
+    const address=await reverseGeocodeEmergency(lat,lng);
+    const prev=normalizeEmergency(raw.emergency,raw.name),now=new Date().toISOString();
+    const next={...raw,emergency:{...prev,lat,lng,address:address||prev.address,updatedAt:now},updatedAt:now};
+    const upd=fields.map(f=>f.id===fieldId?next:f);setFields(upd);LS.set('hff:fields',upd);setSyncSt('syncing');
+    const r=await sbFieldPush(next);
+    if(r.ok){setSyncSt('ok');setCloudMsg('☁ '+raw.name+' emergency meeting point saved and shared'+(address?' · address updated automatically.':'.'));}
+    else{setSyncSt('err');setCloudMsg('⚠ '+raw.name+' meeting point saved locally; cloud sync failed'+(r.msg?' — '+r.msg:'')+'.');}
+    if(mode==='emergency')setTimeout(()=>renderEmergencyMap(false),40);
+  }
+
   function renderEmergencyMap(doFit=true){
     const map=leafletRef.current,L=window.L;if(!map||!L)return;
     clearMapLayers();const layers=[],bounds=[];
     fields.forEach(raw=>{
-      const f=migratedField(raw),c=FIELD_CROPS_CFG[f.crop]||{color:'#8a949b'};
+      const f=migratedField(raw);if(!emergencyRequiredForCrop(f.crop))return;
+      const c=FIELD_CROPS_CFG[f.crop]||{color:'#8a949b'};
       if(f.latlngs?.length>=3){const ll=f.latlngs.map(p=>[p.lat,p.lng]);layers.push(L.polygon(ll,{color:c.color,weight:1.5,fillColor:c.color,fillOpacity:.08,interactive:false}));ll.forEach(x=>bounds.push(x));}
-      const e=normalizeEmergency(raw.emergency,raw.name);if(e.lat!=null&&e.lng!=null){bounds.push([e.lat,e.lng]);layers.push(L.marker([e.lat,e.lng],{icon:L.divIcon({className:'',html:'<div style="background:#c62828;color:#fff;border:2px solid #fff;border-radius:14px;padding:3px 7px;font:bold 10px system-ui;box-shadow:0 1px 4px #555;white-space:nowrap">🚑 '+String(raw.name).replace(/</g,'&lt;')+'</div>',iconSize:[110,24],iconAnchor:[55,12]})}).bindPopup('<b>'+String(raw.name).replace(/</g,'&lt;')+'</b><br>'+String(e.address||'No address').replace(/</g,'&lt;')+'<br>'+e.lat.toFixed(6)+', '+e.lng.toFixed(6)));}
+      const e=normalizeEmergency(raw.emergency,raw.name);if(e.lat!=null&&e.lng!=null){
+        bounds.push([e.lat,e.lng]);
+        const marker=L.marker([e.lat,e.lng],{draggable:!!canEditFields,icon:L.divIcon({className:'',html:'<div style="background:#c62828;color:#fff;border:2px solid #fff;border-radius:14px;padding:3px 7px;font:bold 10px system-ui;box-shadow:0 1px 4px #555;white-space:nowrap">🚑 '+String(raw.name).replace(/</g,'&lt;')+'</div>',iconSize:[110,24],iconAnchor:[55,12]})}).bindPopup('<b>'+String(raw.name).replace(/</g,'&lt;')+'</b><br>'+String(e.address||'No address').replace(/</g,'&lt;')+'<br>'+e.lat.toFixed(6)+', '+e.lng.toFixed(6)+(canEditFields?'<br><em>Drag marker to change EMS meeting point</em>':''));
+        if(canEditFields)marker.on('dragend',ev=>{const p=ev.target.getLatLng();updateEmergencyMeetingPoint(raw.id,p.lat,p.lng,'drag');});
+        layers.push(marker);
+      }
     });
     farmLocations.forEach(x=>{if(x.lat==null||x.lng==null)return;bounds.push([x.lat,x.lng]);layers.push(L.marker([x.lat,x.lng],{icon:L.divIcon({className:'',html:'<div style="background:#2c3e50;color:#fff;border:2px solid #fff;border-radius:11px;padding:3px 6px;font:bold 9px system-ui;white-space:nowrap">'+(x.category==='Market'?'🏪':x.category==='House'?'🏠':'🏠')+' '+String(x.name).replace(/</g,'&lt;')+'</div>',iconSize:[105,22],iconAnchor:[52,11]})}).bindPopup('<b>'+String(x.name).replace(/</g,'&lt;')+'</b><br>'+String(x.address||'').replace(/</g,'&lt;')+'<br>'+(x.lat!=null?x.lat.toFixed(6)+', '+x.lng.toFixed(6):'')));});
     if(layers.length)layoutLayerRef.current=L.layerGroup(layers).addTo(map);if(doFit&&bounds.length)setTimeout(()=>map.fitBounds(L.latLngBounds(bounds),{padding:[28,28],maxZoom:14}),30);
@@ -5038,7 +5066,7 @@ function FieldMapper({staffProfile}){
       navigator.geolocation.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],17),()=>{});
     }
 
-    const clickHandler=e=>{
+    const clickHandler=async e=>{
       if(mode!=='edit')return;
       const p={lat:e.latlng.lat,lng:e.latlng.lng};
       const tool=toolRef.current,cur=draftRef.current;
@@ -5052,8 +5080,10 @@ function FieldMapper({staffProfile}){
         setMapTool(null);setAbA(null);setImportMsg('✓ A–B heading set to '+bearing.toFixed(1)+'°.');applyDraft(nd);return;
       }
       if(tool==='emergency'){
-        const nd={...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),lat:p.lat,lng:p.lng,updatedAt:new Date().toISOString()}};
-        setMapTool(null);setImportMsg('✓ Emergency access / rendezvous point set.');applyDraft(nd);return;
+        setImportMsg('Looking up civic address for this emergency meeting point…');
+        const autoAddress=await reverseGeocodeEmergency(p.lat,p.lng),prev=normalizeEmergency(cur.emergency,cur.name);
+        const nd={...cur,emergency:{...prev,lat:p.lat,lng:p.lng,address:autoAddress||prev.address,updatedAt:new Date().toISOString()}};
+        setMapTool(null);setImportMsg('✓ Emergency meeting point set'+(autoAddress?' · address filled automatically.':' · GPS saved; verify the civic address manually.'));applyDraft(nd);return;
       }
       if(tool==='start'){
         if(cur.latlngs?.length<3)return;
@@ -5387,9 +5417,11 @@ function FieldMapper({staffProfile}){
 
   if(mode==='emergency'){
     const yearFields=fields.map(f=>migratedField(f));
-    const groups={};yearFields.forEach(f=>{const key=f.crop||'unassigned',c=FIELD_CROPS_CFG[key]||{label:'Not selected',icon:'⬜',color:'#7d8790'};(groups[key]||(groups[key]={key,label:c.label,icon:c.icon,color:c.color,fields:[]})).fields.push(f);});
-    const cropGroups=Object.values(groups).sort((a,b)=>a.label.localeCompare(b.label));
-    const incomplete=yearFields.filter(f=>{const e=normalizeEmergency(f.emergency,f.name);return !e.address||e.lat==null||e.lng==null;});
+    const emergencyFields=yearFields.filter(f=>emergencyRequiredForCrop(f.crop));
+    const groups={};emergencyFields.forEach(f=>{const key=f.crop,c=FIELD_CROPS_CFG[key];(groups[key]||(groups[key]={key,label:c.label,icon:c.icon,color:c.color,fields:[]})).fields.push(f);});
+    const cropOrder=['strawberry','watermelon','pumpkin','sweetcorn'];
+    const cropGroups=Object.values(groups).sort((a,b)=>cropOrder.indexOf(a.key)-cropOrder.indexOf(b.key));
+    const incomplete=emergencyFields.filter(f=>{const e=normalizeEmergency(f.emergency,f.name);return !e.address||e.lat==null||e.lng==null;});
     function csvEmergency(){
       const rows=[['Crop','Field','Acres','Address','GPS Latitude','GPS Longitude','Access Notes']];cropGroups.forEach(g=>g.fields.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f=>{const e=normalizeEmergency(f.emergency,f.name);rows.push([g.label,f.name,fieldDisplayAcres(f).toFixed(2),e.address,e.lat??'',e.lng??'',e.accessNotes||'']);}));
       farmLocations.forEach(x=>rows.push([x.category,x.name,'',x.address,x.lat??'',x.lng??'',x.notes||'']));
@@ -5404,8 +5436,9 @@ function FieldMapper({staffProfile}){
     async function saveFarmLocation(loc){const now=new Date().toISOString(),next={...loc,id:loc.id||'loc_'+Date.now().toString(36),updatedAt:now};const arr=mergeFarmLocations(farmLocations.filter(x=>x.id!==next.id),[next]);setFarmLocations(arr);LS.set('hff:farm_locations',arr);setEmergencyEditLoc(null);setSyncSt('syncing');const r=await sbFarmLocationsPush(arr);setSyncSt(r.ok?'ok':'err');setCloudMsg(r.ok?'☁ Permanent farm locations synced.':'⚠ Farm location saved locally; cloud sync failed'+(r.msg?' — '+r.msg:'')+'.');}
     async function deleteFarmLocation(id){if(!confirm('Delete this permanent farm location?'))return;const arr=farmLocations.filter(x=>x.id!==id);setFarmLocations(arr);LS.set('hff:farm_locations',arr);const r=await sbFarmLocationsPush(arr);setSyncSt(r.ok?'ok':'err');}
     return html`<div>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}><div><div style=${{fontWeight:800,fontSize:16}}>🚑 Emergency Field Locations</div><div style=${{fontSize:10,color:'#777',marginTop:3}}>Crop groups follow the ${fieldYear} planting plan. Houses, barns and markets stay permanent year to year.</div></div><div style=${{display:'flex',gap:6,flexWrap:'wrap'}}><button onClick=${()=>switchFieldMode('overview')} class="btn btn-sm btn-out">← Farm Map</button><button onClick=${csvEmergency} class="btn btn-sm btn-out">↓ CSV</button><button onClick=${printEmergency} class="btn btn-sm">🖨 Print</button></div></div>
-      <div style=${{display:'flex',alignItems:'center',gap:7,marginBottom:9}}><span style=${{fontSize:10,fontWeight:800,color:'#68737d'}}>FARM YEAR</span><select value=${fieldYear} onChange=${e=>changeFieldYear(e.target.value)} style=${{padding:'5px 22px 5px 8px',border:'1.5px solid #2c3e50',borderRadius:7,fontWeight:800}}>${knownYears.map(y=>html`<option value=${y}>${y}</option>`)}</select><span style=${{fontSize:10,color:incomplete.length?'#c62828':'#2e7d32',fontWeight:700}}>${incomplete.length?'⚠ '+incomplete.length+' field'+(incomplete.length===1?'':'s')+' missing emergency address/GPS':'✓ Every mapped field has emergency details'}</span></div>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}><div><div style=${{fontWeight:800,fontSize:16}}>🚑 Emergency Field Locations</div><div style=${{fontSize:10,color:'#777',marginTop:3}}>Required for Strawberry, Watermelon, Pumpkin and Sweet Corn. Drag a red 🚑 marker to the most likely EMS meeting point; GPS and civic address update automatically. Houses, barns and markets stay permanent year to year.</div></div><div style=${{display:'flex',gap:6,flexWrap:'wrap'}}><button onClick=${()=>switchFieldMode('overview')} class="btn btn-sm btn-out">← Farm Map</button><button onClick=${csvEmergency} class="btn btn-sm btn-out">↓ CSV</button><button onClick=${printEmergency} class="btn btn-sm">🖨 Print</button></div></div>
+      <div style=${{display:'flex',alignItems:'center',gap:7,marginBottom:9}}><span style=${{fontSize:10,fontWeight:800,color:'#68737d'}}>FARM YEAR</span><select value=${fieldYear} onChange=${e=>changeFieldYear(e.target.value)} style=${{padding:'5px 22px 5px 8px',border:'1.5px solid #2c3e50',borderRadius:7,fontWeight:800}}>${knownYears.map(y=>html`<option value=${y}>${y}</option>`)}</select><span style=${{fontSize:10,color:incomplete.length?'#c62828':'#2e7d32',fontWeight:700}}>${incomplete.length?'⚠ '+incomplete.length+' required field'+(incomplete.length===1?'':'s')+' missing emergency address/GPS':'✓ All required crop fields have emergency details'}</span></div>
+      ${canEditFields?html`<div style=${{fontSize:10,color:'#7a4b00',background:'#fff8e1',border:'1px solid #ffe082',borderRadius:8,padding:'7px 9px',marginBottom:8}}>✋ <strong>Move an emergency point:</strong> drag the red 🚑 marker to the road entrance or rendezvous point EMS should use. The app will save the GPS waypoint, reverse-look-up the civic address, and sync it to the other devices.</div>`:null}
       <div class="card" style=${{overflow:'hidden',marginBottom:10}}><div ref=${mapRef} style=${{height:390,background:'#e0e8e0'}}></div></div>
       ${cropGroups.map(g=>html`<div class="card" style=${{marginBottom:8}}><div style=${{padding:'8px 11px',background:g.color+'15',borderLeft:'5px solid '+g.color,fontWeight:800,fontSize:12}}>${g.icon} ${g.label}<span style=${{float:'right',fontSize:10,color:'#666'}}>${g.fields.reduce((s,f)=>s+fieldDisplayAcres(f),0).toFixed(2)} ac</span></div>${g.fields.sort((a,b)=>a.name.localeCompare(b.name)).map(f=>{const e=normalizeEmergency(f.emergency,f.name),ok=e.address&&e.lat!=null&&e.lng!=null;return html`<div style=${{display:'grid',gridTemplateColumns:'minmax(120px,1fr) 70px minmax(180px,1.8fr) minmax(145px,1fr) auto',gap:7,alignItems:'center',padding:'7px 10px',borderTop:'1px solid #eee',fontSize:10}}><button onClick=${()=>{if(canEditFields)editField(f);}} style=${{border:'none',background:'transparent',textAlign:'left',fontWeight:700,color:'#222',cursor:canEditFields?'pointer':'default'}}>${f.name}${!ok?html`<span style=${{color:'#c62828'}}> ⚠</span>`:null}</button><span>${fieldDisplayAcres(f).toFixed(2)} ac</span><span>${e.address||'⚠ Address missing'}</span><span style=${{fontFamily:'monospace'}}>${e.lat!=null?e.lat.toFixed(6)+', '+e.lng.toFixed(6):'⚠ GPS missing'}</span>${e.lat!=null?html`<button onClick=${()=>window.open('https://www.google.com/maps/search/?api=1&query='+e.lat+','+e.lng,'_blank')} class="btn btn-sm btn-out" style=${{padding:'4px 7px',fontSize:9}}>Map</button>`:null}</div>`;})}</div>`)}
       <div class="card" style=${{marginTop:12}}><div style=${{padding:'9px 11px',background:'#edf1f5',fontWeight:800,fontSize:12,display:'flex',justifyContent:'space-between'}}>🏠 Permanent Farm Locations${canEditFields?html`<button onClick=${()=>setEmergencyEditLoc({id:'',category:'Barn',name:'',address:'',lat:null,lng:null,notes:''})} class="btn btn-sm btn-out" style=${{padding:'4px 8px'}}>+ Location</button>`:null}</div>${['Market','Barn','House','Other'].map(cat=>{const aa=farmLocations.filter(x=>x.category===cat);if(!aa.length)return null;return html`<div><div style=${{padding:'6px 10px',fontSize:10,fontWeight:800,color:'#666',background:'#fafafa'}}>${cat}</div>${aa.map(x=>html`<div style=${{display:'grid',gridTemplateColumns:'140px minmax(220px,1fr) 165px auto',gap:7,alignItems:'center',padding:'7px 10px',borderTop:'1px solid #eee',fontSize:10}}><strong>${x.name}</strong><span>${x.address}</span><span style=${{fontFamily:'monospace'}}>${x.lat!=null?x.lat.toFixed(6)+', '+x.lng.toFixed(6):''}</span>${canEditFields?html`<div style=${{display:'flex',gap:4}}><button onClick=${()=>setEmergencyEditLoc({...x})} class="btn btn-sm btn-out" style=${{padding:'4px 7px'}}>Edit</button><button onClick=${()=>deleteFarmLocation(x.id)} class="btn btn-sm btn-danger" style=${{padding:'4px 7px'}}>×</button></div>`:null}</div>`)}</div>`;})}</div>
@@ -5458,7 +5491,7 @@ function FieldMapper({staffProfile}){
       <label class="fl" style=${{fontSize:10}}>Civic address emergency services should use</label><input class="ti" type="text" value=${normalizeEmergency(draft.emergency,draft.name).address} onInput=${e=>{const cur=draftRef.current;applyDraft({...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),address:e.target.value,updatedAt:new Date().toISOString()}},false);}} placeholder="e.g. 48556 John Wise Line, Aylmer, ON"/>
       <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginTop:6}}><div><label class="fl" style=${{fontSize:10}}>GPS latitude</label><input class="ti" type="number" step="0.000001" value=${normalizeEmergency(draft.emergency,draft.name).lat??''} onInput=${e=>{const cur=draftRef.current;applyDraft({...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),lat:e.target.value===''?null:+e.target.value,updatedAt:new Date().toISOString()}},false);}}/></div><div><label class="fl" style=${{fontSize:10}}>GPS longitude</label><input class="ti" type="number" step="0.000001" value=${normalizeEmergency(draft.emergency,draft.name).lng??''} onInput=${e=>{const cur=draftRef.current;applyDraft({...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),lng:e.target.value===''?null:+e.target.value,updatedAt:new Date().toISOString()}},false);}}/></div></div>
       <label class="fl" style=${{fontSize:10,marginTop:6}}>Access / rendezvous notes</label><input class="ti" type="text" value=${normalizeEmergency(draft.emergency,draft.name).accessNotes} onInput=${e=>{const cur=draftRef.current;applyDraft({...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),accessNotes:e.target.value,updatedAt:new Date().toISOString()}},false);}} placeholder="e.g. enter from north laneway; meet ambulance at field entrance"/>
-      <div style=${{fontSize:9,color:'#888',marginTop:5}}>This is permanent field safety information. It stays with the field when the crop changes next year.</div>
+      <div style=${{fontSize:9,color:emergencyRequiredForCrop(draft.crop)?'#b71c1c':'#888',fontWeight:emergencyRequiredForCrop(draft.crop)?700:400,marginTop:5}}>${emergencyRequiredForCrop(draft.crop)?'Required for this crop. Set the EMS meeting point before the field plan is considered emergency-ready.':'Optional for this crop. Emergency locations are only required on the annual report for Strawberry, Watermelon, Pumpkin and Sweet Corn.'} This safety information is permanent and stays with the field when the crop changes next year.</div>
     </div>
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
