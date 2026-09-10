@@ -2097,6 +2097,77 @@ function OrderBrain(){
     w.document.close();
   }
 
+  function xlsxSafeName(v,fallback='Sheet'){
+    const s=String(v||fallback).replace(/[\\\/?*\[\]:]/g,' ').replace(/\s+/g,' ').trim();
+    return (s||fallback).slice(0,31);
+  }
+  function fileSafeName(v,fallback='export'){
+    const s=String(v||fallback).replace(/[^a-z0-9._-]+/gi,'_').replace(/^_+|_+$/g,'');
+    return s||fallback;
+  }
+  function exportPOLoadSheetXLSX(o){
+    if(!o)return;
+    if(typeof XLSX==='undefined'){alert('Spreadsheet library loading — wait a moment and try again.');return;}
+    const allSkus=[...ORDER_SKUS.pumpkin,...ORDER_SKUS.watermelon,...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',custom:true}))];
+    const seen=new Set();
+    const items=allSkus.filter(sk=>{if(seen.has(sk.id))return false;seen.add(sk.id);return (o.skus?.[sk.id]||0)>0;});
+    const total=items.reduce((sum,sk)=>sum+(parseInt(o.skus?.[sk.id])||0),0);
+    const cropNames=[...new Set(items.map(sk=>skuCrop(sk.id)==='watermelon'?'Watermelon':'Pumpkin'))].join(' + ')||(o.crop==='mixed'?'Pumpkin + Watermelon':o.crop==='watermelon'?'Watermelon':'Pumpkin');
+    const shipDate=o.shipDate?new Date(o.shipDate+'T12:00:00').toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'';
+    const rows=[
+      ['Howe Family Farms — Load Sheet','','',''],
+      ['Customer',o.customer||'','Ship Date',shipDate],
+      ['PO Number',o.po||'','Crop',cropNames],
+      ['','','',''],
+      ['Product / Size','Bins','Loaded','Initials'],
+      ...items.map(sk=>[sk.label,parseInt(o.skus?.[sk.id])||0,'','']),
+      ['TOTAL',total,'',''],
+      ['','','',''],
+      ['Order notes',o.notes||'','',''],
+      ['','','',''],
+      ['Loaded by','','Checked by / driver',''],
+      ['Truck / trailer','','Departure time','']
+    ];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!merges']=[XLSX.utils.decode_range('A1:D1'),XLSX.utils.decode_range('B9:D9')];
+    ws['!cols']=[{wch:34},{wch:12},{wch:24},{wch:22}];
+    ws['!rows']=[{hpt:24},{hpt:20},{hpt:20},{hpt:8},{hpt:22}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Load Sheet');
+    const fn='Load_Sheet_'+fileSafeName(o.customer||'Customer')+(o.po?'_PO_'+fileSafeName(o.po):'')+(o.shipDate?'_'+o.shipDate:'')+'.xlsx';
+    XLSX.writeFile(wb,fn);
+  }
+
+  function exportPumpkinCrewXLSX(onlyCrewId=null){
+    if(typeof XLSX==='undefined'){alert('Spreadsheet library loading — wait a moment and try again.');return;}
+    const crews=(pickPlan.crews||[]).filter(c=>!onlyCrewId||c.id===onlyCrewId);if(!crews.length)return;
+    const wb=XLSX.utils.book_new();
+    const skus=ORDER_SKUS.pumpkin;
+    const needA=sku=>calcNeed(pickPlan.dateA,sku.id),needB=sku=>calcNeed(pickPlan.dateB,sku.id);
+    crews.forEach((crew,idx)=>{
+      const rows=[
+        ['Howe Family Farms — Pumpkin Pick List','','','','',''],
+        ['Crew',crew.name||('Crew '+(idx+1)),'Printed',new Date().toLocaleDateString('en-CA'),'',''],
+        ['Highlighted/assigned in app','Rows marked YES in the last column are this crew’s assignment.','','','',''],
+        ['','','','','',''],
+        ['Pumpkin size / type','Need '+formatPickDay(pickPlan.dateA),'Need '+formatPickDay(pickPlan.dateB),'Have','Pick','Assigned to crew'],
+        ...skus.map(sk=>{
+          const a=needA(sk),b=needB(sk),have=getInv(sk.id),pick=Math.max(0,a+b-have),assigned=(pickPlan.assignments?.[sk.id]||[]).includes(crew.id);
+          return [sk.label,a||'',b||'',have||'',pick||'',assigned?'YES':''];
+        }),
+        ['','','','','',''],
+        ['Notes',pickPlan.notes||'','','','','']
+      ];
+      const ws=XLSX.utils.aoa_to_sheet(rows);
+      ws['!merges']=[XLSX.utils.decode_range('A1:F1'),XLSX.utils.decode_range('B3:F3'),XLSX.utils.decode_range(`B${rows.length}:F${rows.length}`)];
+      ws['!cols']=[{wch:30},{wch:17},{wch:17},{wch:10},{wch:10},{wch:16}];
+      ws['!rows']=[{hpt:24},{hpt:20},{hpt:18},{hpt:7},{hpt:22}];
+      XLSX.utils.book_append_sheet(wb,ws,xlsxSafeName(crew.name||('Crew '+(idx+1)),'Crew '+(idx+1)));
+    });
+    const suffix=onlyCrewId?'_'+fileSafeName(crews[0]?.name||'Crew'):'_All_Crews';
+    XLSX.writeFile(wb,'Pumpkin_Pick_List'+suffix+'_'+todayStr()+'.xlsx');
+  }
+
   function printPumpkinCrewSheets(onlyCrewId=null){
     const crews=(pickPlan.crews||[]).filter(c=>!onlyCrewId||c.id===onlyCrewId);if(!crews.length)return;
     const skus=ORDER_SKUS.pumpkin;
@@ -2302,6 +2373,7 @@ function OrderBrain(){
             ${o.notes?html`<div style=${{fontSize:11,color:'#888',marginBottom:5}}>📝 ${o.notes}</div>`:null}
             <div style=${{display:'flex',gap:6,justifyContent:'flex-end',flexWrap:'wrap'}}>
               <button onClick=${()=>printPOLoadSheet(o)} class="btn btn-sm btn-out">🖨 Load Sheet</button>
+              <button onClick=${()=>exportPOLoadSheetXLSX(o)} class="btn btn-sm btn-out">↓ Excel</button>
               <button onClick=${()=>startEdit(o)} class="btn btn-sm btn-out">Edit</button>
               <button onClick=${()=>deleteOrder(o.id)} class="btn btn-sm btn-danger">Delete</button>
               <button onClick=${()=>toggleShipped(o.id)}
@@ -2320,6 +2392,7 @@ function OrderBrain(){
                 <div style=${{display:'flex',gap:5,alignItems:'center'}}>
                   <span style=${{fontSize:11,color:'#bbb'}}>✓ Shipped</span>
                   <button onClick=${()=>printPOLoadSheet(o)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>🖨 Load Sheet</button>
+                  <button onClick=${()=>exportPOLoadSheetXLSX(o)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>↓ Excel</button>
                   <button onClick=${()=>toggleShipped(o.id)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#888',fontFamily:'inherit'}}>Undo</button>
                 </div>
               </div>
@@ -2356,7 +2429,7 @@ function OrderBrain(){
             <label style=${{fontSize:10,fontWeight:700,color:'#666'}}>Crew notes<input class="ti" type="text" value=${pickPlan.notes||''} onInput=${e=>updatePickPlan({notes:e.target.value})} placeholder="Optional notes for all sheets" style=${{marginTop:3}}/></label>
           </div>
           <div style=${{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
-            ${(pickPlan.crews||[]).map(c=>html`<div key=${c.id} style=${{display:'flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:7,padding:'3px 4px 3px 7px',background:'#fafafa'}}><input value=${c.name} onInput=${e=>renamePickCrew(c.id,e.target.value)} style=${{width:86,border:'none',background:'transparent',fontWeight:700,fontSize:11,outline:'none'}}/><button onClick=${()=>printPumpkinCrewSheets(c.id)} title="Print this crew" style=${{border:'none',background:'transparent',fontSize:13,cursor:'pointer'}}>🖨</button><button onClick=${()=>removePickCrew(c.id)} title="Remove crew" style=${{border:'none',background:'transparent',color:'#c62828',fontSize:13,cursor:'pointer'}}>×</button></div>`)}
+            ${(pickPlan.crews||[]).map(c=>html`<div key=${c.id} style=${{display:'flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:7,padding:'3px 4px 3px 7px',background:'#fafafa'}}><input value=${c.name} onInput=${e=>renamePickCrew(c.id,e.target.value)} style=${{width:86,border:'none',background:'transparent',fontWeight:700,fontSize:11,outline:'none'}}/><button onClick=${()=>printPumpkinCrewSheets(c.id)} title="Print this crew" style=${{border:'none',background:'transparent',fontSize:13,cursor:'pointer'}}>🖨</button><button onClick=${()=>exportPumpkinCrewXLSX(c.id)} title="Download this crew as Excel" style=${{border:'none',background:'transparent',fontSize:13,cursor:'pointer'}}>↓</button><button onClick=${()=>removePickCrew(c.id)} title="Remove crew" style=${{border:'none',background:'transparent',color:'#c62828',fontSize:13,cursor:'pointer'}}>×</button></div>`)}
             <button onClick=${addPickCrew} class="btn btn-sm btn-out" style=${{padding:'5px 8px'}}>+ Crew</button>
           </div>
           <div style=${{overflowX:'auto',border:'1px solid #eee',borderRadius:8}}>
@@ -2369,7 +2442,8 @@ function OrderBrain(){
           <div style=${{display:'flex',gap:7,marginTop:8,flexWrap:'wrap',alignItems:'center'}}>
             <button onClick=${savePickCrewPlan} class="btn btn-sm" style=${{background:pickPlanSync==='ok'?'#2e7d32':pickPlanSync==='err'?'#c62828':'#5c2d0a'}}>${pickPlanSync==='saving'?'⟳ Saving…':pickPlanSync==='ok'?'✓ Saved & synced':pickPlanSync==='err'?'⚠ Sync failed':'☁ Save crew plan'}</button>
             <button onClick=${()=>printPumpkinCrewSheets()} class="btn btn-sm btn-out">🖨 Print all crew sheets</button>
-            <span style=${{fontSize:9,color:'#999'}}>Crew plan is stored with the shared Orders inventory record. Field/location is optional.</span>
+            <button onClick=${()=>exportPumpkinCrewXLSX()} class="btn btn-sm btn-out">↓ Excel all crews</button>
+            <span style=${{fontSize:9,color:'#999'}}>Excel exports are intentionally simple so you can size/format a test sheet in Excel and send it back as the permanent print template. Crew plan is stored with the shared Orders inventory record.</span>
           </div>
         </div>
       </details>
