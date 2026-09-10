@@ -1,5 +1,5 @@
-// hff-v37 — per-customer PO forklift load sheets; network-first HTML, offline app shell
-const CACHE='hff-v37';
+// hff-v38 — printer-ready 100x150mm SATO XLSX templates; network-first HTML, offline app shell
+const CACHE='hff-v38';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
