@@ -1,5 +1,5 @@
-// hff-v36 — draggable EMS meeting points, reverse-geocoded emergency addresses, required-crop emergency reporting; network-first HTML, offline app shell
-const CACHE='hff-v36';
+// hff-v37 — Excel pick-list export + Nexter SC update; network-first HTML, offline app shell
+const CACHE='hff-v37';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
