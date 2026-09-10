@@ -772,7 +772,7 @@ const SPRAY_PROD_DB={
   'Malathion':     {frac:null,irac:'1B',type:'I',pcp:'8372',rateLabel:'395 mL/ac',phi:3,rei:'12h'},
   'Matador':       {frac:null,irac:'3', type:'I',pcp:'24984',rateLabel:'0.04 L/ac',phi:7,rei:'24h'},
   'Nealta':        {frac:null,irac:'25',type:'I',pcp:'31284',rateLabel:'0.4 L/ac',phi:1,rei:'12h',needsOil:1},
-  'Nexter WP':     {frac:null,irac:'21',type:'I',pcp:'25135',rateLabel:'—',phi:10,rei:'24h',notes:'Nexter WP PCP 25135 — strawberry PHI 10d, REI 24h — strawberry PHI 10 days'},
+  'Nexter SC':     {frac:null,irac:'21',type:'I',pcp:'33433',rateLabel:'400 mL/ac',phi:10,rei:'24h',maxApps:2,notes:'Nexter SC PCP 33433 — 400 mL/ac, PHI 10 days, max 2 applications, REI 24h'},
   'Oberon':        {frac:null,irac:'23',type:'I',pcp:'28905',rateLabel:'0.4 L/ac',phi:3,rei:'12h',noBloom:1},
   'Rimon':         {frac:null,irac:'15',type:'I',pcp:'28881',rateLabel:'0.34 L/ac',phi:1,rei:'12h'},
   'Sivanto':       {frac:null,irac:'4D',type:'I',pcp:'31452',rateLabel:'0.4 L/ac',phi:0,rei:'—'},
@@ -830,7 +830,7 @@ const SPRAY_PROD_DB={
 const PROD_ALIASES={
   // Echo NP (PCP 33479) is the actual product applied. Echo 720 variants alias TO Echo NP.
   'Echo 720':'Echo NP','Echo 720 Ag':'Echo NP',
-  'Echo 720 Agricultural Fungicide':'Echo NP','Nexter':'Nexter WP',
+  'Echo 720 Agricultural Fungicide':'Echo NP','Nexter':'Nexter SC','Nexter WP':'Nexter SC',
   'Captan':'Supra Captan 80 WDG','Supra Captan':'Supra Captan 80 WDG',
   'Captan Supra':'Supra Captan 80 WDG','Potassium Bicarbonate':'MilStop','Milstop':'MilStop',
 };
@@ -913,7 +913,7 @@ const SPRAY_SEED=[
   {id:'ev-20260518b',date:'2026-05-18',loc:'Field',gpa:40,acres:11.5,note:'Late berries 11.5 ac',products:[
     {name:'Echo 720 Agricultural Fungicide',rate:1000,unit:'mL',type:'F',frac:'M5'},{name:'Cueva',rate:870,unit:'mL',type:'F',frac:'M1'},{name:'SVite 30-10-10',rate:435,unit:'g',type:'N'}]},
   {id:'ev-20260518t',date:'2026-05-18',loc:'Tunnels',gpa:120,acres:10,note:'',products:[
-    {name:'Nexter WP',rate:180,unit:'g',type:'I',irac:'21',phi:10,rei:'24h',eahd:'2026-05-28'},{name:'PureSpray Green Oil',rate:4500,unit:'mL',type:'N'},{name:'Delegate',rate:90,unit:'g',type:'I',irac:'5'}]},
+    {name:'Nexter SC',rate:400,unit:'mL',type:'I',irac:'21',pcp:'33433',phi:10,rei:'24h',eahd:'2026-05-28'},{name:'PureSpray Green Oil',rate:4500,unit:'mL',type:'N'},{name:'Delegate',rate:90,unit:'g',type:'I',irac:'5'}]},
   {id:'ev-20260525f',date:'2026-05-25',loc:'Field',gpa:30,acres:19.5,note:'',products:[
     {name:'Switch',rate:359,unit:'g',type:'F',frac:'9+12'},{name:'Supra Captan 80 WDG',rate:1000,unit:'g',type:'F',frac:'M4'},
     {name:'Beleaf',rate:120,unit:'g',type:'I',irac:'29'},{name:'Sylvite Blue 15-30-15',rate:465,unit:'g',type:'N'}]},
@@ -2114,40 +2114,58 @@ function OrderBrain(){
     }).filter(d=>d.items.length>0);
   }
 
-  function printPickLabels(size='rpc'){
+  function exportPickListExcel(){
     const schedule=buildPrintablePickSchedule();
     if(!schedule.length){alert('Nothing currently needs to be picked in this date range.');return;}
-    const isRpc=size==='rpc';
-    const maxRows=isRpc?6:18;
-    const pages=[];
-    schedule.forEach(day=>{
-      for(let i=0;i<day.items.length;i+=maxRows){
-        const part=day.items.slice(i,i+maxRows);
-        pages.push({date:day.date,items:part,part:Math.floor(i/maxRows)+1,parts:Math.ceil(day.items.length/maxRows)});
-      }
+    if(typeof XLSX==='undefined'){alert('Excel export library did not load. Reload IrrigationScout and try again.');return;}
+
+    const wb=XLSX.utils.book_new();
+    const madeAt=new Date();
+    const madeLabel=madeAt.toLocaleString('en-CA',{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+
+    // Sheet 1 — clean working list: one line per SKU / ship date.
+    const listRows=[['Howe Family Farms — Pick List'],['Generated',madeLabel],[],['Ship Date','Urgency','Crop','Group','SKU','Need','Inventory Applied','TO PICK']];
+    schedule.forEach((day,dayIdx)=>{
+      const d=new Date(day.date+'T12:00:00');
+      const dateLabel=d.toLocaleDateString('en-CA',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+      day.items.forEach(x=>listRows.push([dateLabel,dayIdx===0?'NEXT':'+'+dayIdx+' day'+(dayIdx===1?'':'s'),x.crop==='watermelon'?'Watermelon':'Pumpkin',x.group||'',x.label,x.need,x.covered,x.qty]));
+      listRows.push([]);
     });
-    const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const labelW=100,labelH=isRpc?50:150;
-    const rows=pages.map(pg=>{
-      const d=new Date(pg.date+'T12:00:00');
-      const dateLbl=d.toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
-      const partLbl=pg.parts>1?` <span class="part">${pg.part}/${pg.parts}</span>`:'';
-      return `<section class="label"><header><div><b>PICK</b> · ${esc(dateLbl)}${partLbl}</div><small>Howe Family Farms</small></header><div class="items">${pg.items.map(x=>`<div class="row"><span>${esc(x.label)}</span><b>${esc(x.qty)}</b></div>`).join('')}</div><footer>${esc(new Date().toLocaleString('en-CA',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</footer></section>`;
-    }).join('');
-    const w=window.open('','_blank','width=600,height=800');
-    if(!w){alert('Pop-up blocked. Allow pop-ups for IrrigationScout, then try again.');return;}
-    w.document.write(`<!doctype html><html><head><title>Pick labels</title><style>
-      @page{size:${labelW}mm ${labelH}mm;margin:0}
-      *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif;color:#000}
-      .label{width:${labelW}mm;height:${labelH}mm;padding:${isRpc?'3mm 4mm':'6mm 7mm'};page-break-after:always;overflow:hidden;display:flex;flex-direction:column}
-      .label:last-child{page-break-after:auto}header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1.2px solid #000;padding-bottom:${isRpc?'1mm':'2mm'};margin-bottom:${isRpc?'1mm':'2mm'};font-size:${isRpc?'11pt':'17pt'}}
-      header b{font-size:${isRpc?'15pt':'24pt'}} header small{font-size:${isRpc?'7pt':'10pt'};font-weight:600}.part{font-size:.7em}
-      .items{flex:1}.row{display:grid;grid-template-columns:1fr auto;gap:4mm;align-items:baseline;border-bottom:.35px solid #bbb;padding:${isRpc?'.55mm 0':'1.6mm 0'};font-size:${isRpc?'9pt':'15pt'};line-height:1.05}
-      .row span{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row b{font-size:${isRpc?'12pt':'20pt'}}
-      footer{text-align:right;font-size:${isRpc?'6pt':'8pt'};margin-top:1mm;color:#444}
-      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-    </style></head><body>${rows}<script>window.onload=()=>{setTimeout(()=>window.print(),150)}<\/script></body></html>`);
-    w.document.close();
+    const ws=XLSX.utils.aoa_to_sheet(listRows);
+    ws['!cols']=[{wch:22},{wch:11},{wch:13},{wch:20},{wch:28},{wch:9},{wch:17},{wch:10}];
+    ws['!freeze']={xSplit:0,ySplit:4};
+    XLSX.utils.book_append_sheet(wb,ws,'Pick List');
+
+    function makeLabelSheet(name,maxRows){
+      const rows=[];const merges=[];
+      let r=0;
+      schedule.forEach(day=>{
+        for(let i=0;i<day.items.length;i+=maxRows){
+          const part=day.items.slice(i,i+maxRows);
+          const partNo=Math.floor(i/maxRows)+1,parts=Math.ceil(day.items.length/maxRows);
+          const d=new Date(day.date+'T12:00:00');
+          const dateLabel=d.toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
+          rows.push([`PICK · ${dateLabel}${parts>1?' · '+partNo+'/'+parts:''}`,'TO PICK']);
+          merges.push({s:{r,c:0},e:{r,c:0}});r++;
+          rows.push(['SKU','QTY']);r++;
+          part.forEach(x=>{rows.push([x.label,x.qty]);r++;});
+          // Pad label blocks to a consistent height so Kevin can set Excel print areas/margins once.
+          while((r%(maxRows+4))<(maxRows+2) && (r%(maxRows+4))!==0){rows.push(['','']);r++;}
+          rows.push(['','']);r++;
+          rows.push(['','']);r++;
+        }
+      });
+      const out=XLSX.utils.aoa_to_sheet(rows);
+      out['!cols']=[{wch:32},{wch:12}];
+      out['!merges']=merges;
+      return out;
+    }
+    XLSX.utils.book_append_sheet(wb,makeLabelSheet('RPC',6),'RPC 10x5 Layout');
+    XLSX.utils.book_append_sheet(wb,makeLabelSheet('Bin',18),'Bin 10x15 Layout');
+
+    const first=schedule[0]?.date||todayStr();
+    const last=schedule[schedule.length-1]?.date||first;
+    XLSX.writeFile(wb,`HFF_pick_list_${first}${last!==first?'_to_'+last:''}.xlsx`);
   }
 
   // ── RENDER ────────────────────────────────────────────────────────────
@@ -2368,13 +2386,9 @@ function OrderBrain(){
             ${n===1?'1d':n+'d'}
           </button>`)}
           <span style=${{width:1,height:22,background:'rgba(255,255,255,.25)',margin:'0 2px'}}></span>
-          <button onClick=${()=>printPickLabels('rpc')} title="Print date-priority pick labels on 100 × 50 mm stock"
-            style=${{padding:'4px 9px',border:'1.5px solid rgba(255,255,255,.65)',borderRadius:6,background:'rgba(255,255,255,.12)',color:'#fff',fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit'}}>
-            🖨 RPC 10×5
-          </button>
-          <button onClick=${()=>printPickLabels('bin')} title="Print date-priority pick labels on 100 × 150 mm stock"
-            style=${{padding:'4px 9px',border:'1.5px solid rgba(255,255,255,.65)',borderRadius:6,background:'rgba(255,255,255,.12)',color:'#fff',fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit'}}>
-            🖨 Bin 10×15
+          <button onClick=${exportPickListExcel} title="Download the date-priority pick schedule as an Excel workbook"
+            style=${{padding:'4px 10px',border:'1.5px solid rgba(255,255,255,.65)',borderRadius:6,background:'rgba(255,255,255,.12)',color:'#fff',fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit'}}>
+            ↓ Excel Pick List
           </button>
         </div>
       </div>
