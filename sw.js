@@ -1,5 +1,5 @@
 // hff-v34 — draggable EMS meeting points, reverse-geocoded emergency addresses, required-crop emergency reporting; network-first HTML, offline app shell
-const CACHE='hff-v34';
+const CACHE='hff-v35';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
