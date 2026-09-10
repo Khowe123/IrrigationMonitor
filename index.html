@@ -1827,10 +1827,10 @@ const ORDER_SKUS = {
   ],
   watermelon:[
     // Seedless — 4 count sizes (most common watermelon)
-    {id:'wm_sdls80',  label:'Seedless 80ct',       group:'Seedless'},
-    {id:'wm_sdls60',  label:'Seedless 60ct',       group:'Seedless'},
-    {id:'wm_sdls45',  label:'Seedless 45ct',       group:'Seedless'},
-    {id:'wm_sdls36',  label:'Seedless 36ct',       group:'Seedless'},
+    {id:'wm_sdls80',  label:'80ct Seedless',       group:'Seedless'},
+    {id:'wm_sdls60',  label:'60ct Seedless',       group:'Seedless'},
+    {id:'wm_sdls45',  label:'45ct Seedless',       group:'Seedless'},
+    {id:'wm_sdls36',  label:'36ct Seedless',       group:'Seedless'},
     // Sangria + Yellow Seeded — combined card, no sub-headers
     {id:'wm_sang35',  label:'Sangria 35ct',        group:'Varieties'},
     {id:'wm_sang45',  label:'Sangria 45ct',        group:'Varieties'},
@@ -1933,6 +1933,7 @@ function OrderBrain(){
   const[showAddSku,setShowAddSku]=useState(false);
   const[newSkuName,setNewSkuName]=useState('');
   const[newSkuCrop,setNewSkuCrop]=useState('pumpkin');
+  const[collapsedOrderCrops,setCollapsedOrderCrops]=useState(()=>LS.get('hff:ord:collapsed_add_crops',{watermelon:true,pumpkin:false}));
 
   // Add/edit state
   const[adding,setAdding]=useState(false);
@@ -1943,6 +1944,9 @@ function OrderBrain(){
   const[draftNotes,setDraftNotes]=useState('');
   const[draftSkus,setDraftSkus]=useState({});
   const[draftCrop,setDraftCrop]=useState('pumpkin');
+  const[draftPoFile,setDraftPoFile]=useState(null);
+  const[poUploading,setPoUploading]=useState(false);
+  const[poUploadErr,setPoUploadErr]=useState('');
   const[custFilter,setCustFilter]=useState('');
 
   // Customer history
@@ -1986,12 +1990,21 @@ function OrderBrain(){
   function startAdd(){
     setAdding(true);setEditId(null);
     setDraftDate(todayStr());setDraftCust('');setDraftPO('');setDraftNotes('');setDraftSkus({});
+    setDraftPoFile(null);setPoUploadErr('');
   }
 
   function startEdit(o){
     setAdding(true);setEditId(o.id);
     setDraftDate(o.shipDate);setDraftCust(o.customer);setDraftPO(o.po||'');
     setDraftNotes(o.notes||'');setDraftSkus({...o.skus});setDraftCrop(o.crop||'pumpkin');
+    setDraftPoFile(null);setPoUploadErr('');
+    const hasWM=ORDER_SKUS.watermelon.some(sk=>(o.skus?.[sk.id]||0)>0);
+    const hasPM=ORDER_SKUS.pumpkin.some(sk=>(o.skus?.[sk.id]||0)>0);
+    if(hasWM||hasPM)setCollapsedOrderCrops(prev=>({...prev,...(hasWM?{watermelon:false}:{}),...(hasPM?{pumpkin:false}:{})}));
+  }
+
+  function toggleAddCrop(c){
+    setCollapsedOrderCrops(prev=>{const upd={...prev,[c]:!prev[c]};LS.set('hff:ord:collapsed_add_crops',upd);return upd;});
   }
 
   function addCustomSku(){
@@ -2011,16 +2024,26 @@ function OrderBrain(){
     if(!draftCust.trim()){alert('Customer name required');return;}
     addCustIfNew(draftCust);
     const id=editId||('ord_'+Date.now());
+    const existing=editId?orders.find(o=>o.id===editId):null;
     // Auto-detect crop from which SKUs have quantities
     const _wm=ORDER_SKUS.watermelon.some(s=>(draftSkus[s.id]||0)>0);
     const _pm=ORDER_SKUS.pumpkin.some(s=>(draftSkus[s.id]||0)>0);
     const _autoCrop=_wm&&_pm?'mixed':_wm?'watermelon':_pm?'pumpkin':draftCrop||'pumpkin';
+    let poFiles=[...(existing?.poFiles||[])];
+    if(draftPoFile){
+      setPoUploading(true);setPoUploadErr('');
+      const folder='Orders/POs/'+(draftDate||todayStr()).slice(0,4)+'/'+id;
+      const up=await uploadFarmDoc(draftPoFile,folder);
+      setPoUploading(false);
+      if(!up.ok){setPoUploadErr('PO upload failed: '+(up.error||'unknown error'));return;}
+      poFiles.push({name:draftPoFile.name,path:up.path,bucket:up.bucket||'farm-files',url:up.url||null,uploadedAt:new Date().toISOString()});
+    }
     const order={id,crop:_autoCrop,shipDate:draftDate,customer:draftCust.trim(),po:draftPO.trim(),
-      notes:draftNotes,skus:{...draftSkus},shipped:false,shippedAt:null,
-      createdAt:editId?undefined:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      notes:draftNotes,skus:{...draftSkus},shipped:existing?.shipped||false,shippedAt:existing?.shippedAt||null,poFiles,
+      createdAt:existing?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};
     const upd=editId?orders.map(o=>o.id===editId?order:o):[order,...orders];
     setOrders(upd);LS.set('hff:ord:list',upd);
-    setAdding(false);setEditId(null);
+    setAdding(false);setEditId(null);setDraftPoFile(null);
     setSyncSt('syncing');const r=await sbOrderPush(order);setSyncSt(r.ok?'ok':'err');setTimeout(()=>setSyncSt('idle'),3000);
   }
 
@@ -2158,52 +2181,58 @@ function OrderBrain(){
         <label class="fl" style=${{fontSize:11}}>Notes</label>
         <input class="ti" type="text" value=${draftNotes} onInput=${e=>setDraftNotes(e.target.value)} placeholder="Delivery notes, special instructions…"/>
       </div>
+      <div style=${{paddingTop:8,borderTop:'1px solid #eee'}}>
+        <label class="fl" style=${{fontSize:11}}>Customer PO attachment</label>
+        <input type="file" accept="application/pdf,.pdf,image/*" onChange=${e=>{setDraftPoFile(e.target.files?.[0]||null);setPoUploadErr('');}}
+          style=${{width:'100%',fontSize:12,marginTop:3}}/>
+        <div style=${{fontSize:10,color:'#999',marginTop:4}}>Attach the newest customer PO. Revised files are kept as timestamped versions so the current order can be verified at loading.</div>
+        ${draftPoFile?html`<div style=${{fontSize:11,color:'#2e7d32',fontWeight:600,marginTop:5}}>📎 ${draftPoFile.name}</div>`:null}
+        ${editId&&orders.find(o=>o.id===editId)?.poFiles?.length?html`<div style=${{marginTop:6,fontSize:11,color:'#666'}}>Existing PO versions: ${orders.find(o=>o.id===editId).poFiles.length} · latest ${new Date(orders.find(o=>o.id===editId).poFiles.slice(-1)[0].uploadedAt).toLocaleString('en-CA')}</div>`:null}
+        ${poUploadErr?html`<div style=${{fontSize:11,color:'#c62828',marginTop:5}}>⚠ ${poUploadErr}</div>`:null}
+      </div>
     </div>
-    <!-- SKU quantities grouped by category -->
-    <!-- All SKUs: pumpkin groups first, then watermelon, then custom -->
-    ${(()=>{
-      const allSkus=[
-        ...ORDER_SKUS.pumpkin.map(s=>({...s,_crop:'pumpkin'})),
-        ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
-        ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
-      ];
-      // Watermelon first (Seedless at top as most common), then pumpkin
-      const groups=['Seedless','Varieties','Premium','Yellow Seedless',
-                    'Pumpkin','Specialty Pumpkin','Caribbean','Custom'];
-      const getGrp=(s)=>s.group;
-      const activeGroups=groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
-      // Only show groups that have at least one SKU defined
-      return groups.filter(g=>allSkus.some(s=>getGrp(s)===g));
-    })().map(grp=>html`
-    <div key=${grp} class="card" style=${{padding:'10px 14px',marginBottom:8}}>
-      <div style=${{fontSize:11,fontWeight:700,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:8,
-        color:['Seedless','Varieties','Premium','Yellow Seedless'].includes(grp)?'#c0392b':'#555'}}>
-        ${['Seedless','Varieties','Premium','Yellow Seedless'].includes(grp)?'🍉 ':''}${['Pumpkin','Specialty Pumpkin','Caribbean'].includes(grp)?'🎃 ':''}${grp}
-      </div>
-      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
-        ${(()=>{
-          const allSk=[...ORDER_SKUS.pumpkin.map(s=>({...s,_crop:'pumpkin'})),
-            ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
-            ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop}))];
-          const getGrp=(s)=>s.group==='Seedless'?(s._crop==='pumpkin'?'Seedless (Pumpkin)':'Seedless (Watermelon)'):s.group;
-          return allSk.filter(s=>getGrp(s)===grp);
-        })().map(sk=>html`
-        <div key=${sk.id} style=${{display:'flex',alignItems:'center',gap:6}}>
-          <span style=${{fontSize:12,flex:1,color:'#555'}}>${sk.label}</span>
-          <input type="number" min="0" value=${draftSkus[sk.id]||''}
-            onInput=${e=>setDraftSkus(p=>({...p,[sk.id]:parseInt(e.target.value)||0}))}
-            placeholder="0"
-            style=${{width:56,padding:'5px',border:'1.5px solid #ddd',borderRadius:7,fontSize:14,fontWeight:700,textAlign:'center',outline:'none',color:oc,fontFamily:'inherit',MozAppearance:'textfield',appearance:'textfield'}}/>
-        </div>`)}
-      </div>
-    </div>`)}
+    <!-- SKU quantities grouped by crop, then category -->
+    ${['watermelon','pumpkin'].map(c=>{
+      const cropLabel=c==='watermelon'?'🍉 Watermelon':'🎃 Pumpkin';
+      const cropColor=c==='watermelon'?'#c0392b':'#e65100';
+      const built=ORDER_SKUS[c]||[];
+      const customs=customSkus.filter(x=>x.crop===c).map(x=>({id:x.id,label:x.label,group:'Custom',custom:true}));
+      const cropSkus=[...built,...customs];
+      const groups=c==='watermelon'?['Seedless','Varieties','Premium','Yellow Seedless','Custom']:['Pumpkin','Specialty Pumpkin','Caribbean','Custom'];
+      const cropQty=cropSkus.reduce((sum,sk)=>sum+(draftSkus[sk.id]||0),0);
+      const collapsed=!!collapsedOrderCrops[c];
+      return html`
+      <div key=${c} class="card" style=${{marginBottom:9,overflow:'hidden',borderColor:collapsed?'#ddd':cropColor}}>
+        <button type="button" onClick=${()=>toggleAddCrop(c)}
+          style=${{width:'100%',padding:'10px 14px',border:'none',background:collapsed?'#fafafa':cropColor,color:collapsed?'#555':'#fff',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',fontFamily:'inherit'}}>
+          <span style=${{fontWeight:800,fontSize:13}}>${cropLabel}${cropQty?` · ${cropQty} bins`:''}</span>
+          <span style=${{fontWeight:700,fontSize:12}}>${collapsed?'＋ Show':'− Hide'}</span>
+        </button>
+        ${!collapsed?html`<div style=${{padding:'8px 10px 10px'}}>
+          ${groups.filter(g=>cropSkus.some(sk=>sk.group===g)).map(grp=>html`
+          <div key=${grp} style=${{border:'1px solid #eee',borderRadius:9,padding:'9px 10px',marginBottom:7}}>
+            <div style=${{fontSize:10,fontWeight:800,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:7,color:cropColor}}>${grp}</div>
+            <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
+              ${cropSkus.filter(sk=>sk.group===grp).map(sk=>html`
+              <div key=${sk.id} style=${{display:'flex',alignItems:'center',gap:6}}>
+                <span style=${{fontSize:12,flex:1,color:'#555'}}>${sk.label}</span>
+                <input type="number" min="0" value=${draftSkus[sk.id]||''}
+                  onInput=${e=>setDraftSkus(p=>({...p,[sk.id]:parseInt(e.target.value)||0}))}
+                  placeholder="0"
+                  style=${{width:56,padding:'5px',border:'1.5px solid #ddd',borderRadius:7,fontSize:14,fontWeight:700,textAlign:'center',outline:'none',color:cropColor,fontFamily:'inherit',MozAppearance:'textfield',appearance:'textfield'}}/>
+              </div>`)}
+            </div>
+          </div>`)}
+        </div>`:null}
+      </div>`;
+    })}
     <div style=${{background:'#f8f8f8',borderRadius:10,padding:'10px 14px',marginBottom:12,display:'flex',justifyContent:'space-between'}}>
       <span style=${{fontSize:13,color:'#888'}}>Total bins</span>
-      <span style=${{fontSize:16,fontWeight:700,color:oc}}>${skuList.reduce((s,sk)=>s+(draftSkus[sk.id]||0),0)}</span>
+      <span style=${{fontSize:16,fontWeight:700,color:oc}}>${[...ORDER_SKUS.pumpkin,...ORDER_SKUS.watermelon,...customSkus].reduce((s,sk)=>s+(draftSkus[sk.id]||0),0)}</span>
     </div>
     <button onClick=${saveOrder}
       style=${{width:'100%',padding:13,border:'none',borderRadius:10,background:oc,color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',fontFamily:'inherit'}}>
-      ${editId?'Update Order':'Save Order ✓'}
+      ${poUploading?'Uploading PO…':editId?'Update Order':'Save Order ✓'}
     </button>
   </div>`;
 
@@ -2294,7 +2323,8 @@ function OrderBrain(){
               </span>`)}
             </div>
             ${o.notes?html`<div style=${{fontSize:11,color:'#888',marginBottom:5}}>📝 ${o.notes}</div>`:null}
-            <div style=${{display:'flex',gap:6,justifyContent:'flex-end'}}>
+            <div style=${{display:'flex',gap:6,justifyContent:'flex-end',flexWrap:'wrap'}}>
+              ${o.poFiles?.length?html`<button onClick=${()=>openFarmStoredFile(o.poFiles[o.poFiles.length-1])} class="btn btn-sm btn-out" title=${o.poFiles.length>1?`${o.poFiles.length} PO versions saved · opens newest`:'Open attached customer PO'}>📄 PO${o.poFiles.length>1?' · v'+o.poFiles.length:''}</button>`:null}
               <button onClick=${()=>startEdit(o)} class="btn btn-sm btn-out">Edit</button>
               <button onClick=${()=>deleteOrder(o.id)} class="btn btn-sm btn-danger">Delete</button>
               <button onClick=${()=>toggleShipped(o.id)}
@@ -2312,6 +2342,7 @@ function OrderBrain(){
                 <span style=${{fontWeight:600,fontSize:13,textDecoration:'line-through',color:'#aaa'}}>${o.customer}${o.po?' PO '+o.po:''}</span>
                 <div style=${{display:'flex',gap:5}}>
                   <span style=${{fontSize:11,color:'#bbb'}}>✓ Shipped</span>
+                  ${o.poFiles?.length?html`<button onClick=${()=>openFarmStoredFile(o.poFiles[o.poFiles.length-1])} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>📄 PO</button>`:null}
                   <button onClick=${()=>toggleShipped(o.id)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#888',fontFamily:'inherit'}}>Undo</button>
                 </div>
               </div>
@@ -3589,18 +3620,19 @@ async function uploadFarmFile(blob, storagePath, contentType='image/jpeg'){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
   if(!u||!k)return{ok:false,error:'Supabase not configured'};
   try{
-    // Storage writes use the remembered staff session when available. Never rely
-    // on a publishable key as the user's identity.
     if(LS.get('hff:sb_session',null)?.refresh_token)await sbRefreshSession();
     const a=sbAuthToken();
     const headers={'apikey':k,'Content-Type':contentType,'x-upsert':'true'};
     if(a.isUser&&a.token)headers['Authorization']='Bearer '+a.token;
     else if(a.token&&!sbKeyIsPublishable(k))headers['Authorization']='Bearer '+a.token;
-    const r=await fetch(u+'/storage/v1/object/Farm-files/'+storagePath,{
-      method:'POST',headers,body:blob
-    });
-    if(!r.ok){const e=await r.text();return{ok:false,error:e};}
-    return{ok:true,path:storagePath,url:u+'/storage/v1/object/public/Farm-files/'+storagePath};
+    let lastErr='';
+    for(const bucket of ['farm-files','Farm-files']){
+      const r=await fetch(u.replace(/\/+$/,'')+'/storage/v1/object/'+bucket+'/'+storagePath,{method:'POST',headers,body:blob});
+      if(r.ok)return{ok:true,path:storagePath,bucket,url:u.replace(/\/+$/,'')+'/storage/v1/object/public/'+bucket+'/'+storagePath};
+      lastErr=await r.text().catch(()=>('HTTP '+r.status));
+      if(r.status!==404)break;
+    }
+    return{ok:false,error:lastErr||'Upload failed'};
   }catch(e){return{ok:false,error:e.message};}
 }
 
@@ -3639,10 +3671,32 @@ async function uploadFarmPhoto(file, folder='General'){
 // Upload a PDF or non-image file
 async function uploadFarmDoc(file, folder='SOPs'){
   const ts=Date.now();
-  const ext=file.name.split('.').pop()||'pdf';
   const path=folder+'/'+ts+'_'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
   const r=await uploadFarmFile(file,path,file.type||'application/pdf');
   return{...r,url:r.ok?farmFileUrl(path):null};
+}
+
+// Open a stored farm document using the signed-in staff session. Works with a
+// private Storage bucket; public URL is only a fallback for legacy uploads.
+async function openFarmStoredFile(meta){
+  if(!meta)return;
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
+  const path=meta.path||'';
+  const buckets=[meta.bucket,'farm-files','Farm-files'].filter((x,i,a)=>x&&a.indexOf(x)===i);
+  if(u&&k&&path){
+    if(LS.get('hff:sb_session',null)?.refresh_token)await sbRefreshSession();
+    const a=sbAuthToken();
+    const headers={'apikey':k};
+    if(a.isUser&&a.token)headers['Authorization']='Bearer '+a.token;
+    for(const b of buckets){
+      try{
+        const r=await fetch(u.replace(/\/+$/,'')+'/storage/v1/object/authenticated/'+encodeURIComponent(b)+'/'+path.split('/').map(encodeURIComponent).join('/'),{headers});
+        if(r.ok){const blob=await r.blob();const url=URL.createObjectURL(blob);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);return;}
+      }catch{}
+    }
+  }
+  if(meta.url){window.open(meta.url,'_blank');return;}
+  alert('Could not open this PO file. Check Storage permissions and sign-in status.');
 }
 
 
