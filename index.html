@@ -2066,6 +2066,67 @@ function OrderBrain(){
 
   function getInv(skuId){return(inventory[crop]||{})[skuId]||0;}
 
+  // Build a bare-bones date-priority pick schedule for printing. Inventory is
+  // allocated to the earliest ship date first, so each later date only shows
+  // what still needs to be harvested after earlier orders are covered.
+  function buildPrintablePickSchedule(){
+    const allSkus=[
+      ...ORDER_SKUS.pumpkin.map(s=>({...s,_crop:'pumpkin'})),
+      ...ORDER_SKUS.watermelon.map(s=>({...s,_crop:'watermelon'})),
+      ...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',_crop:s.crop,custom:true}))
+    ];
+    const invLeft={};
+    allSkus.forEach(sk=>{invLeft[sk.id]=Number((inventory[sk._crop]||{})[sk.id]||0);});
+    return shipDates.map(date=>{
+      const items=[];
+      allSkus.forEach(sk=>{
+        const need=calcNeed(date,sk.id);
+        if(need<=0)return;
+        const cover=Math.min(need,invLeft[sk.id]||0);
+        invLeft[sk.id]=Math.max(0,(invLeft[sk.id]||0)-cover);
+        const pick=Math.max(0,need-cover);
+        if(pick>0)items.push({label:sk.label,qty:pick,need,covered:cover,crop:sk._crop,group:sk.group||''});
+      });
+      return{date,items,total:items.reduce((a,x)=>a+x.qty,0)};
+    }).filter(d=>d.items.length>0);
+  }
+
+  function printPickLabels(size='rpc'){
+    const schedule=buildPrintablePickSchedule();
+    if(!schedule.length){alert('Nothing currently needs to be picked in this date range.');return;}
+    const isRpc=size==='rpc';
+    const maxRows=isRpc?6:18;
+    const pages=[];
+    schedule.forEach(day=>{
+      for(let i=0;i<day.items.length;i+=maxRows){
+        const part=day.items.slice(i,i+maxRows);
+        pages.push({date:day.date,items:part,part:Math.floor(i/maxRows)+1,parts:Math.ceil(day.items.length/maxRows)});
+      }
+    });
+    const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const labelW=100,labelH=isRpc?50:150;
+    const rows=pages.map(pg=>{
+      const d=new Date(pg.date+'T12:00:00');
+      const dateLbl=d.toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
+      const partLbl=pg.parts>1?` <span class="part">${pg.part}/${pg.parts}</span>`:'';
+      return `<section class="label"><header><div><b>PICK</b> · ${esc(dateLbl)}${partLbl}</div><small>Howe Family Farms</small></header><div class="items">${pg.items.map(x=>`<div class="row"><span>${esc(x.label)}</span><b>${esc(x.qty)}</b></div>`).join('')}</div><footer>${esc(new Date().toLocaleString('en-CA',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</footer></section>`;
+    }).join('');
+    const w=window.open('','_blank','width=600,height=800');
+    if(!w){alert('Pop-up blocked. Allow pop-ups for IrrigationScout, then try again.');return;}
+    w.document.write(`<!doctype html><html><head><title>Pick labels</title><style>
+      @page{size:${labelW}mm ${labelH}mm;margin:0}
+      *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif;color:#000}
+      .label{width:${labelW}mm;height:${labelH}mm;padding:${isRpc?'3mm 4mm':'6mm 7mm'};page-break-after:always;overflow:hidden;display:flex;flex-direction:column}
+      .label:last-child{page-break-after:auto}header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1.2px solid #000;padding-bottom:${isRpc?'1mm':'2mm'};margin-bottom:${isRpc?'1mm':'2mm'};font-size:${isRpc?'11pt':'17pt'}}
+      header b{font-size:${isRpc?'15pt':'24pt'}} header small{font-size:${isRpc?'7pt':'10pt'};font-weight:600}.part{font-size:.7em}
+      .items{flex:1}.row{display:grid;grid-template-columns:1fr auto;gap:4mm;align-items:baseline;border-bottom:.35px solid #bbb;padding:${isRpc?'.55mm 0':'1.6mm 0'};font-size:${isRpc?'9pt':'15pt'};line-height:1.05}
+      .row span{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row b{font-size:${isRpc?'12pt':'20pt'}}
+      footer{text-align:right;font-size:${isRpc?'6pt':'8pt'};margin-top:1mm;color:#444}
+      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>${rows}<script>window.onload=()=>{setTimeout(()=>window.print(),150)}<\/script></body></html>`);
+    w.document.close();
+  }
+
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(pickHorizon);
   const ORD_TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Inventory'},{id:'customers',lbl:'👥 Customers'}];
@@ -2267,7 +2328,7 @@ function OrderBrain(){
         <div style=${{fontSize:11,opacity:.65,fontWeight:600,letterSpacing:'.07em',textTransform:'uppercase',marginBottom:2}}>Harvest Planning</div>
         <div style=${{fontSize:15,fontWeight:700}}>Pick List — Next ${pickHorizon===1?'1 Day':pickHorizon+' Days'}</div>
         <div style=${{fontSize:11,opacity:.7,marginTop:3}}>Excludes shipped orders · Update barn inventory below</div>
-        <div style=${{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
+        <div style=${{display:'flex',gap:5,marginTop:8,flexWrap:'wrap',alignItems:'center'}}>
           ${[1,2,3,4,7,14].map(n=>html`
           <button key=${n} onClick=${()=>setPickHorizon(n)}
             style=${{padding:'4px 10px',border:'1.5px solid '+(pickHorizon===n?'#fff':'rgba(255,255,255,.35)'),
@@ -2275,6 +2336,15 @@ function OrderBrain(){
               color:'#fff',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
             ${n===1?'1d':n+'d'}
           </button>`)}
+          <span style=${{width:1,height:22,background:'rgba(255,255,255,.25)',margin:'0 2px'}}></span>
+          <button onClick=${()=>printPickLabels('rpc')} title="Print date-priority pick labels on 100 × 50 mm stock"
+            style=${{padding:'4px 9px',border:'1.5px solid rgba(255,255,255,.65)',borderRadius:6,background:'rgba(255,255,255,.12)',color:'#fff',fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit'}}>
+            🖨 RPC 10×5
+          </button>
+          <button onClick=${()=>printPickLabels('bin')} title="Print date-priority pick labels on 100 × 150 mm stock"
+            style=${{padding:'4px 9px',border:'1.5px solid rgba(255,255,255,.65)',borderRadius:6,background:'rgba(255,255,255,.12)',color:'#fff',fontWeight:700,fontSize:10,cursor:'pointer',fontFamily:'inherit'}}>
+            🖨 Bin 10×15
+          </button>
         </div>
       </div>
       <!-- Per-SKU: Need across all days, Have, To Pick -->
