@@ -1944,25 +1944,36 @@ function hffCrewField(crew,skus,pickPlan){
   const locs=[...new Set(skus.filter(sk=>(pickPlan.assignments?.[sk.id]||[]).includes(crew.id)).map(sk=>(pickPlan.locations?.[sk.id]||'').trim()).filter(Boolean))];
   return locs.length===1?locs[0]:locs.length>1?'Multiple fields':'';
 }
-async function hffBuildCrewLabelBytes(crew,crewIndex,skus,pickPlan,calcNeed,getInv){
+async function hffBuildCrewLabelBytes(crew,crewIndex,assignedSkus,pickPlan,calcNeed,getInv,pageNo=1,pageCount=1){
   if(typeof JSZip==='undefined')throw new Error('Printer template library is still loading.');
   const zip=await JSZip.loadAsync(hffB64ToU8(HFF_CREW_LABEL_TEMPLATE_B64));
   let xml=await zip.file('xl/worksheets/sheet1.xml').async('string');
   const crewName=(crew.name||('Crew '+(crewIndex+1))).trim();
   const displayCrew=/^Crew\s+\d+$/i.test(crewName)?crewName.replace(/\s+(\d+)$/,' #$1'):crewName;
-  const field=hffCrewField(crew,skus,pickPlan);
+  const field=hffCrewField(crew,assignedSkus,pickPlan);
+
+  // Simple tractor-driver format: only assigned sizes + target quantity.
+  // The unused cells/rows deliberately remain blank for handwritten wagon tallies
+  // and a running balance of bins still required.
   xml=hffXlsxSetCell(xml,'A1',displayCrew);
+  xml=hffXlsxSetCell(xml,'E1',pageCount>1?('Page '+pageNo+'/'+pageCount):'');
   xml=hffXlsxSetCell(xml,'A2','Field');xml=hffXlsxSetCell(xml,'B2',field);
+  xml=hffXlsxSetCell(xml,'C2','');xml=hffXlsxSetCell(xml,'D2','');xml=hffXlsxSetCell(xml,'E2','');
   xml=hffXlsxSetCell(xml,'A3','Pumpkin size / type');
-  xml=hffXlsxSetCell(xml,'B3','Need '+hffWeekdayShort(pickPlan.dateA));
-  xml=hffXlsxSetCell(xml,'C3','Need '+hffWeekdayShort(pickPlan.dateB));
-  xml=hffXlsxSetCell(xml,'D3','Have');xml=hffXlsxSetCell(xml,'E3','Pick');
-  skus.slice(0,24).forEach((sk,i)=>{
-    const row=4+i,a=calcNeed(pickPlan.dateA,sk.id),b=calcNeed(pickPlan.dateB,sk.id),have=getInv(sk.id),pick=Math.max(0,a+b-have),assigned=(pickPlan.assignments?.[sk.id]||[]).includes(crew.id);
+  xml=hffXlsxSetCell(xml,'B3','');xml=hffXlsxSetCell(xml,'C3','');xml=hffXlsxSetCell(xml,'D3','');xml=hffXlsxSetCell(xml,'E3','Need');
+
+  // Clear the old full-list contents first. Keep the tested cell formatting/borders.
+  for(let row=4;row<=27;row++)for(const col of ['A','B','C','D','E'])xml=hffXlsxSetCell(xml,col+row,'');
+
+  // 8 categories maximum per 100x150 mm label: item row + two blank writing rows.
+  const itemRows=[4,7,10,13,16,19,22,25];
+  assignedSkus.slice(0,itemRows.length).forEach((sk,i)=>{
+    const row=itemRows[i],a=calcNeed(pickPlan.dateA,sk.id),b=calcNeed(pickPlan.dateB,sk.id),have=getInv(sk.id),pick=Math.max(0,a+b-have);
     xml=hffXlsxSetCell(xml,'A'+row,sk.label);
-    xml=hffXlsxSetCell(xml,'B'+row,a||'');xml=hffXlsxSetCell(xml,'C'+row,b||'');
-    xml=hffXlsxSetCell(xml,'D'+row,have||'');xml=hffXlsxSetCell(xml,'E'+row,assigned?(pick||''):'');
+    xml=hffXlsxSetCell(xml,'E'+row,pick||'');
   });
+  if(!assignedSkus.length)xml=hffXlsxSetCell(xml,'A4','No items assigned');
+
   zip.file('xl/worksheets/sheet1.xml',xml);
   // Hide the untouched reference tabs; only the printer-ready Crew 1 layout is visible.
   let wbXml=await zip.file('xl/workbook.xml').async('string');
@@ -2190,14 +2201,37 @@ function OrderBrain(){
 
   async function exportPumpkinCrewXLSX(onlyCrewId=null){
     const crews=(pickPlan.crews||[]).filter(c=>!onlyCrewId||c.id===onlyCrewId);if(!crews.length)return;
-    const skus=ORDER_SKUS.pumpkin;
+    const allSkus=ORDER_SKUS.pumpkin;
+    const PAGE_ITEMS=8;
+    const pagesForCrew=crew=>{
+      const assigned=allSkus.filter(sk=>(pickPlan.assignments?.[sk.id]||[]).includes(crew.id));
+      const pages=[];for(let i=0;i<Math.max(1,assigned.length);i+=PAGE_ITEMS)pages.push(assigned.slice(i,i+PAGE_ITEMS));
+      return pages;
+    };
     try{
       if(crews.length===1){
-        const bytes=await hffBuildCrewLabelBytes(crews[0],(pickPlan.crews||[]).findIndex(c=>c.id===crews[0].id),skus,pickPlan,calcNeed,getInv);
-        hffDownloadBlob(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'Pumpkin_Pick_List_'+fileSafeName(crews[0].name||'Crew')+'_'+todayStr()+'.xlsx');
+        const crew=crews[0],ci=(pickPlan.crews||[]).findIndex(c=>c.id===crew.id),pages=pagesForCrew(crew);
+        if(pages.length===1){
+          const bytes=await hffBuildCrewLabelBytes(crew,ci,pages[0],pickPlan,calcNeed,getInv,1,1);
+          hffDownloadBlob(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'Pumpkin_Pick_List_'+fileSafeName(crew.name||'Crew')+'_'+todayStr()+'.xlsx');
+        }else{
+          const bundle=new JSZip();
+          for(let pi=0;pi<pages.length;pi++){
+            const bytes=await hffBuildCrewLabelBytes(crew,ci,pages[pi],pickPlan,calcNeed,getInv,pi+1,pages.length);
+            bundle.file('Pumpkin_Pick_List_'+fileSafeName(crew.name||'Crew')+'_Page_'+(pi+1)+'_'+todayStr()+'.xlsx',bytes);
+          }
+          hffDownloadBlob(await bundle.generateAsync({type:'blob',compression:'DEFLATE'}),'Pumpkin_Pick_List_'+fileSafeName(crew.name||'Crew')+'_'+todayStr()+'.zip');
+        }
       }else{
         const bundle=new JSZip();
-        for(const crew of crews){const ci=(pickPlan.crews||[]).findIndex(c=>c.id===crew.id),bytes=await hffBuildCrewLabelBytes(crew,ci,skus,pickPlan,calcNeed,getInv);bundle.file('Pumpkin_Pick_List_'+fileSafeName(crew.name||('Crew_'+(ci+1)))+'_'+todayStr()+'.xlsx',bytes);}
+        for(const crew of crews){
+          const ci=(pickPlan.crews||[]).findIndex(c=>c.id===crew.id),pages=pagesForCrew(crew);
+          for(let pi=0;pi<pages.length;pi++){
+            const bytes=await hffBuildCrewLabelBytes(crew,ci,pages[pi],pickPlan,calcNeed,getInv,pi+1,pages.length);
+            const suffix=pages.length>1?'_Page_'+(pi+1):'';
+            bundle.file('Pumpkin_Pick_List_'+fileSafeName(crew.name||('Crew_'+(ci+1)))+suffix+'_'+todayStr()+'.xlsx',bytes);
+          }
+        }
         hffDownloadBlob(await bundle.generateAsync({type:'blob',compression:'DEFLATE'}),'Pumpkin_Pick_List_All_Crews_'+todayStr()+'.zip');
       }
     }catch(e){alert('Could not create printer-ready crew label: '+e.message);}
@@ -2444,7 +2478,7 @@ function OrderBrain(){
       <details open style=${{background:'#fff',border:'1.5px solid #e3d6c8',borderRadius:12,marginBottom:10,overflow:'hidden'}}>
         <summary style=${{padding:'10px 14px',cursor:'pointer',fontWeight:800,fontSize:13,background:'#fff8ef',color:'#6d3610'}}>🎃 Pumpkin Crew Sheets — assign + print</summary>
         <div style=${{padding:'10px 12px'}}>
-          <div style=${{fontSize:10,color:'#777',lineHeight:1.5,marginBottom:8}}>Set the two order days, check which crew(s) should pick each pumpkin category, and optionally add a field/location. On each 100×150 mm crew label, the Pick column is filled only for that crew’s assigned rows.</div>
+          <div style=${{fontSize:10,color:'#777',lineHeight:1.5,marginBottom:8}}>Set the two order days and assign pumpkin categories to each crew. The 100×150 mm tractor-driver label prints only that crew’s assigned items, with two blank writing lines between items for wagon counts and remaining-bin tallies.</div>
           <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:7,marginBottom:8}}>
             <label style=${{fontSize:10,fontWeight:700,color:'#666'}}>Need date 1<input type="date" value=${pickPlan.dateA||''} onInput=${e=>updatePickPlan({dateA:e.target.value})} style=${{display:'block',width:'100%',marginTop:3,padding:'6px',border:'1px solid #ccc',borderRadius:7}}/></label>
             <label style=${{fontSize:10,fontWeight:700,color:'#666'}}>Need date 2<input type="date" value=${pickPlan.dateB||''} onInput=${e=>updatePickPlan({dateB:e.target.value})} style=${{display:'block',width:'100%',marginTop:3,padding:'6px',border:'1px solid #ccc',borderRadius:7}}/></label>
@@ -2464,7 +2498,7 @@ function OrderBrain(){
           <div style=${{display:'flex',gap:7,marginTop:8,flexWrap:'wrap',alignItems:'center'}}>
             <button onClick=${savePickCrewPlan} class="btn btn-sm" style=${{background:pickPlanSync==='ok'?'#2e7d32':pickPlanSync==='err'?'#c62828':'#5c2d0a'}}>${pickPlanSync==='saving'?'⟳ Saving…':pickPlanSync==='ok'?'✓ Saved & synced':pickPlanSync==='err'?'⚠ Sync failed':'☁ Save crew plan'}</button>
             <button onClick=${()=>printPumpkinCrewSheets()} class="btn btn-sm btn-out">🖨 All crew labels (.zip)</button>
-            <span style=${{fontSize:9,color:'#999'}}>Printer-ready exports now use the tested 100 × 150 mm SATO RPC Excel template. “All crew labels” downloads a ZIP with one correctly sized XLSX per crew.</span>
+            <span style=${{fontSize:9,color:'#999'}}>Crew labels use the tested 100 × 150 mm SATO RPC Excel template. Only assigned items print; blank space between them is left for handwritten wagon tallies. Crews with more than 8 assigned categories automatically get another label.</span>
           </div>
         </div>
       </details>
