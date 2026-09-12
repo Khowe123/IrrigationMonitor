@@ -1,5 +1,5 @@
-// hff-v39 — simplified tractor-driver pumpkin pick labels; network-first HTML, offline app shell
-const CACHE='hff-v39';
+// hff-v40 — horizon-linked crew targets + split pumpkin pick allocations; network-first HTML, offline app shell
+const CACHE='hff-v40';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
