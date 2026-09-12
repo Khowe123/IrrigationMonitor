@@ -1930,9 +1930,15 @@ const HFF_LOAD_LABEL_TEMPLATE_B64='UEsDBBQABgAIAAAAIQBBN4LPbgEAAAQFAAATAAgCW0Nvb
 function hffXmlEsc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[ch]));}
 function hffXlsxSetCell(xml,addr,value){
   const safeAddr=addr.replace(/[$]/g,'');
-  const re=new RegExp('<c\\b([^>]*\\br="'+safeAddr+'"[^>]*)(?:\\s*/>|>([\\s\\S]*?)<\\/c>)');
-  const m=xml.match(re);if(!m)return xml;
-  let attrs=m[1].replace(/\s+t="[^"]*"/g,'').replace(/\s*\/$/,'').trim();
+  // Important: test self-closing cells first. The older single regex could treat
+  // <c r="E4"/> as the start of a later </c> cell and swallow neighbouring XML.
+  // That is why crew target quantities could disappear after we cleared the template.
+  const selfRe=new RegExp('<c\\b([^>]*\\br="'+safeAddr+'"[^>]*)\\s*/>');
+  const pairRe=new RegExp('<c\\b([^>]*\\br="'+safeAddr+'"[^>]*)>([\\s\\S]*?)<\\/c>');
+  let re=selfRe,m=xml.match(selfRe);
+  if(!m){re=pairRe;m=xml.match(pairRe);}
+  if(!m)return xml;
+  let attrs=m[1].replace(/\s+t="[^"]*"/g,'').replace(/\/\s*$/,'').trim();
   if(value===null||value===undefined||value==='')return xml.replace(re,'<c '+attrs+'/>');
   if(typeof value==='number'&&Number.isFinite(value))return xml.replace(re,'<c '+attrs+'><v>'+value+'</v></c>');
   return xml.replace(re,'<c '+attrs+' t="inlineStr"><is><t xml:space="preserve">'+hffXmlEsc(value)+'</t></is></c>');
@@ -1968,9 +1974,10 @@ async function hffBuildCrewLabelBytes(crew,crewIndex,assignedSkus,pickPlan,calcN
   // 8 categories maximum per 100x150 mm label: item row + two blank writing rows.
   const itemRows=[4,7,10,13,16,19,22,25];
   assignedSkus.slice(0,itemRows.length).forEach((sk,i)=>{
-    const row=itemRows[i],pick=parseInt(sk._crewQty)||0;
+    const row=itemRows[i],pick=Math.max(0,parseInt(pickPlan.allocations?.[sk.id]?.[crew.id])||parseInt(sk._crewQty)||0);
     xml=hffXlsxSetCell(xml,'A'+row,sk.label);
-    xml=hffXlsxSetCell(xml,'E'+row,pick||'');
+    // Write as inline text rather than a numeric cell so the quantity survives every Excel/SATO template variant.
+    xml=hffXlsxSetCell(xml,'E'+row,pick>0?String(pick):'');
   });
   if(!assignedSkus.length)xml=hffXlsxSetCell(xml,'A4','No items assigned');
 
@@ -2009,6 +2016,42 @@ async function hffBuildLoadLabelBytes(order,items,total,pageNo,pageCount){
   xml=hffXlsxSetCell(xml,'B16',pg+(order.notes||''));
   zip.file('xl/worksheets/sheet1.xml',xml);
   return await zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
+}
+
+function hffPrint100x150(title,pages){
+  const w=window.open('','_blank','width=560,height=850');
+  if(!w){alert('Pop-up blocked. Allow pop-ups for IrrigationScout so the printer window can open.');return;}
+  const safeTitle=hffXmlEsc(title||'Howe Family Farms Label');
+  const pageHtml=(pages||[]).join('');
+  w.document.open();
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>
+    @page{size:100mm 150mm;margin:3mm}
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif}
+    .hff-label{width:94mm;height:144mm;page-break-after:always;break-after:page;overflow:hidden;padding:0}
+    .hff-label:last-child{page-break-after:auto;break-after:auto}
+    .crew-title{font-size:12pt;font-weight:700;margin:0 0 1.5mm}
+    .crew-field{font-size:9pt;margin:0 0 1.5mm;min-height:4mm}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    th,td{border:.35mm solid #000;padding:1mm 1.2mm;vertical-align:middle}
+    th{font-size:8.5pt;font-weight:700;text-align:left}
+    td{font-size:9pt}
+    .pick-col{width:18mm;text-align:center;font-weight:700;font-size:10pt}
+    .crew-item td{height:6mm;font-weight:700}
+    .write-row td{height:5.3mm;color:#777;font-size:7pt}
+    .load-meta td{height:6.2mm;font-size:9pt}
+    .load-meta td:first-child{width:38mm;font-weight:700}
+    .load-items th:last-child,.load-items td:last-child{width:18mm;text-align:right}
+    .load-items td{height:6mm}
+    .total-row td{font-weight:700;font-size:10pt}
+    .notes{height:14mm;vertical-align:top}
+    .small{font-size:7pt;color:#555}
+    @media screen{body{padding:10px;background:#eee}.hff-label{margin:0 auto 10px;background:#fff;box-shadow:0 0 4px #999}}
+    @media print{.screen-note{display:none!important}}
+  </style></head><body><div class="screen-note" style="font:12px Arial;padding:6px 10px;background:#fff3cd;border-bottom:1px solid #ddd">Choose the SATO RPC printer. Paper is formatted at 100 × 150 mm; use 100% / Actual size.</div>${pageHtml}</body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(()=>{try{w.print();}catch(e){}},350);
 }
 
 function OrderBrain(){
@@ -2173,7 +2216,46 @@ function OrderBrain(){
     return fs.filter(f=>{const yp=f?.yearPlans?.[yr]||{};return (yp.crop||f.crop)==='pumpkin';}).map(f=>f.name).filter(Boolean).sort();
   }
   function formatPickDay(date){return date?new Date(date+'T12:00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'}):'';}
-  function printPOLoadSheet(o){return exportPOLoadSheetXLSX(o);}
+  function escPrint(v){return hffXmlEsc(v??'');}
+  function directPrintPOLoadSheet(o){
+    if(!o)return;
+    const allSkus=[...ORDER_SKUS.pumpkin,...ORDER_SKUS.watermelon,...customSkus.map(s=>({id:s.id,label:s.label,group:'Custom',custom:true}))];
+    const seen=new Set();
+    const items=allSkus.filter(sk=>{if(seen.has(sk.id))return false;seen.add(sk.id);return (o.skus?.[sk.id]||0)>0;}).map(sk=>({label:sk.label,qty:parseInt(o.skus?.[sk.id])||0}));
+    const total=items.reduce((sum,it)=>sum+it.qty,0),chunks=[];
+    for(let i=0;i<Math.max(1,items.length);i+=9)chunks.push(items.slice(i,i+9));
+    const shipDate=o.shipDate?new Date(o.shipDate+'T12:00:00').toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'}):'';
+    const pages=chunks.map((chunk,idx)=>`<section class="hff-label">
+      <table class="load-meta"><tr><td>Customer</td><td><strong>${escPrint(o.customer||'')}</strong></td></tr><tr><td>PO Number</td><td>${escPrint(o.po||'')}</td></tr><tr><td>Ship Date</td><td>${escPrint(shipDate)}</td></tr></table>
+      <table class="load-items" style="margin-top:1.5mm"><thead><tr><th>Product / Size</th><th>Bins</th></tr></thead><tbody>
+      ${chunk.map(it=>`<tr><td>${escPrint(it.label)}</td><td>${it.qty}</td></tr>`).join('')}
+      ${Array.from({length:Math.max(0,9-chunk.length)},()=>'<tr><td>&nbsp;</td><td></td></tr>').join('')}
+      <tr class="total-row"><td>TOTAL${chunks.length>1?' · Page '+(idx+1)+'/'+chunks.length:''}</td><td>${total}</td></tr></tbody></table>
+      <table style="margin-top:2mm"><tr><td style="width:38mm;font-weight:700">Order notes</td><td class="notes">${escPrint(o.notes||'')}</td></tr></table>
+    </section>`);
+    hffPrint100x150('Load Sheet '+(o.customer||''),pages);
+  }
+  function printPOLoadSheet(o){return directPrintPOLoadSheet(o);}
+
+  function directPrintPumpkinCrewSheets(onlyCrewId=null){
+    const crews=(pickPlan.crews||[]).filter(c=>!onlyCrewId||c.id===onlyCrewId);if(!crews.length)return;
+    const pages=[]; const PAGE_ITEMS=8;
+    for(const crew of crews){
+      const assigned=ORDER_SKUS.pumpkin.filter(sk=>crewPickQty(crew.id,sk.id)>0);
+      const chunks=[];for(let i=0;i<Math.max(1,assigned.length);i+=PAGE_ITEMS)chunks.push(assigned.slice(i,i+PAGE_ITEMS));
+      chunks.forEach((chunk,pi)=>{
+        const ci=(pickPlan.crews||[]).findIndex(c=>c.id===crew.id),rawName=(crew.name||('Crew '+(ci+1))).trim();
+        const crewName=/^Crew\s+\d+$/i.test(rawName)?rawName.replace(/\s+(\d+)$/,' #$1'):rawName;
+        const field=hffCrewField(crew,chunk,pickPlan);
+        const rows=chunk.length?chunk.map(sk=>{
+          const qty=crewPickQty(crew.id,sk.id);
+          return `<tr class="crew-item"><td>${escPrint(sk.label)}</td><td class="pick-col">${qty}</td></tr><tr class="write-row"><td colspan="2"></td></tr><tr class="write-row"><td colspan="2"></td></tr>`;
+        }).join(''):'<tr class="crew-item"><td>No items assigned</td><td class="pick-col"></td></tr>';
+        pages.push(`<section class="hff-label"><div class="crew-title">${escPrint(crewName)}${chunks.length>1?` <span class="small">Page ${pi+1}/${chunks.length}</span>`:''}</div><div class="crew-field"><strong>Field:</strong> ${escPrint(field)}</div><table><thead><tr><th>Pumpkin size / type</th><th class="pick-col">Pick</th></tr></thead><tbody>${rows}</tbody></table></section>`);
+      });
+    }
+    hffPrint100x150('Pumpkin Pick List',pages);
+  }
 
 
   function xlsxSafeName(v,fallback='Sheet'){
@@ -2240,7 +2322,8 @@ function OrderBrain(){
     }catch(e){alert('Could not create printer-ready crew label: '+e.message);}
   }
 
-  function printPumpkinCrewSheets(onlyCrewId=null){return exportPumpkinCrewXLSX(onlyCrewId);}
+  function printPumpkinCrewSheets(onlyCrewId=null){return directPrintPumpkinCrewSheets(onlyCrewId);}
+  function downloadPumpkinCrewXLSX(onlyCrewId=null){return exportPumpkinCrewXLSX(onlyCrewId);}
 
   async function syncNow(){
     setSyncSt('syncing');
@@ -2433,7 +2516,7 @@ function OrderBrain(){
             </div>
             ${o.notes?html`<div style=${{fontSize:11,color:'#888',marginBottom:5}}>📝 ${o.notes}</div>`:null}
             <div style=${{display:'flex',gap:6,justifyContent:'flex-end',flexWrap:'wrap'}}>
-              <button onClick=${()=>printPOLoadSheet(o)} class="btn btn-sm btn-out">🖨 100×150 Load Sheet</button>
+              <button onClick=${()=>printPOLoadSheet(o)} class="btn btn-sm btn-out">🖨 Print Load Sheet</button><button onClick=${()=>exportPOLoadSheetXLSX(o)} class="btn btn-sm btn-out">↓ XLSX</button>
               <button onClick=${()=>startEdit(o)} class="btn btn-sm btn-out">Edit</button>
               <button onClick=${()=>deleteOrder(o.id)} class="btn btn-sm btn-danger">Delete</button>
               <button onClick=${()=>toggleShipped(o.id)}
@@ -2451,7 +2534,7 @@ function OrderBrain(){
                 <span style=${{fontWeight:600,fontSize:13,textDecoration:'line-through',color:'#aaa'}}>${o.customer}${o.po?' PO '+o.po:''}</span>
                 <div style=${{display:'flex',gap:5,alignItems:'center'}}>
                   <span style=${{fontSize:11,color:'#bbb'}}>✓ Shipped</span>
-                  <button onClick=${()=>printPOLoadSheet(o)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>🖨 100×150 Load Sheet</button>
+                  <button onClick=${()=>printPOLoadSheet(o)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>🖨 Print Load Sheet</button><button onClick=${()=>exportPOLoadSheetXLSX(o)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>↓ XLSX</button>
                   <button onClick=${()=>toggleShipped(o.id)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#888',fontFamily:'inherit'}}>Undo</button>
                 </div>
               </div>
@@ -2490,7 +2573,7 @@ function OrderBrain(){
             <label style=${{fontSize:10,fontWeight:700,color:'#666'}}>Crew notes<input class="ti" type="text" value=${pickPlan.notes||''} onInput=${e=>updatePickPlan({notes:e.target.value})} placeholder="Optional notes for all sheets" style=${{marginTop:3}}/></label>
           </div>
           <div style=${{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
-            ${(pickPlan.crews||[]).map(c=>html`<div key=${c.id} style=${{display:'flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:7,padding:'3px 4px 3px 7px',background:'#fafafa'}}><input value=${c.name} onInput=${e=>renamePickCrew(c.id,e.target.value)} style=${{width:86,border:'none',background:'transparent',fontWeight:700,fontSize:11,outline:'none'}}/><button onClick=${()=>printPumpkinCrewSheets(c.id)} title="Download printer-ready 100×150 mm XLSX" style=${{border:'none',background:'transparent',fontSize:13,cursor:'pointer'}}>🖨</button><button onClick=${()=>removePickCrew(c.id)} title="Remove crew" style=${{border:'none',background:'transparent',color:'#c62828',fontSize:13,cursor:'pointer'}}>×</button></div>`)}
+            ${(pickPlan.crews||[]).map(c=>html`<div key=${c.id} style=${{display:'flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:7,padding:'3px 4px 3px 7px',background:'#fafafa'}}><input value=${c.name} onInput=${e=>renamePickCrew(c.id,e.target.value)} style=${{width:86,border:'none',background:'transparent',fontWeight:700,fontSize:11,outline:'none'}}/><button onClick=${()=>printPumpkinCrewSheets(c.id)} title="Print this crew's 100×150 mm label" style=${{border:'none',background:'transparent',fontSize:13,cursor:'pointer'}}>🖨</button><button onClick=${()=>downloadPumpkinCrewXLSX(c.id)} title="Download XLSX backup" style=${{border:'none',background:'transparent',fontSize:12,cursor:'pointer'}}>↓</button><button onClick=${()=>removePickCrew(c.id)} title="Remove crew" style=${{border:'none',background:'transparent',color:'#c62828',fontSize:13,cursor:'pointer'}}>×</button></div>`)}
             <button onClick=${addPickCrew} class="btn btn-sm btn-out" style=${{padding:'5px 8px'}}>+ Crew</button>
           </div>
           <div style=${{overflowX:'auto',border:'1px solid #eee',borderRadius:8}}>
@@ -2516,8 +2599,9 @@ function OrderBrain(){
           <div style=${{fontSize:9,color:'#777',marginTop:6,lineHeight:1.45}}><strong>Balance:</strong> red number = bins still needing a crew · ✓ = fully assigned · purple +number = crews are assigned more than the current Pick target.</div>
           <div style=${{display:'flex',gap:7,marginTop:8,flexWrap:'wrap',alignItems:'center'}}>
             <button onClick=${savePickCrewPlan} class="btn btn-sm" style=${{background:pickPlanSync==='ok'?'#2e7d32':pickPlanSync==='err'?'#c62828':'#5c2d0a'}}>${pickPlanSync==='saving'?'⟳ Saving…':pickPlanSync==='ok'?'✓ Saved & synced':pickPlanSync==='err'?'⚠ Sync failed':'☁ Save crew plan'}</button>
-            <button onClick=${()=>printPumpkinCrewSheets()} class="btn btn-sm btn-out">🖨 All crew labels (.zip)</button>
-            <span style=${{fontSize:9,color:'#999'}}>Each crew label prints only SKUs with a manual bin target for that crew, and prints that crew-specific target—not the farm-wide total.</span>
+            <button onClick=${()=>printPumpkinCrewSheets()} class="btn btn-sm btn-out">🖨 Print all crew labels</button>
+            <button onClick=${()=>downloadPumpkinCrewXLSX()} class="btn btn-sm btn-out">↓ XLSX backup (.zip)</button>
+            <span style=${{fontSize:9,color:'#999'}}>Direct print uses the tested 100×150 mm format. Each crew label includes only manually assigned SKUs and that crew's exact bin target. XLSX remains as a backup.</span>
           </div>
         </div>
       </details>
