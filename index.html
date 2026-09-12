@@ -1941,7 +1941,7 @@ function hffB64ToU8(b64){const raw=atob(b64),u8=new Uint8Array(raw.length);for(l
 function hffDownloadBlob(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);}
 function hffWeekdayShort(date){return date?new Date(date+'T12:00:00').toLocaleDateString('en-CA',{weekday:'short'}):'';}
 function hffCrewField(crew,skus,pickPlan){
-  const locs=[...new Set(skus.filter(sk=>(pickPlan.assignments?.[sk.id]||[]).includes(crew.id)).map(sk=>(pickPlan.locations?.[sk.id]||'').trim()).filter(Boolean))];
+  const locs=[...new Set((skus||[]).map(sk=>(pickPlan.locations?.[sk.id]||'').trim()).filter(Boolean))];
   return locs.length===1?locs[0]:locs.length>1?'Multiple fields':'';
 }
 async function hffBuildCrewLabelBytes(crew,crewIndex,assignedSkus,pickPlan,calcNeed,getInv,pageNo=1,pageCount=1){
@@ -1960,7 +1960,7 @@ async function hffBuildCrewLabelBytes(crew,crewIndex,assignedSkus,pickPlan,calcN
   xml=hffXlsxSetCell(xml,'A2','Field');xml=hffXlsxSetCell(xml,'B2',field);
   xml=hffXlsxSetCell(xml,'C2','');xml=hffXlsxSetCell(xml,'D2','');xml=hffXlsxSetCell(xml,'E2','');
   xml=hffXlsxSetCell(xml,'A3','Pumpkin size / type');
-  xml=hffXlsxSetCell(xml,'B3','');xml=hffXlsxSetCell(xml,'C3','');xml=hffXlsxSetCell(xml,'D3','');xml=hffXlsxSetCell(xml,'E3','Need');
+  xml=hffXlsxSetCell(xml,'B3','');xml=hffXlsxSetCell(xml,'C3','');xml=hffXlsxSetCell(xml,'D3','');xml=hffXlsxSetCell(xml,'E3','Pick');
 
   // Clear the old full-list contents first. Keep the tested cell formatting/borders.
   for(let row=4;row<=27;row++)for(const col of ['A','B','C','D','E'])xml=hffXlsxSetCell(xml,col+row,'');
@@ -1968,7 +1968,7 @@ async function hffBuildCrewLabelBytes(crew,crewIndex,assignedSkus,pickPlan,calcN
   // 8 categories maximum per 100x150 mm label: item row + two blank writing rows.
   const itemRows=[4,7,10,13,16,19,22,25];
   assignedSkus.slice(0,itemRows.length).forEach((sk,i)=>{
-    const row=itemRows[i],a=calcNeed(pickPlan.dateA,sk.id),b=calcNeed(pickPlan.dateB,sk.id),have=getInv(sk.id),pick=Math.max(0,a+b-have);
+    const row=itemRows[i],pick=parseInt(sk._crewQty)||0;
     xml=hffXlsxSetCell(xml,'A'+row,sk.label);
     xml=hffXlsxSetCell(xml,'E'+row,pick||'');
   });
@@ -2026,8 +2026,8 @@ function OrderBrain(){
   const[newSkuName,setNewSkuName]=useState('');
   const[newSkuCrop,setNewSkuCrop]=useState('pumpkin');
   const nextWeekday=(dow,from=new Date())=>{const d=new Date(from.getFullYear(),from.getMonth(),from.getDate());const add=(dow-d.getDay()+7)%7;d.setDate(d.getDate()+add);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
-  const defaultPickPlan=()=>{const fri=nextWeekday(5),fd=new Date(fri+'T12:00:00'),sat=new Date(fd);sat.setDate(fd.getDate()+1);return{dateA:fri,dateB:`${sat.getFullYear()}-${String(sat.getMonth()+1).padStart(2,'0')}-${String(sat.getDate()).padStart(2,'0')}`,crews:[{id:'crew1',name:'Crew 1'},{id:'crew2',name:'Crew 2'},{id:'crew3',name:'Crew 3'}],assignments:{},locations:{},notes:''};};
-  const[pickPlan,setPickPlan]=useState(()=>LS.get('hff:ord:pick_plan',defaultPickPlan()));
+  const defaultPickPlan=()=>({crews:[{id:'crew1',name:'Crew 1'},{id:'crew2',name:'Crew 2'},{id:'crew3',name:'Crew 3'}],allocations:{},locations:{},notes:''});
+  const[pickPlan,setPickPlan]=useState(()=>{const saved=LS.get('hff:ord:pick_plan',null)||{};return{...defaultPickPlan(),...saved,allocations:saved.allocations||{}};});
   const[pickPlanSync,setPickPlanSync]=useState('idle');
 
   // Add/edit state
@@ -2146,19 +2146,22 @@ function OrderBrain(){
   function updatePickPlan(patch){
     const next={...pickPlan,...patch};setPickPlan(next);LS.set('hff:ord:pick_plan',next);
   }
-  function toggleCrewSku(crewId,skuId){
-    const cur=pickPlan.assignments?.[skuId]||[];
-    const nextIds=cur.includes(crewId)?cur.filter(x=>x!==crewId):[...cur,crewId];
-    updatePickPlan({assignments:{...(pickPlan.assignments||{}),[skuId]:nextIds}});
+  function crewPickQty(crewId,skuId){return Math.max(0,parseInt(pickPlan.allocations?.[skuId]?.[crewId])||0);}
+  function updateCrewPickQty(crewId,skuId,val){
+    const qty=Math.max(0,parseInt(val)||0);
+    const perSku={...(pickPlan.allocations?.[skuId]||{})};
+    if(qty>0)perSku[crewId]=qty;else delete perSku[crewId];
+    updatePickPlan({allocations:{...(pickPlan.allocations||{}),[skuId]:perSku}});
   }
+  function allocatedForSku(skuId){return (pickPlan.crews||[]).reduce((sum,c)=>sum+crewPickQty(c.id,skuId),0);}
   function addPickCrew(){
     const id='crew_'+Date.now().toString(36);updatePickPlan({crews:[...(pickPlan.crews||[]),{id,name:'Crew '+((pickPlan.crews||[]).length+1)}]});
   }
   function renamePickCrew(id,name){updatePickPlan({crews:(pickPlan.crews||[]).map(c=>c.id===id?{...c,name}:c)});}
   function removePickCrew(id){
     if((pickPlan.crews||[]).length<=1){alert('Keep at least one harvest crew.');return;}
-    const assignments={};Object.entries(pickPlan.assignments||{}).forEach(([sku,ids])=>assignments[sku]=(ids||[]).filter(x=>x!==id));
-    updatePickPlan({crews:(pickPlan.crews||[]).filter(c=>c.id!==id),assignments});
+    const allocations={};Object.entries(pickPlan.allocations||{}).forEach(([sku,vals])=>{const v={...(vals||{})};delete v[id];allocations[sku]=v;});
+    updatePickPlan({crews:(pickPlan.crews||[]).filter(c=>c.id!==id),allocations});
   }
   async function savePickCrewPlan(){
     setPickPlanSync('saving');
@@ -2204,7 +2207,7 @@ function OrderBrain(){
     const allSkus=ORDER_SKUS.pumpkin;
     const PAGE_ITEMS=8;
     const pagesForCrew=crew=>{
-      const assigned=allSkus.filter(sk=>(pickPlan.assignments?.[sk.id]||[]).includes(crew.id));
+      const assigned=allSkus.filter(sk=>crewPickQty(crew.id,sk.id)>0).map(sk=>({...sk,_crewQty:crewPickQty(crew.id,sk.id)}));
       const pages=[];for(let i=0;i<Math.max(1,assigned.length);i+=PAGE_ITEMS)pages.push(assigned.slice(i,i+PAGE_ITEMS));
       return pages;
     };
@@ -2466,7 +2469,7 @@ function OrderBrain(){
         <div style=${{fontSize:15,fontWeight:700}}>Pick List — Next ${pickHorizon===1?'1 Day':pickHorizon+' Days'}</div>
         <div style=${{fontSize:11,opacity:.7,marginTop:3}}>Excludes shipped orders · Update barn inventory below</div>
         <div style=${{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
-          ${[1,2,3,4,7,14].map(n=>html`
+          ${[1,2,3,4].map(n=>html`
           <button key=${n} onClick=${()=>setPickHorizon(n)}
             style=${{padding:'4px 10px',border:'1.5px solid '+(pickHorizon===n?'#fff':'rgba(255,255,255,.35)'),
               borderRadius:6,background:pickHorizon===n?'rgba(255,255,255,.25)':'transparent',
@@ -2476,12 +2479,14 @@ function OrderBrain(){
         </div>
       </div>
       <details open style=${{background:'#fff',border:'1.5px solid #e3d6c8',borderRadius:12,marginBottom:10,overflow:'hidden'}}>
-        <summary style=${{padding:'10px 14px',cursor:'pointer',fontWeight:800,fontSize:13,background:'#fff8ef',color:'#6d3610'}}>🎃 Pumpkin Crew Sheets — assign + print</summary>
+        <summary style=${{padding:'10px 14px',cursor:'pointer',fontWeight:800,fontSize:13,background:'#fff8ef',color:'#6d3610'}}>🎃 Pumpkin Crew Sheets — split pick targets + print</summary>
         <div style=${{padding:'10px 12px'}}>
-          <div style=${{fontSize:10,color:'#777',lineHeight:1.5,marginBottom:8}}>Set the two order days and assign pumpkin categories to each crew. The 100×150 mm tractor-driver label prints only that crew’s assigned items, with two blank writing lines between items for wagon counts and remaining-bin tallies.</div>
-          <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:7,marginBottom:8}}>
-            <label style=${{fontSize:10,fontWeight:700,color:'#666'}}>Need date 1<input type="date" value=${pickPlan.dateA||''} onInput=${e=>updatePickPlan({dateA:e.target.value})} style=${{display:'block',width:'100%',marginTop:3,padding:'6px',border:'1px solid #ccc',borderRadius:7}}/></label>
-            <label style=${{fontSize:10,fontWeight:700,color:'#666'}}>Need date 2<input type="date" value=${pickPlan.dateB||''} onInput=${e=>updatePickPlan({dateB:e.target.value})} style=${{display:'block',width:'100%',marginTop:3,padding:'6px',border:'1px solid #ccc',borderRadius:7}}/></label>
+          <div style=${{fontSize:10,color:'#777',lineHeight:1.5,marginBottom:8}}>
+            Crew targets automatically use the Pick List horizon above: <strong>next ${pickHorizon} day${pickHorizon===1?'':'s'}</strong>
+            (${shipDates.length?formatPickDay(shipDates[0]):''}${shipDates.length>1?' through '+formatPickDay(shipDates[shipDates.length-1]):''}).
+            Enter the number of bins each crew should harvest. Split one SKU across several crews as needed; the Balance column shows anything still unassigned.
+          </div>
+          <div style=${{display:'grid',gridTemplateColumns:'minmax(180px,1fr)',gap:7,marginBottom:8}}>
             <label style=${{fontSize:10,fontWeight:700,color:'#666'}}>Crew notes<input class="ti" type="text" value=${pickPlan.notes||''} onInput=${e=>updatePickPlan({notes:e.target.value})} placeholder="Optional notes for all sheets" style=${{marginTop:3}}/></label>
           </div>
           <div style=${{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
@@ -2489,16 +2494,30 @@ function OrderBrain(){
             <button onClick=${addPickCrew} class="btn btn-sm btn-out" style=${{padding:'5px 8px'}}>+ Crew</button>
           </div>
           <div style=${{overflowX:'auto',border:'1px solid #eee',borderRadius:8}}>
-            <table style=${{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:720}}>
-              <thead><tr style=${{background:'#f7f4ef'}}><th style=${{textAlign:'left',padding:6}}>Pumpkin size / type</th><th>Need 1</th><th>Need 2</th><th>Have</th><th>Pick</th>${(pickPlan.crews||[]).map(c=>html`<th key=${c.id} style=${{padding:4,maxWidth:72}}>${c.name}</th>`)}<th style=${{minWidth:150}}>Field / location (optional)</th></tr></thead>
-              <tbody>${ORDER_SKUS.pumpkin.map(sk=>{const a=calcNeed(pickPlan.dateA,sk.id),b=calcNeed(pickPlan.dateB,sk.id),have=getInv(sk.id),pick=Math.max(0,a+b-have);return html`<tr key=${sk.id} style=${{borderTop:'1px solid #eee',background:pick>0?'#fffdfa':'#fff'}}><td style=${{padding:'5px 6px',fontWeight:600}}>${sk.label}</td><td style=${{textAlign:'center'}}>${a||'—'}</td><td style=${{textAlign:'center'}}>${b||'—'}</td><td style=${{padding:3,textAlign:'center'}}><input type="number" min="0" value=${have||''} onInput=${e=>updateInv(sk.id,e.target.value)} placeholder="0" style=${{width:48,padding:4,border:'1px solid #ccc',borderRadius:5,textAlign:'center',fontSize:11}}/></td><td style=${{textAlign:'center',fontWeight:800,color:pick>0?'#c62828':'#2e7d32'}}>${pick>0?pick:'✓'}</td>${(pickPlan.crews||[]).map(c=>html`<td key=${c.id} style=${{textAlign:'center',background:(pickPlan.assignments?.[sk.id]||[]).includes(c.id)?'#fff59d':'transparent'}}><input type="checkbox" checked=${(pickPlan.assignments?.[sk.id]||[]).includes(c.id)} onChange=${()=>toggleCrewSku(c.id,sk.id)} style=${{width:17,height:17}}/></td>`)}<td style=${{padding:3}}><input list="pumpkin-field-options" value=${pickPlan.locations?.[sk.id]||''} onInput=${e=>updatePickPlan({locations:{...(pickPlan.locations||{}),[sk.id]:e.target.value}})} placeholder="e.g. Lindsays / west half" style=${{width:'100%',padding:'5px 6px',border:'1px solid #ccc',borderRadius:5,fontSize:10}}/></td></tr>`;})}</tbody>
+            <table style=${{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:760}}>
+              <thead><tr style=${{background:'#f7f4ef'}}><th style=${{textAlign:'left',padding:6}}>Pumpkin size / type</th><th>Need (${pickHorizon}d)</th><th>Have</th><th>Pick</th>${(pickPlan.crews||[]).map(c=>html`<th key=${c.id} style=${{padding:4,minWidth:68}}>${c.name}</th>`)}<th>Allocated</th><th>Balance</th><th style=${{minWidth:150}}>Field / location (optional)</th></tr></thead>
+              <tbody>${ORDER_SKUS.pumpkin.map(sk=>{
+                const need=shipDates.reduce((sum,d)=>sum+calcNeed(d,sk.id),0),have=getInv(sk.id),pick=Math.max(0,need-have),allocated=allocatedForSku(sk.id),balance=pick-allocated;
+                const daily=shipDates.map(d=>calcNeed(d,sk.id)).filter(n=>n>0);
+                return html`<tr key=${sk.id} style=${{borderTop:'1px solid #eee',background:pick>0?'#fffdfa':'#fff'}}>
+                  <td style=${{padding:'5px 6px',fontWeight:600}}>${sk.label}</td>
+                  <td style=${{textAlign:'center',fontWeight:need?700:400}} title=${daily.length?'Daily order needs are included in this '+pickHorizon+' day total':''}>${need||'—'}</td>
+                  <td style=${{padding:3,textAlign:'center'}}><input type="number" min="0" value=${have||''} onInput=${e=>updateInv(sk.id,e.target.value)} placeholder="0" style=${{width:48,padding:4,border:'1px solid #ccc',borderRadius:5,textAlign:'center',fontSize:11}}/></td>
+                  <td style=${{textAlign:'center',fontWeight:800,color:pick>0?'#c62828':'#2e7d32'}}>${pick>0?pick:'✓'}</td>
+                  ${(pickPlan.crews||[]).map(c=>{const qty=crewPickQty(c.id,sk.id);return html`<td key=${c.id} style=${{textAlign:'center',padding:3,background:qty>0?'#fff8b8':'transparent'}}><input type="number" min="0" value=${qty||''} onInput=${e=>updateCrewPickQty(c.id,sk.id,e.target.value)} placeholder="—" style=${{width:52,padding:4,border:'1px solid '+(qty>0?'#d8b400':'#ccc'),borderRadius:5,textAlign:'center',fontSize:11,fontWeight:qty>0?800:500,background:'#fff'}}/></td>`;})}
+                  <td style=${{textAlign:'center',fontWeight:700,color:allocated>0?'#333':'#aaa'}}>${allocated||'—'}</td>
+                  <td style=${{textAlign:'center',fontWeight:900,color:balance===0?'#2e7d32':balance>0?'#c62828':'#8e24aa',background:balance===0&&pick>0?'#eef8ef':balance!==0?'#fff1f1':'transparent'}}>${pick===0?'—':balance===0?'✓':balance>0?balance:'+'+Math.abs(balance)}</td>
+                  <td style=${{padding:3}}><input list="pumpkin-field-options" value=${pickPlan.locations?.[sk.id]||''} onInput=${e=>updatePickPlan({locations:{...(pickPlan.locations||{}),[sk.id]:e.target.value}})} placeholder="e.g. Lindsays / west half" style=${{width:'100%',padding:'5px 6px',border:'1px solid #ccc',borderRadius:5,fontSize:10}}/></td>
+                </tr>`;
+              })}</tbody>
             </table>
             <datalist id="pumpkin-field-options">${pumpkinFieldSuggestions().map(n=>html`<option value=${n}/>`)} </datalist>
           </div>
+          <div style=${{fontSize:9,color:'#777',marginTop:6,lineHeight:1.45}}><strong>Balance:</strong> red number = bins still needing a crew · ✓ = fully assigned · purple +number = crews are assigned more than the current Pick target.</div>
           <div style=${{display:'flex',gap:7,marginTop:8,flexWrap:'wrap',alignItems:'center'}}>
             <button onClick=${savePickCrewPlan} class="btn btn-sm" style=${{background:pickPlanSync==='ok'?'#2e7d32':pickPlanSync==='err'?'#c62828':'#5c2d0a'}}>${pickPlanSync==='saving'?'⟳ Saving…':pickPlanSync==='ok'?'✓ Saved & synced':pickPlanSync==='err'?'⚠ Sync failed':'☁ Save crew plan'}</button>
             <button onClick=${()=>printPumpkinCrewSheets()} class="btn btn-sm btn-out">🖨 All crew labels (.zip)</button>
-            <span style=${{fontSize:9,color:'#999'}}>Crew labels use the tested 100 × 150 mm SATO RPC Excel template. Only assigned items print; blank space between them is left for handwritten wagon tallies. Crews with more than 8 assigned categories automatically get another label.</span>
+            <span style=${{fontSize:9,color:'#999'}}>Each crew label prints only SKUs with a manual bin target for that crew, and prints that crew-specific target—not the farm-wide total.</span>
           </div>
         </div>
       </details>
