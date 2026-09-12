@@ -1,5 +1,5 @@
-// hff-v40 — horizon-linked crew targets + split pumpkin pick allocations; network-first HTML, offline app shell
-const CACHE='hff-v40';
+// hff-v41 — direct 100×150 mm browser printing + crew quantity export fix; network-first HTML, offline app shell
+const CACHE='hff-v41';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
