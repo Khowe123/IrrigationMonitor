@@ -1,5 +1,5 @@
-// hff-v41 — direct 100×150 mm browser printing + crew quantity export fix; network-first HTML, offline app shell
-const CACHE='hff-v41';
+// hff-v43 — landscape 150x100 mm direct-print crew labels; network-first HTML, offline app shell
+const CACHE='hff-v43';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
