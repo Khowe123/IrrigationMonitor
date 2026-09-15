@@ -1856,12 +1856,33 @@ const ORDER_CUSTOMERS_DEFAULT = [
 ];
 
 // Supabase sync
+const ORDER_DELETE_QUEUE_KEY='hff:ord:pending_deletes';
+function pendingOrderDeletes(){return LS.get(ORDER_DELETE_QUEUE_KEY,[]).filter(Boolean);}
+function queueOrderDelete(id){const q=[...new Set([...pendingOrderDeletes(),id])];LS.set(ORDER_DELETE_QUEUE_KEY,q);return q;}
+function clearQueuedOrderDelete(id){const q=pendingOrderDeletes().filter(x=>x!==id);LS.set(ORDER_DELETE_QUEUE_KEY,q);return q;}
+
 async function sbOrderPush(order){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
   if(!u||!k)return{ok:false};
   const row={id:order.id,team_id:t,entry_data:{...order,_type:'order'},updated_at:new Date().toISOString()};
-  try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok};}
-  catch(e){return{ok:false};}
+  try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok,status:r.status};}
+  catch(e){return{ok:false,msg:e.message};}
+}
+async function sbOrderDelete(orderId){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  if(!u||!k)return{ok:false,msg:'Cloud sync is not configured'};
+  try{
+    const path='harvest_logs?id=eq.'+encodeURIComponent(orderId)+'&team_id=eq.'+encodeURIComponent(t);
+    const r=await sbReq('DELETE',path,null,u,k);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||e?.details||('HTTP '+r.status)};}
+    return{ok:true,status:r.status};
+  }catch(e){return{ok:false,msg:e.message};}
+}
+async function flushOrderDeletes(){
+  const ids=pendingOrderDeletes();if(!ids.length)return{ok:true,failed:[]};
+  const failed=[];
+  for(const id of ids){const r=await sbOrderDelete(id);if(r.ok)clearQueuedOrderDelete(id);else failed.push({id,msg:r.msg||('HTTP '+(r.status||''))});}
+  return{ok:failed.length===0,failed};
 }
 async function sbInventoryPush(inv){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
@@ -1882,7 +1903,8 @@ async function sbOrderPull(){
   if(!u||!k)return null;
   try{const r=await sbReq('GET','harvest_logs?team_id=eq.'+encodeURIComponent(t)+'&select=entry_data,updated_at&order=updated_at.desc&limit=2000',null,u,k);
     if(!r.ok)return null;const rows=await r.json();
-    return rows.filter(r=>r.entry_data?._type==='order').map(r=>r.entry_data);}
+    const pending=new Set(pendingOrderDeletes());
+    return rows.filter(r=>r.entry_data?._type==='order'&&!pending.has(r.entry_data?.id)).map(r=>r.entry_data);}
   catch(e){return null;}
 }
 
@@ -2018,27 +2040,36 @@ async function hffBuildLoadLabelBytes(order,items,total,pageNo,pageCount){
   return await zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
 }
 
-function hffPrint100x150(title,pages){
-  const w=window.open('','_blank','width=560,height=850');
+function hffPrint100x150(title,pages,opts={}){
+  const landscape=!!opts.landscape;
+  // The SATO driver stays permanently on the existing 100 x 150 mm stock.
+  // Crew labels are rendered on a 144 x 94 mm canvas and rotated inside that
+  // physical page, so the operator does NOT need to change paper/orientation.
+  const w=window.open('','_blank',landscape?'width=900,height=650':'width=560,height=850');
   if(!w){alert('Pop-up blocked. Allow pop-ups for IrrigationScout so the printer window can open.');return;}
   const safeTitle=hffXmlEsc(title||'Howe Family Farms Label');
-  const pageHtml=(pages||[]).join('');
+  const pageHtml=(pages||[]).map(p=>landscape
+    ?`<div class="hff-page"><div class="landscape-canvas">${p}</div></div>`
+    :`<div class="hff-page">${p}</div>`).join('');
   w.document.open();
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>
     @page{size:100mm 150mm;margin:3mm}
     *{box-sizing:border-box}
     html,body{margin:0;padding:0;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif}
-    .hff-label{width:94mm;height:144mm;page-break-after:always;break-after:page;overflow:hidden;padding:0}
-    .hff-label:last-child{page-break-after:auto;break-after:auto}
-    .crew-title{font-size:12pt;font-weight:700;margin:0 0 1.5mm}
-    .crew-field{font-size:9pt;margin:0 0 1.5mm;min-height:4mm}
+    .hff-page{width:94mm;height:144mm;page-break-after:always;break-after:page;overflow:hidden;position:relative}
+    .hff-page:last-child{page-break-after:auto;break-after:auto}
+    .hff-label{width:94mm;height:144mm;overflow:hidden;padding:0;margin:0}
+    .landscape-canvas{width:144mm;height:94mm;transform-origin:0 0;transform:translateY(144mm) rotate(-90deg)}
+    .landscape-canvas .hff-label{width:144mm;height:94mm}
+    .crew-title{font-size:${landscape?'13':'12'}pt;font-weight:700;margin:0 0 1.2mm}
+    .crew-field{font-size:${landscape?'9.5':'9'}pt;margin:0 0 1.2mm;min-height:4mm}
     table{width:100%;border-collapse:collapse;table-layout:fixed}
-    th,td{border:.35mm solid #000;padding:1mm 1.2mm;vertical-align:middle}
-    th{font-size:8.5pt;font-weight:700;text-align:left}
-    td{font-size:9pt}
-    .pick-col{width:18mm;text-align:center;font-weight:700;font-size:10pt}
-    .crew-item td{height:6mm;font-weight:700}
-    .write-row td{height:5.3mm;color:#777;font-size:7pt}
+    th,td{border:.35mm solid #000;padding:${landscape?'.8mm 1.2mm':'1mm 1.2mm'};vertical-align:middle}
+    th{font-size:${landscape?'9':'8.5'}pt;font-weight:700;text-align:left}
+    td{font-size:${landscape?'9.5':'9'}pt}
+    .pick-col{width:${landscape?'24':'18'}mm;text-align:center;font-weight:700;font-size:${landscape?'12':'10'}pt}
+    .crew-item td{height:${landscape?'5.6':'6'}mm;font-weight:700}
+    .write-row td{height:${landscape?'4.0':'5.3'}mm;color:#777;font-size:7pt}
     .load-meta td{height:6.2mm;font-size:9pt}
     .load-meta td:first-child{width:38mm;font-weight:700}
     .load-items th:last-child,.load-items td:last-child{width:18mm;text-align:right}
@@ -2046,9 +2077,9 @@ function hffPrint100x150(title,pages){
     .total-row td{font-weight:700;font-size:10pt}
     .notes{height:14mm;vertical-align:top}
     .small{font-size:7pt;color:#555}
-    @media screen{body{padding:10px;background:#eee}.hff-label{margin:0 auto 10px;background:#fff;box-shadow:0 0 4px #999}}
-    @media print{.screen-note{display:none!important}}
-  </style></head><body><div class="screen-note" style="font:12px Arial;padding:6px 10px;background:#fff3cd;border-bottom:1px solid #ddd">Choose the SATO RPC printer. Paper is formatted at 100 × 150 mm; use 100% / Actual size.</div>${pageHtml}</body></html>`);
+    @media screen{body{padding:10px;background:#eee}.hff-page{margin:0 auto 10px;background:#fff;box-shadow:0 0 4px #999}}
+    @media print{.screen-note{display:none!important}html,body{width:100mm}.hff-page{margin:0!important}}
+  </style></head><body><div class="screen-note" style="font:12px Arial;padding:6px 10px;background:#fff3cd;border-bottom:1px solid #ddd">Choose the SATO RPC printer with the normal 100 × 150 mm stock. ${landscape?'Crew content is rotated to landscape automatically — do not change the printer orientation.':'Use 100% / Actual size.'}</div>${pageHtml}</body></html>`);
   w.document.close();
   w.focus();
   setTimeout(()=>{try{w.print();}catch(e){}},350);
@@ -2088,16 +2119,20 @@ function OrderBrain(){
   const[histCust,setHistCust]=useState(null);
   const[showHistFor,setShowHistFor]=useState(null);
 
-  // Auto-pull orders + inventory from Supabase on mount
+  // Auto-pull orders + inventory from Supabase on mount. Pending deletes are
+  // flushed first, and queued IDs are never re-imported while offline.
   useEffect(()=>{
-    sbOrderPull().then(remote=>{
+    (async()=>{
+      await flushOrderDeletes();
+      const remote=await sbOrderPull();
       if(remote&&remote.length){
-        const map={};orders.forEach(o=>{map[o.id]=o;});
+        const pending=new Set(pendingOrderDeletes());
+        const map={};orders.filter(o=>!pending.has(o.id)).forEach(o=>{map[o.id]=o;});
         remote.forEach(o=>{if(!map[o.id]||o.updatedAt>map[o.id].updatedAt)map[o.id]=o;});
         const merged=Object.values(map).sort((a,b)=>b.shipDate.localeCompare(a.shipDate));
         setOrders(merged);LS.set('hff:ord:list',merged);
       }
-    });
+    })();
     sbInventoryPull().then(remInv=>{
       if(remInv&&remInv._type==='inventory'){
         const{_type,savedAt,...inv}=remInv;
@@ -2173,7 +2208,17 @@ function OrderBrain(){
     setOrders(upd);LS.set('hff:ord:list',upd);
   }
 
-  function deleteOrder(id){if(!confirm('Delete this order?'))return;const upd=orders.filter(o=>o.id!==id);setOrders(upd);LS.set('hff:ord:list',upd);}
+  async function deleteOrder(id){
+    if(!confirm('Delete this order?'))return;
+    // Tombstone first so a failed/offline cloud DELETE can never resurrect this PO.
+    queueOrderDelete(id);
+    const upd=orders.filter(o=>o.id!==id);setOrders(upd);LS.set('hff:ord:list',upd);
+    setSyncSt('syncing');
+    const r=await sbOrderDelete(id);
+    if(r.ok){clearQueuedOrderDelete(id);setSyncSt('ok');}
+    else setSyncSt('err'); // remains hidden locally and retries on future sync/open
+    setTimeout(()=>setSyncSt('idle'),3000);
+  }
 
   function skuCrop(skuId){
     if(ORDER_SKUS.watermelon.some(s=>s.id===skuId)||customSkus.some(s=>s.id===skuId&&s.crop==='watermelon'))return 'watermelon';
@@ -2239,7 +2284,7 @@ function OrderBrain(){
 
   function directPrintPumpkinCrewSheets(onlyCrewId=null){
     const crews=(pickPlan.crews||[]).filter(c=>!onlyCrewId||c.id===onlyCrewId);if(!crews.length)return;
-    const pages=[]; const PAGE_ITEMS=8;
+    const pages=[]; const PAGE_ITEMS=5;
     for(const crew of crews){
       const assigned=ORDER_SKUS.pumpkin.filter(sk=>crewPickQty(crew.id,sk.id)>0);
       const chunks=[];for(let i=0;i<Math.max(1,assigned.length);i+=PAGE_ITEMS)chunks.push(assigned.slice(i,i+PAGE_ITEMS));
@@ -2254,7 +2299,7 @@ function OrderBrain(){
         pages.push(`<section class="hff-label"><div class="crew-title">${escPrint(crewName)}${chunks.length>1?` <span class="small">Page ${pi+1}/${chunks.length}</span>`:''}</div><div class="crew-field"><strong>Field:</strong> ${escPrint(field)}</div><table><thead><tr><th>Pumpkin size / type</th><th class="pick-col">Pick</th></tr></thead><tbody>${rows}</tbody></table></section>`);
       });
     }
-    hffPrint100x150('Pumpkin Pick List',pages);
+    hffPrint100x150('Pumpkin Pick List',pages,{landscape:true});
   }
 
 
@@ -2327,12 +2372,14 @@ function OrderBrain(){
 
   async function syncNow(){
     setSyncSt('syncing');
+    const delRes=await flushOrderDeletes();
     const remote=await sbOrderPull();
     if(remote){
-      const map={};orders.forEach(o=>{map[o.id]=o;});
+      const pending=new Set(pendingOrderDeletes());
+      const map={};orders.filter(o=>!pending.has(o.id)).forEach(o=>{map[o.id]=o;});
       remote.forEach(o=>{if(!map[o.id]||o.updatedAt>map[o.id].updatedAt)map[o.id]=o;});
-      const merged=Object.values(map).sort((a,b)=>b.shipDate.localeCompare(a.shipDate)||b.updatedAt.localeCompare(a.updatedAt));
-      setOrders(merged);LS.set('hff:ord:list',merged);setSyncSt('ok');
+      const merged=Object.values(map).sort((a,b)=>b.shipDate.localeCompare(a.shipDate)||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
+      setOrders(merged);LS.set('hff:ord:list',merged);setSyncSt(delRes.ok?'ok':'err');
     }else setSyncSt('err');
     setTimeout(()=>setSyncSt('idle'),3000);
   }
@@ -2573,7 +2620,7 @@ function OrderBrain(){
             <label style=${{fontSize:10,fontWeight:700,color:'#666'}}>Crew notes<input class="ti" type="text" value=${pickPlan.notes||''} onInput=${e=>updatePickPlan({notes:e.target.value})} placeholder="Optional notes for all sheets" style=${{marginTop:3}}/></label>
           </div>
           <div style=${{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
-            ${(pickPlan.crews||[]).map(c=>html`<div key=${c.id} style=${{display:'flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:7,padding:'3px 4px 3px 7px',background:'#fafafa'}}><input value=${c.name} onInput=${e=>renamePickCrew(c.id,e.target.value)} style=${{width:86,border:'none',background:'transparent',fontWeight:700,fontSize:11,outline:'none'}}/><button onClick=${()=>printPumpkinCrewSheets(c.id)} title="Print this crew's 100×150 mm label" style=${{border:'none',background:'transparent',fontSize:13,cursor:'pointer'}}>🖨</button><button onClick=${()=>downloadPumpkinCrewXLSX(c.id)} title="Download XLSX backup" style=${{border:'none',background:'transparent',fontSize:12,cursor:'pointer'}}>↓</button><button onClick=${()=>removePickCrew(c.id)} title="Remove crew" style=${{border:'none',background:'transparent',color:'#c62828',fontSize:13,cursor:'pointer'}}>×</button></div>`)}
+            ${(pickPlan.crews||[]).map(c=>html`<div key=${c.id} style=${{display:'flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:7,padding:'3px 4px 3px 7px',background:'#fafafa'}}><input value=${c.name} onInput=${e=>renamePickCrew(c.id,e.target.value)} style=${{width:86,border:'none',background:'transparent',fontWeight:700,fontSize:11,outline:'none'}}/><button onClick=${()=>printPumpkinCrewSheets(c.id)} title="Print this crew's 150×100 mm landscape label" style=${{border:'none',background:'transparent',fontSize:13,cursor:'pointer'}}>🖨</button><button onClick=${()=>downloadPumpkinCrewXLSX(c.id)} title="Download XLSX backup" style=${{border:'none',background:'transparent',fontSize:12,cursor:'pointer'}}>↓</button><button onClick=${()=>removePickCrew(c.id)} title="Remove crew" style=${{border:'none',background:'transparent',color:'#c62828',fontSize:13,cursor:'pointer'}}>×</button></div>`)}
             <button onClick=${addPickCrew} class="btn btn-sm btn-out" style=${{padding:'5px 8px'}}>+ Crew</button>
           </div>
           <div style=${{overflowX:'auto',border:'1px solid #eee',borderRadius:8}}>
@@ -2601,7 +2648,7 @@ function OrderBrain(){
             <button onClick=${savePickCrewPlan} class="btn btn-sm" style=${{background:pickPlanSync==='ok'?'#2e7d32':pickPlanSync==='err'?'#c62828':'#5c2d0a'}}>${pickPlanSync==='saving'?'⟳ Saving…':pickPlanSync==='ok'?'✓ Saved & synced':pickPlanSync==='err'?'⚠ Sync failed':'☁ Save crew plan'}</button>
             <button onClick=${()=>printPumpkinCrewSheets()} class="btn btn-sm btn-out">🖨 Print all crew labels</button>
             <button onClick=${()=>downloadPumpkinCrewXLSX()} class="btn btn-sm btn-out">↓ XLSX backup (.zip)</button>
-            <span style=${{fontSize:9,color:'#999'}}>Direct print uses the tested 100×150 mm format. Each crew label includes only manually assigned SKUs and that crew's exact bin target. XLSX remains as a backup.</span>
+            <span style=${{fontSize:9,color:'#999'}}>Crew labels direct-print at 150×100 mm landscape. Load sheets remain 100×150 mm portrait. Each crew label includes only manually assigned SKUs and that crew's exact bin target. XLSX remains as a backup.</span>
           </div>
         </div>
       </details>
@@ -3566,21 +3613,43 @@ const RESOURCE_CROPS=['All','Strawberry','Watermelon','Pumpkin','Sweet Corn','Ra
 const RESOURCE_TYPES=['Planting Plan','Spray Record','Fertility','SOP','Compliance','Map/Layout','Other'];
 const FIELDMARGIN_NOTES_URL='https://notes.fieldmargin.com/farms/ecf14c91-78d2-4dee-89d1-809895bc9909/notes';
 
+const RESOURCE_DELETE_QUEUE_KEY='hff:resources:pending_deletes';
+function pendingResourceDeletes(){return LS.get(RESOURCE_DELETE_QUEUE_KEY,[]).filter(Boolean);}
+function queueResourceDelete(id){const q=[...new Set([...pendingResourceDeletes(),id])];LS.set(RESOURCE_DELETE_QUEUE_KEY,q);return q;}
+function clearQueuedResourceDelete(id){const q=pendingResourceDeletes().filter(x=>x!==id);LS.set(RESOURCE_DELETE_QUEUE_KEY,q);return q;}
+
 async function sbResourcePush(res){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
   if(!u||!k)return{ok:false};
   // Only push metadata + link, not base64 blobs (too large for Supabase row)
   const {files,...meta}=res;
   const row={id:res.id,team_id:t,entry_data:{...meta,_type:'resource'},updated_at:new Date().toISOString()};
-  try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok};}
-  catch(e){return{ok:false};}
+  try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok,status:r.status};}
+  catch(e){return{ok:false,msg:e.message};}
+}
+async function sbResourceDelete(id){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  if(!u||!k)return{ok:false,msg:'Cloud sync is not configured'};
+  try{
+    const path='harvest_logs?id=eq.'+encodeURIComponent(id)+'&team_id=eq.'+encodeURIComponent(t);
+    const r=await sbReq('DELETE',path,null,u,k);
+    if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||e?.details||('HTTP '+r.status)};}
+    return{ok:true,status:r.status};
+  }catch(e){return{ok:false,msg:e.message};}
+}
+async function flushResourceDeletes(){
+  const ids=pendingResourceDeletes();if(!ids.length)return{ok:true,failed:[]};
+  const failed=[];
+  for(const id of ids){const r=await sbResourceDelete(id);if(r.ok)clearQueuedResourceDelete(id);else failed.push({id,msg:r.msg||('HTTP '+(r.status||''))});}
+  return{ok:failed.length===0,failed};
 }
 async function sbResourcePull(){
   const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
   if(!u||!k)return null;
   try{const r=await sbReq('GET','harvest_logs?team_id=eq.'+encodeURIComponent(t)+'&select=entry_data&order=updated_at.desc&limit=200',null,u,k);
     if(!r.ok)return null;const rows=await r.json();
-    return rows.filter(r=>r.entry_data?._type==='resource').map(r=>r.entry_data);}
+    const pending=new Set(pendingResourceDeletes());
+    return rows.filter(r=>r.entry_data?._type==='resource'&&!pending.has(r.entry_data?.id)).map(r=>r.entry_data);}
   catch(e){return null;}
 }
 
@@ -3602,9 +3671,14 @@ function ResourceLibrary(){
   function startEdit(r){
     setDraft({...r,files:r.files||[]});setEditId(r.id);setShowAdd(true);
   }
-  function deleteResource(id){
+  async function deleteResource(id){
     if(!confirm('Remove this resource?'))return;
+    queueResourceDelete(id);
     const upd=resources.filter(r=>r.id!==id);setResources(upd);LS.set('hff:resources',upd);
+    setSyncSt('syncing');
+    const r=await sbResourceDelete(id);
+    if(r.ok){clearQueuedResourceDelete(id);setSyncSt('ok');}else setSyncSt('local');
+    setTimeout(()=>setSyncSt('idle'),3000);
   }
 
   async function saveResource(){
@@ -3620,12 +3694,14 @@ function ResourceLibrary(){
 
   async function syncNow(){
     setSyncSt('syncing');
+    const delRes=await flushResourceDeletes();
     const remote=await sbResourcePull();
     if(remote){
-      const map={};resources.forEach(r=>{map[r.id]=r;});
+      const pending=new Set(pendingResourceDeletes());
+      const map={};resources.filter(r=>!pending.has(r.id)).forEach(r=>{map[r.id]=r;});
       remote.forEach(r=>{if(!map[r.id])map[r.id]={...r,files:[]};});
       const merged=Object.values(map).sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
-      setResources(merged);LS.set('hff:resources',merged);setSyncSt('ok');
+      setResources(merged);LS.set('hff:resources',merged);setSyncSt(delRes.ok?'ok':'local');
     }else setSyncSt('local');
     setTimeout(()=>setSyncSt('idle'),3000);
   }
