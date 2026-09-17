@@ -1,5 +1,5 @@
-// hff-v43 — landscape 150x100 mm direct-print crew labels; network-first HTML, offline app shell
-const CACHE='hff-v43';
+// hff-v44 — compact shipped history + automatic inventory deduction on shipment; network-first HTML, offline app shell
+const CACHE='hff-v44';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
