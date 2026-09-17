@@ -2200,12 +2200,41 @@ function OrderBrain(){
   }
 
   async function toggleShipped(id){
-    const upd=orders.map(o=>{
-      if(o.id!==id)return o;
-      const updated={...o,shipped:!o.shipped,shippedAt:!o.shipped?new Date().toISOString():null,updatedAt:new Date().toISOString()};
-      sbOrderPush(updated);return updated;
-    });
+    const o=orders.find(x=>x.id===id);if(!o)return;
+    const markingShipped=!o.shipped;
+
+    // Shipping should move product out of barn inventory immediately. For orders
+    // shipped before v44, inventoryDeducted is absent; Undo therefore does not
+    // add stock that the old app never removed.
+    const nextInv={...inventory};
+    const shouldAdjust=markingShipped||o.inventoryDeducted===true;
+    if(shouldAdjust){
+      Object.entries(o.skus||{}).forEach(([skuId,rawQty])=>{
+        const qty=Math.max(0,parseInt(rawQty)||0);if(!qty)return;
+        const k=skuCrop(skuId),bucket={...(nextInv[k]||{})};
+        const current=Math.max(0,parseInt(bucket[skuId])||0);
+        bucket[skuId]=markingShipped?Math.max(0,current-qty):current+qty;
+        nextInv[k]=bucket;
+      });
+      setInventory(nextInv);LS.set('hff:ord:inv',nextInv);
+    }
+
+    const updated={...o,
+      shipped:markingShipped,
+      shippedAt:markingShipped?new Date().toISOString():null,
+      inventoryDeducted:markingShipped?true:false,
+      updatedAt:new Date().toISOString()
+    };
+    const upd=orders.map(x=>x.id===id?updated:x);
     setOrders(upd);LS.set('hff:ord:list',upd);
+
+    setSyncSt('syncing');
+    const [orderRes,invRes]=await Promise.all([
+      sbOrderPush(updated),
+      shouldAdjust?sbInventoryPush(nextInv):Promise.resolve({ok:true})
+    ]);
+    setSyncSt(orderRes.ok&&invRes.ok?'ok':'err');
+    setTimeout(()=>setSyncSt('idle'),3000);
   }
 
   async function deleteOrder(id){
@@ -2523,17 +2552,44 @@ function OrderBrain(){
         </button>`)}
       </div>
       ${(()=>{
+        const shippedHistory=allOrders.filter(o=>o.shipped).sort((a,b)=>
+          String(b.shippedAt||b.shipDate||'').localeCompare(String(a.shippedAt||a.shipDate||''))
+        );
+        if(!shippedHistory.length)return null;
+        return html`<details style=${{marginBottom:12,border:'1.5px solid #ddd',borderRadius:9,background:'#fff',overflow:'hidden'}}>
+          <summary style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 12px',cursor:'pointer',fontWeight:700,fontSize:12,color:'#666',listStyle:'none'}}>
+            <span>History</span><span style=${{fontSize:10,color:'#aaa',fontWeight:600}}>${shippedHistory.length} shipped ▸</span>
+          </summary>
+          <div style=${{padding:'0 10px 8px',borderTop:'1px solid #f0f0f0'}}>
+            ${shippedHistory.map(o=>{
+              const total=Object.values(o.skus||{}).reduce((sum,v)=>sum+(parseInt(v)||0),0);
+              const dateLbl=o.shipDate?new Date(o.shipDate+'T12:00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'}):'';
+              return html`<div key=${o.id} style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',padding:'7px 2px',borderBottom:'1px solid #f3f3f3'}}>
+                <div style=${{minWidth:0}}>
+                  <div style=${{fontSize:11,color:'#aaa'}}>${dateLbl}</div>
+                  <div style=${{fontWeight:600,fontSize:12,color:'#666',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>${o.customer}${o.po?' · PO '+o.po:''}</div>
+                </div>
+                <div style=${{display:'flex',gap:5,alignItems:'center',flexShrink:0}}>
+                  <span style=${{fontSize:11,color:'#888',fontWeight:700}}>${total} bins</span>
+                  <button onClick=${()=>printPOLoadSheet(o)} style=${{padding:'3px 7px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>🖨</button>
+                  <button onClick=${()=>exportPOLoadSheetXLSX(o)} style=${{padding:'3px 7px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>↓ XLSX</button>
+                  <button onClick=${()=>toggleShipped(o.id)} style=${{padding:'3px 7px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#888',fontFamily:'inherit'}}>Undo</button>
+                </div>
+              </div>`;
+            })}
+          </div>
+        </details>`;
+      })()}
+      ${(()=>{
         const past=new Date();past.setDate(past.getDate()-7);
         const cut=past.toISOString().slice(0,10);
         const futCut=horizonDays==='all'?null:(()=>{const f=new Date();f.setDate(f.getDate()+(horizonDays||7));return f.toISOString().slice(0,10);})();
-        const dates=[...new Set(allOrders.map(o=>o.shipDate))].sort();
+        const dates=[...new Set(allOrders.filter(o=>!o.shipped).map(o=>o.shipDate))].sort();
         return dates.filter(d=>d>=cut&&(!futCut||d<=futCut));
       })().map(date=>{
-        const dayOrders=allOrders.filter(o=>o.shipDate===date);
-        if(!dayOrders.length)return null;
-        const pending=dayOrders.filter(o=>!o.shipped);
-        const shipped=dayOrders.filter(o=>o.shipped);
-        const dayTotal=pending.reduce((s,o)=>s+skuList.reduce((t,sk)=>t+(o.skus[sk.id]||0),0),0);
+        const pending=allOrders.filter(o=>o.shipDate===date&&!o.shipped);
+        if(!pending.length)return null;
+        const dayTotal=pending.reduce((s,o)=>s+Object.values(o.skus||{}).reduce((t,v)=>t+(parseInt(v)||0),0),0);
         const d=new Date(date+'T12:00:00');
         const dayLbl=d.toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
         return html`
@@ -2543,50 +2599,37 @@ function OrderBrain(){
             ${date===todayStr()?html`<span style=${{background:oc,color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10,fontWeight:700}}>TODAY</span>`:null}
             ${dayTotal>0?html`<span style=${{background:'#fff3e0',color:'#e65100',borderRadius:5,padding:'2px 7px',fontSize:11,fontWeight:700}}>${dayTotal} bins needed</span>`:null}
           </div>
-          ${pending.map(o=>html`
-          <div key=${o.id} style=${{background:'#fff',border:'1.5px solid #e8e8e8',borderRadius:10,padding:'10px 13px',marginBottom:6}}>
-            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:5}}>
-              <div>
-                <span style=${{fontWeight:700,fontSize:14}}>${o.customer}</span>
-              <span style=${{fontSize:10,fontWeight:700,padding:'1px 6px',borderRadius:4,
-                background:o.crop==='pumpkin'?'#fff3e0':'#ffebee',
-                color:o.crop==='pumpkin'?'#e65100':'#c0392b',marginLeft:4}}>${o.crop==='pumpkin'?'🎃':'🍉'}</span>
-                ${o.po?html`<span style=${{fontSize:11,color:'#aaa',marginLeft:6}}>PO ${o.po}</span>`:null}
-              </div>
-              <span style=${{fontWeight:700,fontSize:14,color:oc}}>${skuList.reduce((s,sk)=>s+(o.skus[sk.id]||0),0)} bins</span>
-            </div>
-            <div style=${{display:'flex',flexWrap:'wrap',gap:5,marginBottom:5}}>
-              ${viewSkuList(o.crop).filter(sk=>(o.skus[sk.id]||0)>0).map(sk=>html`
-              <span key=${sk.id} style=${{background:'#f5f5f0',color:'#333',fontSize:11,fontWeight:600,padding:'2px 7px',borderRadius:5}}>
-                ${sk.label}: ${o.skus[sk.id]}
-              </span>`)}
-            </div>
-            ${o.notes?html`<div style=${{fontSize:11,color:'#888',marginBottom:5}}>📝 ${o.notes}</div>`:null}
-            <div style=${{display:'flex',gap:6,justifyContent:'flex-end',flexWrap:'wrap'}}>
-              <button onClick=${()=>printPOLoadSheet(o)} class="btn btn-sm btn-out">🖨 Print Load Sheet</button><button onClick=${()=>exportPOLoadSheetXLSX(o)} class="btn btn-sm btn-out">↓ XLSX</button>
-              <button onClick=${()=>startEdit(o)} class="btn btn-sm btn-out">Edit</button>
-              <button onClick=${()=>deleteOrder(o.id)} class="btn btn-sm btn-danger">Delete</button>
-              <button onClick=${()=>toggleShipped(o.id)}
-                style=${{padding:'5px 12px',border:'none',borderRadius:7,background:'#2e7d32',color:'#fff',fontWeight:700,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
-                ✓ Mark Shipped
-              </button>
-            </div>
-          </div>`)}
-          ${shipped.length>0?html`
-          <details style=${{marginTop:4}}>
-            <summary style=${{fontSize:11,color:'#bbb',cursor:'pointer',listStyle:'none',padding:'4px 0'}}>${shipped.length} shipped ▸</summary>
-            ${shipped.map(o=>html`
-            <div key=${o.id} style=${{background:'#f8f8f8',border:'1px solid #e0e0e0',borderRadius:8,padding:'8px 12px',marginTop:4,opacity:0.65}}>
-              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span style=${{fontWeight:600,fontSize:13,textDecoration:'line-through',color:'#aaa'}}>${o.customer}${o.po?' PO '+o.po:''}</span>
-                <div style=${{display:'flex',gap:5,alignItems:'center'}}>
-                  <span style=${{fontSize:11,color:'#bbb'}}>✓ Shipped</span>
-                  <button onClick=${()=>printPOLoadSheet(o)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>🖨 Print Load Sheet</button><button onClick=${()=>exportPOLoadSheetXLSX(o)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#666',fontFamily:'inherit'}}>↓ XLSX</button>
-                  <button onClick=${()=>toggleShipped(o.id)} style=${{padding:'3px 8px',border:'1px solid #ddd',borderRadius:5,background:'transparent',fontSize:10,cursor:'pointer',color:'#888',fontFamily:'inherit'}}>Undo</button>
+          ${pending.map(o=>{
+            const orderTotal=Object.values(o.skus||{}).reduce((sum,v)=>sum+(parseInt(v)||0),0);
+            return html`<div key=${o.id} style=${{background:'#fff',border:'1.5px solid #e8e8e8',borderRadius:10,padding:'10px 13px',marginBottom:6}}>
+              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:5}}>
+                <div>
+                  <span style=${{fontWeight:700,fontSize:14}}>${o.customer}</span>
+                  <span style=${{fontSize:10,fontWeight:700,padding:'1px 6px',borderRadius:4,
+                    background:o.crop==='pumpkin'?'#fff3e0':'#ffebee',
+                    color:o.crop==='pumpkin'?'#e65100':'#c0392b',marginLeft:4}}>${o.crop==='pumpkin'?'🎃':'🍉'}</span>
+                  ${o.po?html`<span style=${{fontSize:11,color:'#aaa',marginLeft:6}}>PO ${o.po}</span>`:null}
                 </div>
+                <span style=${{fontWeight:700,fontSize:14,color:oc}}>${orderTotal} bins</span>
               </div>
-            </div>`)}
-          </details>`:null}
+              <div style=${{display:'flex',flexWrap:'wrap',gap:5,marginBottom:5}}>
+                ${viewSkuList(o.crop).filter(sk=>(o.skus[sk.id]||0)>0).map(sk=>html`
+                <span key=${sk.id} style=${{background:'#f5f5f0',color:'#333',fontSize:11,fontWeight:600,padding:'2px 7px',borderRadius:5}}>
+                  ${sk.label}: ${o.skus[sk.id]}
+                </span>`)}
+              </div>
+              ${o.notes?html`<div style=${{fontSize:11,color:'#888',marginBottom:5}}>📝 ${o.notes}</div>`:null}
+              <div style=${{display:'flex',gap:6,justifyContent:'flex-end',flexWrap:'wrap'}}>
+                <button onClick=${()=>printPOLoadSheet(o)} class="btn btn-sm btn-out">🖨 Print Load Sheet</button><button onClick=${()=>exportPOLoadSheetXLSX(o)} class="btn btn-sm btn-out">↓ XLSX</button>
+                <button onClick=${()=>startEdit(o)} class="btn btn-sm btn-out">Edit</button>
+                <button onClick=${()=>deleteOrder(o.id)} class="btn btn-sm btn-danger">Delete</button>
+                <button onClick=${()=>toggleShipped(o.id)}
+                  style=${{padding:'5px 12px',border:'none',borderRadius:7,background:'#2e7d32',color:'#fff',fontWeight:700,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>
+                  ✓ Mark Shipped
+                </button>
+              </div>
+            </div>`;
+          })}
         </div>`;
       })}
       
