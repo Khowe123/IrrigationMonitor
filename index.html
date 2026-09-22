@@ -4170,7 +4170,7 @@ function FarmPhotoViewer({photos, onClose}){
 
 const FIELD_CROPS_CFG = {
   sweetcorn: {
-    label:'Sweet Corn', icon:'🌽', color:'#e8a020',
+    label:'Sweet Corn', icon:'🌽', color:'#e8a020', planner:'sweetcorn',
     rowsPerSection:10,
     rowSpacing:5.5,       // ft between planter/bed centres
     driveWay:5.5,        // ft between sections
@@ -4183,7 +4183,7 @@ const FIELD_CROPS_CFG = {
     varieties:['Kickoff','Gourmet Sweet 274','Stamina','Cadence','Superb'],
   },
   watermelon: {
-    label:'Watermelon', icon:'🍉', color:'#c0392b',
+    label:'Watermelon', icon:'🍉', color:'#c0392b', planner:'watermelon',
     // Howe Family Farms layout: 8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath.
     rowsPerSection:8,
     rowSpacing:6.5,       // ft plastic bed centres
@@ -4201,7 +4201,7 @@ const FIELD_CROPS_CFG = {
     varieties:['Crackerjack','Rio Grande','Sunstone','Sureness','Premium','Nun 800 Sangria','Nun 2800 Sangria'],
   },
   pumpkin: {
-    label:'Pumpkin', icon:'🎃', color:'#e65100',
+    label:'Pumpkin', icon:'🎃', color:'#e65100', planner:'pumpkin',
     // 3-row Monosem planter on 5 ft centres. One section = one planter pass.
     rowsPerSection:3,
     planterRows:3,
@@ -4217,7 +4217,7 @@ const FIELD_CROPS_CFG = {
     varieties:['Kratos','Gladiator','Mischief','Caribbean','Field Trip','Blanco','Olympus','Zeus','Styrian','Crystal Star 6a','White Gold','Atlantic Giant','Howden','Jarrahdale','Miniature'],
   },
   strawberry: {
-    label:'Field Strawberry', icon:'🍓', color:'#c0392b',
+    label:'Field Strawberry', icon:'🍓', color:'#c0392b', planner:'strawberry',
     rowsPerSection:2,     // two beds per working section
     rowSpacing:4,         // ft bed centres
     driveWay:3,
@@ -4246,8 +4246,29 @@ const FIELD_CROPS_CFG = {
     rowsPerSection:1,rowSpacing:1,driveWay:0,twinRow:false,plantSpacing:12,seedBuffer:1,
     plasticPerRow:false,dripPerRow:false,varieties:[],
   },
+  tunnelstrawberry: {
+    label:'Tunnel Strawberries', icon:'🍓', color:'#8e4162', planningMode:'simple', planner:'tunnelstrawberry',
+    rowsPerSection:1,rowSpacing:1,driveWay:0,twinRow:false,plantSpacing:12,seedBuffer:1,
+    plasticPerRow:false,dripPerRow:false,
+    varieties:['Florida Beauty','Ace','Galetta','Malwina','Evelyn','K-09-04','Rikas','Albion'],
+  },
+  peppers: {
+    label:'Peppers', icon:'🌶️', color:'#b7392f', planningMode:'simple', planner:'peppers',
+    rowsPerSection:1,rowSpacing:1,driveWay:0,twinRow:false,plantSpacing:12,seedBuffer:1,
+    plasticPerRow:false,dripPerRow:false,varieties:[],
+  },
+  caribbeanpumpkin: {
+    label:'Caribbean Pumpkin', icon:'🎃', color:'#b45f06', planner:'pumpkin',
+    rowsPerSection:3,planterRows:3,rowSpacing:5,driveWay:0,twinRow:false,plantSpacing:24,seedBuffer:1.00,
+    headlandRows:6,headlandSwaths:2,plasticPerRow:false,dripPerRow:false,varieties:['Caribbean'],
+  },
 };
 const BUILTIN_FIELD_CROP_IDS=new Set(Object.keys(FIELD_CROPS_CFG));
+function fieldCropPlanner(id){return FIELD_CROPS_CFG[id]?.planner||id||'';}
+function isPumpkinPlanningCrop(id){return fieldCropPlanner(id)==='pumpkin';}
+function isWatermelonPlanningCrop(id){return fieldCropPlanner(id)==='watermelon';}
+function isSweetCornPlanningCrop(id){return fieldCropPlanner(id)==='sweetcorn';}
+function isTunnelStrawberryPlanningCrop(id){return fieldCropPlanner(id)==='tunnelstrawberry';}
 
 // Rectangular/manual fallback calculator.
 function calcFieldStats(cfg,lengthFt,widthFt,orientation){
@@ -4628,6 +4649,103 @@ function pumpkinVarietySummary(alloc){
 }
 
 
+
+// ── TUNNEL STRAWBERRY ZONE + SUBSTRATE PLANNER ───────────────────────────────
+// Current Howe Family Farms tunnel geometry: 48 bays total. Each bay has 7 rows,
+// each row holds 95 one-metre trays, and each tray holds 16 L of substrate.
+const TUNNEL_STRAWBERRY_ZONE_DEFAULTS=[
+  {id:'z1',label:'Zone 1',bays:6},
+  {id:'z2',label:'Zone 2',bays:10},
+  {id:'z3',label:'Zone 3',bays:12},
+  {id:'z4',label:'Zone 4',bays:14},
+  {id:'z5',label:'Zone 5',bays:6},
+];
+function newTunnelStrawberryPart(id,label,bays){
+  return{id,label,bays,variety:'Florida Beauty',plantsPerTray:6,substrate:'Dutch Plantin Berrymix',substrateStatus:'new',notes:''};
+}
+function newTunnelStrawberryPlan(){
+  return{
+    rowsPerBay:7,traysPerRow:95,trayLengthM:1,substrateLPerTray:16,
+    palletBasis:'pallets_per_bay',palletFactor:1.35,containerPallets:24,containerMt:22,
+    zones:TUNNEL_STRAWBERRY_ZONE_DEFAULTS.map(z=>({
+      ...z,split:false,
+      parts:[newTunnelStrawberryPart(z.id+'_all',z.label,z.bays)],
+      irrigation:{privaValve:'',smsStation:false,unitCapacityLph:1.2,drippersPerTray:5,privaValveGroup:'',notes:''}
+    })),
+    quotes:[
+      {id:'coir_remmy',supplier:'Remmy',usdPerMt:1114.73913,fxCadPerUsd:1.37,extraCadPerMt:0},
+      {id:'coir_dp',supplier:'Dutch Plantin Berrymix unbuffered',usdPerMt:1050,fxCadPerUsd:1.37,extraCadPerMt:0}
+    ]
+  };
+}
+function normalizeTunnelStrawberryPart(p,defId,defLabel,defBays){
+  const x=p||{};return{
+    id:x.id||defId,label:x.label||defLabel,bays:Math.max(0,isFinite(parseFloat(x.bays))?parseFloat(x.bays):defBays),
+    variety:x.variety||'Florida Beauty',plantsPerTray:Math.min(10,Math.max(5,parseFloat(x.plantsPerTray)||6)),
+    substrate:x.substrate||'Dutch Plantin Berrymix',substrateStatus:x.substrateStatus==='reused'?'reused':'new',notes:x.notes||''
+  };
+}
+function normalizeTunnelStrawberryPlan(p){
+  const d=newTunnelStrawberryPlan(),x=p||{};
+  const rowsPerBay=Math.max(1,parseInt(x.rowsPerBay,10)||d.rowsPerBay),traysPerRow=Math.max(1,parseInt(x.traysPerRow,10)||d.traysPerRow);
+  const trayLengthM=Math.max(.1,parseFloat(x.trayLengthM)||d.trayLengthM),substrateLPerTray=Math.max(1,parseFloat(x.substrateLPerTray)||d.substrateLPerTray);
+  const srcZones=Array.isArray(x.zones)?x.zones:[];
+  const zones=TUNNEL_STRAWBERRY_ZONE_DEFAULTS.map((zd,zi)=>{
+    const z=srcZones.find(v=>v?.id===zd.id)||srcZones[zi]||{},bays=Math.max(0,isFinite(parseFloat(z.bays))?parseFloat(z.bays):zd.bays),split=!!z.split;
+    let parts=Array.isArray(z.parts)?z.parts:[];
+    if(split){
+      const a=parts[0]||{},b=parts[1]||{},halfA=isFinite(parseFloat(a.bays))?parseFloat(a.bays):Math.ceil(bays/2),halfB=isFinite(parseFloat(b.bays))?parseFloat(b.bays):Math.max(0,bays-halfA);
+      parts=[normalizeTunnelStrawberryPart(a,zd.id+'_n',zd.label+' North',halfA),normalizeTunnelStrawberryPart(b,zd.id+'_s',zd.label+' South',halfB)];
+    }else{
+      const a=parts[0]||{};parts=[normalizeTunnelStrawberryPart(a,zd.id+'_all',zd.label,bays)];parts[0].bays=bays;parts[0].label=zd.label;
+    }
+    const ir=z.irrigation||{};
+    return{id:zd.id,label:zd.label,bays,split,parts,irrigation:{
+      privaValve:String(ir.privaValve||''),smsStation:!!ir.smsStation,
+      unitCapacityLph:Math.max(.1,parseFloat(ir.unitCapacityLph)||1.2),
+      drippersPerTray:Math.max(1,parseInt(ir.drippersPerTray,10)||5),
+      privaValveGroup:String(ir.privaValveGroup||''),notes:String(ir.notes||'')
+    }};
+  });
+  const quotes=(Array.isArray(x.quotes)&&x.quotes.length?x.quotes:d.quotes).map((q,i)=>({
+    id:q.id||('coir_'+i+'_'+Date.now().toString(36)),supplier:String(q.supplier||('Supplier '+(i+1))),
+    usdPerMt:Math.max(0,parseFloat(q.usdPerMt)||0),fxCadPerUsd:Math.max(.01,parseFloat(q.fxCadPerUsd)||1.37),extraCadPerMt:Math.max(0,parseFloat(q.extraCadPerMt)||0)
+  }));
+  return{
+    rowsPerBay,traysPerRow,trayLengthM,substrateLPerTray,
+    palletBasis:x.palletBasis==='bays_per_pallet'?'bays_per_pallet':'pallets_per_bay',
+    palletFactor:Math.max(.01,parseFloat(x.palletFactor)||d.palletFactor),
+    containerPallets:Math.max(1,parseFloat(x.containerPallets)||d.containerPallets),
+    containerMt:Math.max(.1,parseFloat(x.containerMt)||d.containerMt),zones,quotes
+  };
+}
+function tunnelStrawberrySummary(p){
+  const tp=normalizeTunnelStrawberryPlan(p),traysPerBay=tp.rowsPerBay*tp.traysPerRow;
+  const rows=[];let totalBays=0,totalTrays=0,totalPlants=0,totalSubstrateL=0,newBays=0,newTrays=0,newSubstrateL=0;
+  const varieties={},substrates={};
+  tp.zones.forEach(z=>{
+    totalBays+=z.bays;const zTrays=z.bays*traysPerBay,zIrr=z.irrigation||{},drippers=zTrays*zIrr.drippersPerTray;
+    const cycleMl=zIrr.unitCapacityLph*1000/30,substratePerDripperL=tp.substrateLPerTray/zIrr.drippersPerTray;
+    const cyclePct=substratePerDripperL>0?cycleMl/(substratePerDripperL*1000)*100:0,waterM3Hr=drippers*zIrr.unitCapacityLph/1000;
+    const zoneRow={id:z.id,label:z.label,bays:z.bays,trays:zTrays,dripUnits:drippers,cycleMl,cyclePct,waterM3Hr,plants:0,parts:[]};
+    z.parts.forEach(part=>{
+      const bays=part.bays,trays=bays*traysPerBay,plants=trays*part.plantsPerTray,subL=trays*tp.substrateLPerTray;
+      totalTrays+=trays;totalPlants+=plants;totalSubstrateL+=subL;zoneRow.plants+=plants;
+      if(part.substrateStatus!=='reused'){newBays+=bays;newTrays+=trays;newSubstrateL+=subL;}
+      const v=part.variety||'Unassigned',vv=varieties[v]||(varieties[v]={variety:v,bays:0,trays:0,plants:0});vv.bays+=bays;vv.trays+=trays;vv.plants+=plants;
+      const sk=(part.substrate||'Unspecified')+'|'+part.substrateStatus,ss=substrates[sk]||(substrates[sk]={substrate:part.substrate||'Unspecified',status:part.substrateStatus,bays:0,trays:0,litres:0});ss.bays+=bays;ss.trays+=trays;ss.litres+=subL;
+      zoneRow.parts.push({...part,trays,plants,substrateL:subL,rows:bays*tp.rowsPerBay,linearTrayM:trays*tp.trayLengthM});
+    });
+    rows.push(zoneRow);
+  });
+  const palletsNeeded=tp.palletBasis==='bays_per_pallet'?newBays/tp.palletFactor:newBays*tp.palletFactor;
+  const palletMt=tp.containerMt/tp.containerPallets,metricTons=palletsNeeded*palletMt,containerEq=palletsNeeded/tp.containerPallets,fullContainers=palletsNeeded>0?Math.ceil(containerEq):0;
+  return{plan:tp,traysPerBay,totalBays,totalTrays,totalPlants,totalSubstrateL,newBays,newTrays,newSubstrateL,rows,varieties:Object.values(varieties),substrates:Object.values(substrates),palletsNeeded,palletMt,metricTons,containerEq,fullContainers};
+}
+function tunnelCoirQuoteRows(summary){
+  return(summary?.plan?.quotes||[]).map(q=>{const cadPerMt=q.usdPerMt*q.fxCadPerUsd+q.extraCadPerMt,planCost=summary.metricTons*cadPerMt,fullContainerCost=summary.fullContainers*summary.plan.containerMt*cadPerMt,cadPerTray=summary.newTrays>0?planCost/summary.newTrays:0;return{...q,cadPerMt,planCost,fullContainerCost,cadPerTray};});
+}
+
 // ── WATERMELON MATERIAL PLANNER ──────────────────────────────────────────────
 // Material ordering is based on the ACTUAL clipped bed-row footage in the field,
 // not acres × an average row length. This is especially useful for irregular ends.
@@ -5005,7 +5123,7 @@ function normalizeEmergency(e={},fieldName=''){
   const lat=parseFloat(e.lat??p.lat),lng=parseFloat(e.lng??p.lng);
   return{address:String(e.address||p.address||''),lat:isFinite(lat)?lat:null,lng:isFinite(lng)?lng:null,accessNotes:String(e.accessNotes||''),updatedAt:e.updatedAt||null};
 }
-const EMERGENCY_REQUIRED_CROPS=new Set(['strawberry','watermelon','pumpkin','sweetcorn']);
+const EMERGENCY_REQUIRED_CROPS=new Set(['strawberry','tunnelstrawberry','watermelon','pumpkin','caribbeanpumpkin','sweetcorn']);
 function emergencyRequiredForCrop(cropId){return EMERGENCY_REQUIRED_CROPS.has(String(cropId||''));}
 async function reverseGeocodeEmergency(lat,lng){
   try{
@@ -5039,7 +5157,7 @@ function FieldMapper({staffProfile}){
   });
   const[activeFid,setActiveFid]=useState(null);
   const[mode,setMode]=useState(()=>LS.get('hff:field_mode','overview')); // overview | list | edit | view | emergency | seed
-  const[draft,setDraft]=useState({name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],sectionMeta:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),latlngs:[],notes:'',emergency:normalizeEmergency({},'')});
+  const[draft,setDraft]=useState({name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],sectionMeta:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),tunnelStrawberryPlan:newTunnelStrawberryPlan(),latlngs:[],notes:'',emergency:normalizeEmergency({},'')});
   const[stats,setStats]=useState(null);
   const[mapTool,setMapTool]=useState(null); // draw | abA | abB | start | addVertex
   const[abA,setAbA]=useState(null);
@@ -5264,7 +5382,7 @@ function FieldMapper({staffProfile}){
     if(pts.length>=3&&cropCfg){
       const plan=buildPolygonFieldPlan(cropCfg,pts,d.orientation,d.bearingDeg,d.startSide,d.pumpkinPlan);
       if(plan){
-        const isPumpkin=d.crop==='pumpkin',alloc=isPumpkin?calcPumpkinVarietyPlan(plan,d.pumpkinPlan):null;
+        const isPumpkin=isPumpkinPlanningCrop(d.crop),alloc=isPumpkin?calcPumpkinVarietyPlan(plan,d.pumpkinPlan):null;
         plan.rows.forEach(row=>row.segments.forEach(seg=>{
           const a=plan.projection.toLatLng(seg[0].x,seg[0].y),b=plan.projection.toLatLng(seg[1].x,seg[1].y);
           const bi=alloc?.assignmentBySection?.[row.section];
@@ -5474,6 +5592,39 @@ function FieldMapper({staffProfile}){
     setWatermelonPlan({...wp,...patch});
   }
 
+  function setTunnelStrawberryPlan(next){
+    const nd={...draftRef.current,tunnelStrawberryPlan:normalizeTunnelStrawberryPlan(next)};
+    draftRef.current=nd;setDraft(nd);
+  }
+  function patchTunnelStrawberryPlan(patch){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);setTunnelStrawberryPlan({...tp,...patch});
+  }
+  function patchTunnelZone(zoneId,patch){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);setTunnelStrawberryPlan({...tp,zones:tp.zones.map(z=>z.id===zoneId?{...z,...patch}:z)});
+  }
+  function toggleTunnelZoneSplit(zoneId,on){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);const zones=tp.zones.map(z=>{
+      if(z.id!==zoneId)return z;
+      if(on){const src=z.parts[0]||newTunnelStrawberryPart(z.id+'_all',z.label,z.bays),north=Math.ceil(z.bays/2),south=Math.max(0,z.bays-north);return{...z,split:true,parts:[{...src,id:z.id+'_n',label:z.label+' North',bays:north},{...src,id:z.id+'_s',label:z.label+' South',bays:south}]};}
+      const src=z.parts[0]||newTunnelStrawberryPart(z.id+'_all',z.label,z.bays);return{...z,split:false,parts:[{...src,id:z.id+'_all',label:z.label,bays:z.bays}]};
+    });setTunnelStrawberryPlan({...tp,zones});
+  }
+  function patchTunnelPart(zoneId,partIdx,patch){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);const zones=tp.zones.map(z=>{if(z.id!==zoneId)return z;const parts=z.parts.map((p,i)=>i===partIdx?{...p,...patch}:p);return{...z,parts};});setTunnelStrawberryPlan({...tp,zones});
+  }
+  function patchTunnelIrrigation(zoneId,patch){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);const zones=tp.zones.map(z=>z.id===zoneId?{...z,irrigation:{...z.irrigation,...patch}}:z);setTunnelStrawberryPlan({...tp,zones});
+  }
+  function patchTunnelQuote(id,patch){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);setTunnelStrawberryPlan({...tp,quotes:tp.quotes.map(q=>q.id===id?{...q,...patch}:q)});
+  }
+  function addTunnelQuote(){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);setTunnelStrawberryPlan({...tp,quotes:[...tp.quotes,{id:'coir_'+Date.now().toString(36),supplier:'New supplier',usdPerMt:0,fxCadPerUsd:1.37,extraCadPerMt:0}]});
+  }
+  function removeTunnelQuote(id){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);setTunnelStrawberryPlan({...tp,quotes:tp.quotes.filter(q=>q.id!==id)});
+  }
+
   function patchSectionMeta(i,patch){
     const cur=draftRef.current,meta=normalizeSectionMeta(cur.sectionMeta);meta[i]={...sectionMetaAt(meta,i),...patch};
     const nd={...cur,sectionMeta:meta};draftRef.current=nd;setDraft(nd);
@@ -5582,7 +5733,7 @@ function FieldMapper({staffProfile}){
   useEffect(()=>{
     recalcCurrent(draft);
     if(leafletRef.current&&!useManual&&draft.latlngs?.length>=3)renderPlanOnMap(draft,mode==='edit');
-  },[draft.crop,draft.orientation,draft.bearingDeg,draft.startSide,draft.latlngs,draft.pumpkinPlan,draft.watermelonPlan,manualLen,manualWid,useManual,boundaryEdit,selectedVertex]);
+  },[draft.crop,draft.orientation,draft.bearingDeg,draft.startSide,draft.latlngs,draft.pumpkinPlan,draft.watermelonPlan,draft.tunnelStrawberryPlan,manualLen,manualWid,useManual,boundaryEdit,selectedVertex]);
 
   function clearDraw(){
     const nd={...draftRef.current,latlngs:[],startEdgePoint:null};applyDraft(nd,false);setStats(null);setSelectedVertex(null);setBoundaryEdit(false);setMapTool(null);clearMapLayers();
@@ -5595,7 +5746,7 @@ function FieldMapper({staffProfile}){
       bearingDeg:isFinite(parseFloat(f.bearingDeg))?normalizeBearing(f.bearingDeg):(f.orientation==='EW'?90:0),
       startSide:f.startSide==='max'?'max':'min',
       abLine:f.abLine||[],startEdgePoint:f.startEdgePoint||null,varieties:f.varieties||[],sectionMeta:normalizeSectionMeta(f.sectionMeta),
-      pumpkinPlan:normalizePumpkinPlan(f.pumpkinPlan),watermelonPlan:normalizeWatermelonPlan(f.watermelonPlan),
+      pumpkinPlan:normalizePumpkinPlan(f.pumpkinPlan),watermelonPlan:normalizeWatermelonPlan(f.watermelonPlan),tunnelStrawberryPlan:normalizeTunnelStrawberryPlan(f.tunnelStrawberryPlan),
       stats:f.stats||null
     };
   }
@@ -5604,7 +5755,7 @@ function FieldMapper({staffProfile}){
     // v27 had one crop/layout directly on each field. The app is being used
     // now to build the coming season, so migrate that legacy plan into the
     // first year the user selects (normally 2027) instead of losing it.
-    const hasLegacy=!!(f.crop||f.orientation||f.abLine?.length||f.varieties?.length||f.pumpkinPlan||f.watermelonPlan);
+    const hasLegacy=!!(f.crop||f.orientation||f.abLine?.length||f.varieties?.length||f.pumpkinPlan||f.watermelonPlan||f.tunnelStrawberryPlan);
     return hasLegacy?{[String(fieldYear)]:fieldPlanSnapshot(f)}:{};
   }
   function storedFieldWithActiveYear(active,existing,now){
@@ -5635,17 +5786,17 @@ function FieldMapper({staffProfile}){
     const crop=FIELD_CROPS_CFG[yp.crop]?yp.crop:'';
     const orientation=['NS','EW','AB'].includes(yp.orientation)?yp.orientation:'NS';
     const bearingDeg=isFinite(parseFloat(yp.bearingDeg))?normalizeBearing(yp.bearingDeg):(orientation==='EW'?90:0);
-    const latlngs=f.latlngs||[],pumpkinPlan=normalizePumpkinPlan(yp.pumpkinPlan),watermelonPlan=normalizeWatermelonPlan(yp.watermelonPlan);
+    const latlngs=f.latlngs||[],pumpkinPlan=normalizePumpkinPlan(yp.pumpkinPlan),watermelonPlan=normalizeWatermelonPlan(yp.watermelonPlan),tunnelStrawberryPlan=normalizeTunnelStrawberryPlan(yp.tunnelStrawberryPlan);
     let stats=yp.stats||null;
     if(!stats&&latlngs.length>=3){
       const cc=FIELD_CROPS_CFG[crop]||null;
       stats=cc&&cc.planningMode!=='simple'?(buildPolygonFieldPlan(cc,latlngs,orientation,bearingDeg,yp.startSide==='max'?'max':'min',pumpkinPlan)?.stats||boundaryOnlyStats(latlngs)):boundaryOnlyStats(latlngs);
     }
-    return{...f,...yp,yearPlans,crop,orientation,bearingDeg,startSide:yp.startSide==='max'?'max':'min',abLine:yp.abLine||[],startEdgePoint:yp.startEdgePoint||null,varieties:yp.varieties||[],sectionMeta:normalizeSectionMeta(yp.sectionMeta),pumpkinPlan,watermelonPlan,latlngs,stats,emergency:normalizeEmergency(f.emergency,f.name)};
+    return{...f,...yp,yearPlans,crop,orientation,bearingDeg,startSide:yp.startSide==='max'?'max':'min',abLine:yp.abLine||[],startEdgePoint:yp.startEdgePoint||null,varieties:yp.varieties||[],sectionMeta:normalizeSectionMeta(yp.sectionMeta),pumpkinPlan,watermelonPlan,tunnelStrawberryPlan,latlngs,stats,emergency:normalizeEmergency(f.emergency,f.name)};
   }
 
   function startNew(){
-    const nd={name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],sectionMeta:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),latlngs:[],notes:'',emergency:normalizeEmergency({},'')};
+    const nd={name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],sectionMeta:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),tunnelStrawberryPlan:newTunnelStrawberryPlan(),latlngs:[],notes:'',emergency:normalizeEmergency({},'')};
     draftRef.current=nd;setDraft(nd);setActiveFid(null);setStats(null);setMapTool(null);setAbA(null);
     setManualLen('');setManualWid('');setUseManual(false);setImportMsg('');setBoundaryEdit(false);setSelectedVertex(null);switchFieldMode('edit');
   }
@@ -5699,7 +5850,7 @@ function FieldMapper({staffProfile}){
         return;
       }
       const now=new Date().toISOString();
-      const added=imported.map((x,i)=>({id:'fld_imp_'+Date.now().toString(36)+'_'+i,name:x.name,yearPlans:{},crop:'',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),latlngs:x.latlngs,notes:'Imported from '+file.name,stats:boundaryOnlyStats(x.latlngs),source:'Fieldmargin import',savedAt:now.slice(0,10),updatedAt:now}));
+      const added=imported.map((x,i)=>({id:'fld_imp_'+Date.now().toString(36)+'_'+i,name:x.name,yearPlans:{},crop:'',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),tunnelStrawberryPlan:newTunnelStrawberryPlan(),latlngs:x.latlngs,notes:'Imported from '+file.name,stats:boundaryOnlyStats(x.latlngs),source:'Fieldmargin import',savedAt:now.slice(0,10),updatedAt:now}));
       const merged=[...added,...fields.filter(f=>!added.some(a=>a.name===f.name))];
       setFields(merged);LS.set('hff:fields',merged);setSyncSt('syncing');
       const results=await Promise.all(added.map(sbFieldPush));
@@ -5720,13 +5871,25 @@ function FieldMapper({staffProfile}){
     setNewCrop({label:'',icon:'🌱',color:'#607d8b',planningMode:'simple',rowSpacing:'2.5',plantSpacing:'12'});
     const r=await sbFieldCropsPush(next);setCloudMsg(r.ok?'☁ '+label+' added to the shared crop library.':'⚠ '+label+' added locally; crop-library cloud sync will retry.');
   }
+  async function removeCustomCrop(id){
+    const crop=customCrops.find(c=>c.id===id);if(!crop)return;
+    const used=fields.some(f=>{
+      if(f.crop===id)return true;
+      return Object.values(f.yearPlans||{}).some(p=>p?.crop===id);
+    });
+    if(used){setCloudMsg('⚠ '+crop.label+' is still assigned to one or more field years. Reassign those fields before removing the crop from the shared library.');return;}
+    if(!confirm('Remove '+crop.label+' from the shared crop library on all devices?'))return;
+    const next=customCrops.filter(c=>c.id!==id);delete FIELD_CROPS_CFG[id];setCustomCrops(next);LS.set('hff:field_custom_crops',next);
+    setVisibleCrops(v=>{const n=v.filter(x=>x!==id);LS.set('hff:field_visible_crops',n);return n;});
+    const r=await sbFieldCropsPush(next);setCloudMsg(r.ok?'☁ '+crop.label+' removed from the shared crop library.':'⚠ '+crop.label+' removed locally; crop-library cloud sync will retry.');
+  }
   function fieldAtYear(raw,yr){
     const plans=(raw.yearPlans&&typeof raw.yearPlans==='object')?raw.yearPlans:ensureYearPlans(raw),yp=plans[String(yr)]||{};
     const crop=FIELD_CROPS_CFG[yp.crop]?yp.crop:'';return{...raw,...yp,crop,stats:yp.stats||raw.stats||boundaryOnlyStats(raw.latlngs||[])};
   }
   function cropMatchFromQuestion(q){
     const n=q.toLowerCase();
-    const aliases={pumpkin:['pumpkin','pumpkins'],watermelon:['watermelon','watermelons'],sweetcorn:['sweet corn','sweetcorn'],fieldcorn:['field corn','grain corn'],strawberry:['strawberry','strawberries'],soybeans:['soybean','soybeans','beans'],rye:['rye']};
+    const aliases={pumpkin:['pumpkin','pumpkins','halloween pumpkin','halloween pumpkins'],caribbeanpumpkin:['caribbean pumpkin','caribbean pumpkins'],watermelon:['watermelon','watermelons'],sweetcorn:['sweet corn','sweetcorn'],fieldcorn:['field corn','grain corn'],strawberry:['field strawberry','field strawberries'],tunnelstrawberry:['tunnel strawberry','tunnel strawberries','tunnels'],peppers:['pepper','peppers'],soybeans:['soybean','soybeans','beans'],rye:['rye']};
     for(const [id,c] of Object.entries(FIELD_CROPS_CFG)){
       const terms=[c.label.toLowerCase(),...(aliases[id]||[])].sort((a,b)=>b.length-a.length);if(terms.some(x=>n.includes(x)))return id;
     }
@@ -5771,16 +5934,19 @@ function FieldMapper({staffProfile}){
   const syncBadge=syncSt==='syncing'?'⟳ syncing':syncSt==='ok'?'☁ shared':syncSt==='err'?'⚠ sync error':syncSt==='off'?'⚠ local only':'☁';
   const syncColor=syncSt==='ok'?'#2e7d32':syncSt==='err'||syncSt==='off'?'#c62828':'#888';
   const polygonPlan=(!useManual&&draft.latlngs?.length>=3&&FIELD_CROPS_CFG[draft.crop]&&FIELD_CROPS_CFG[draft.crop].planningMode!=='simple')?buildPolygonFieldPlan(FIELD_CROPS_CFG[draft.crop],draft.latlngs,draft.orientation,draft.bearingDeg,draft.startSide,draft.pumpkinPlan):null;
-  const pumpkinAlloc=draft.crop==='pumpkin'&&polygonPlan?calcPumpkinVarietyPlan(polygonPlan,draft.pumpkinPlan):null;
+  const pumpkinAlloc=isPumpkinPlanningCrop(draft.crop)&&polygonPlan?calcPumpkinVarietyPlan(polygonPlan,draft.pumpkinPlan):null;
   const pumpkinSummary=pumpkinVarietySummary(pumpkinAlloc);
   const pumpkinPP=normalizePumpkinPlan(draft.pumpkinPlan);
   const pumpkinPlannedPlants=pumpkinSummary.reduce((a,x)=>a+x.plants,0);
   const pumpkinPlannedSeeds=pumpkinSummary.reduce((a,x)=>a+x.seeds,0);
   const watermelonPP=normalizeWatermelonPlan(draft.watermelonPlan);
-  const watermelonMaterials=draft.crop==='watermelon'&&stats?calcWatermelonMaterials(polygonPlan,watermelonPP,useManual?stats:null):null;
+  const watermelonMaterials=isWatermelonPlanningCrop(draft.crop)&&stats?calcWatermelonMaterials(polygonPlan,watermelonPP,useManual?stats:null):null;
   const watermelonVarieties=watermelonVarietySummary(watermelonMaterials,draft.varieties||[]);
-  const displayPlants=draft.crop==='pumpkin'&&pumpkinPlannedPlants>0?pumpkinPlannedPlants:(stats?.totalPlants||0);
-  const displaySeeds=draft.crop==='pumpkin'&&pumpkinPlannedSeeds>0?pumpkinPlannedSeeds:(stats?.seedsNeeded||0);
+  const tunnelStrawberryPP=normalizeTunnelStrawberryPlan(draft.tunnelStrawberryPlan);
+  const tunnelStrawberryStats=tunnelStrawberrySummary(tunnelStrawberryPP);
+  const tunnelCoirQuotes=tunnelCoirQuoteRows(tunnelStrawberryStats);
+  const displayPlants=isPumpkinPlanningCrop(draft.crop)&&pumpkinPlannedPlants>0?pumpkinPlannedPlants:(stats?.totalPlants||0);
+  const displaySeeds=isPumpkinPlanningCrop(draft.crop)&&pumpkinPlannedSeeds>0?pumpkinPlannedSeeds:(stats?.seedsNeeded||0);
   const selectedMapRaw=mapSelectedId?fields.find(f=>f.id===mapSelectedId):null;
   const selectedMapField=selectedMapRaw?migratedField(selectedMapRaw):null;
   const activeYearFields=fields.map(f=>migratedField(f));
@@ -5794,13 +5960,13 @@ function FieldMapper({staffProfile}){
   function farmSeedOrderSummary(){
     const sum={watermelon:{},pumpkin:{},sweetcorn:{}};
     activeYearFields.forEach(f=>{
-      const cc=FIELD_CROPS_CFG[f.crop];if(!cc||!['watermelon','pumpkin','sweetcorn'].includes(f.crop)||!f.latlngs?.length)return;
+      const cc=FIELD_CROPS_CFG[f.crop];if(!cc||!(isWatermelonPlanningCrop(f.crop)||isPumpkinPlanningCrop(f.crop)||isSweetCornPlanningCrop(f.crop))||!f.latlngs?.length)return;
       const plan=cc.planningMode!=='simple'?buildPolygonFieldPlan(cc,f.latlngs,f.orientation,f.bearingDeg,f.startSide,f.pumpkinPlan):null;if(!plan)return;
-      if(f.crop==='pumpkin'){
+      if(isPumpkinPlanningCrop(f.crop)){
         const alloc=calcPumpkinVarietyPlan(plan,f.pumpkinPlan);pumpkinVarietySummary(alloc).forEach(x=>{if(!x.variety)return;const z=sum.pumpkin[x.variety]||(sum.pumpkin[x.variety]={variety:x.variety,seeds:0,plants:0,acres:0,fields:new Set()});z.seeds+=x.seeds;z.plants+=x.plants;z.acres+=x.actualAcres;z.fields.add(f.name);});
-      }else if(f.crop==='watermelon'){
+      }else if(isWatermelonPlanningCrop(f.crop)){
         const mats=calcWatermelonMaterials(plan,f.watermelonPlan,null);(mats.sections||[]).forEach(sec=>{const i=sec.section-1,seedless=(f.varieties||[])[i]||'',m=sectionMetaAt(f.sectionMeta,i),poll=m.pollinatorVariety||'',cnt=watermelonSectionSeedCounts(sec);if(seedless){const z=sum.watermelon[seedless]||(sum.watermelon[seedless]={variety:seedless,type:'Seedless',seeds:0,acres:0,fields:new Set()});z.seeds+=cnt.seedless;z.acres+=sec.acres;z.fields.add(f.name);}if(poll){const z=sum.watermelon[poll]||(sum.watermelon[poll]={variety:poll,type:'Pollinator',seeds:0,acres:0,fields:new Set()});z.seeds+=cnt.pollinator;z.acres+=sec.acres;z.fields.add(f.name);}});
-      }else if(f.crop==='sweetcorn'){
+      }else if(isSweetCornPlanningCrop(f.crop)){
         const sm={};(plan.rows||[]).forEach(r=>{const x=sm[r.section]||(sm[r.section]={rowFt:0,rows:0});x.rowFt+=r.lengthFt||0;x.rows++;});Object.entries(sm).forEach(([sec,x])=>{const i=+sec-1,v=(f.varieties||[])[i]||'';if(!v)return;const plants=x.rowFt*2/(cc.plantSpacing/12),seeds=Math.ceil(plants*(cc.seedBuffer||1));const z=sum.sweetcorn[v]||(sum.sweetcorn[v]={variety:v,seeds:0,plants:0,acres:0,fields:new Set()});z.seeds+=seeds;z.plants+=plants;z.acres+=x.rowFt*cc.rowSpacing/43560;z.fields.add(f.name);});
       }
     });
@@ -5843,7 +6009,7 @@ function FieldMapper({staffProfile}){
       <div style=${{display:'flex',gap:5}}><input class="ti" type="text" value=${farmAsk} onInput=${e=>setFarmAsk(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'){e.preventDefault();askFarmMap(false);}}} placeholder='Try: “What fields are we growing rye in in 2027?”' style=${{flex:1,fontSize:12,padding:'8px 9px'}}/><button onClick=${startVoiceAsk} title="Speak question" style=${{width:38,borderRadius:8,border:'1.5px solid #2c3e50',background:listening?'#ffe8e8':'#fff',fontSize:16}}>${listening?'●':'🎤'}</button><button onClick=${()=>askFarmMap(false)} disabled=${farmAskLoading||!farmAsk.trim()} class="btn btn-sm" style=${{padding:'7px 11px'}}>${farmAskLoading?'…':'Ask'}</button></div>
       <div style=${{display:'flex',gap:5,marginTop:5,flexWrap:'wrap'}}><button onClick=${()=>askFarmMap(true,`Give me a summary of the ${fieldYear} planting plan`)} class="btn btn-sm btn-out" style=${{padding:'5px 8px',fontSize:9}}>AI farm report</button><button onClick=${()=>{const q=`What fields are not selected in ${fieldYear}?`;setFarmAsk(q);const a=directFarmMapAnswer(q);if(a)applyFarmAnswer(a);}} class="btn btn-sm btn-out" style=${{padding:'5px 8px',fontSize:9}}>Unassigned fields</button><span style=${{fontSize:9,color:'#999',alignSelf:'center'}}>Crop/acreage questions don't use AI. Broader reports use the API key already in Settings.</span></div>
       ${farmAnswer?html`<div style=${{marginTop:7,background:'#f6f9fb',border:'1px solid #dce6ed',borderRadius:8,padding:'8px 10px',whiteSpace:'pre-wrap',fontSize:11,lineHeight:1.55}}>${farmAnswer.text}${farmAnswer.fieldIds?.length?html`<div style=${{marginTop:6}}><button onClick=${()=>applyFarmAnswer(farmAnswer)} class="btn btn-sm btn-out" style=${{padding:'5px 8px',fontSize:9}}>📍 Show ${farmAnswer.fieldIds.length} field${farmAnswer.fieldIds.length===1?'':'s'} on map</button></div>`:null}</div>`:null}
-      ${showCropManager&&!simpleMap?html`<div style=${{marginTop:8,paddingTop:8,borderTop:'1px solid #e5eaee'}}><div style=${{fontWeight:800,fontSize:10,marginBottom:5}}>Add crop to shared library</div><div style=${{display:'grid',gridTemplateColumns:'minmax(130px,2fr) 55px 72px 110px',gap:5}}><input class="ti" value=${newCrop.label} onInput=${e=>setNewCrop(c=>({...c,label:e.target.value}))} placeholder="Crop name" style=${{fontSize:10,padding:'6px'}}/><input class="ti" value=${newCrop.icon} onInput=${e=>setNewCrop(c=>({...c,icon:e.target.value}))} placeholder="🌱" style=${{fontSize:10,padding:'6px'}}/><input type="color" value=${newCrop.color} onInput=${e=>setNewCrop(c=>({...c,color:e.target.value}))} style=${{width:'100%',height:31,border:'1px solid #ddd',borderRadius:6}}/><select value=${newCrop.planningMode} onChange=${e=>setNewCrop(c=>({...c,planningMode:e.target.value}))} style=${{fontSize:10,border:'1px solid #ddd',borderRadius:6}}><option value="simple">Simple acreage</option><option value="row">Row crop</option></select></div>${newCrop.planningMode==='row'?html`<div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5,marginTop:5}}><label style=${{fontSize:9}}>Row centres (ft)<input class="ti" type="number" value=${newCrop.rowSpacing} onInput=${e=>setNewCrop(c=>({...c,rowSpacing:e.target.value}))} style=${{fontSize:10,padding:'5px'}}/></label><label style=${{fontSize:9}}>Plant spacing (in)<input class="ti" type="number" value=${newCrop.plantSpacing} onInput=${e=>setNewCrop(c=>({...c,plantSpacing:e.target.value}))} style=${{fontSize:10,padding:'5px'}}/></label></div>`:null}<button onClick=${addCustomCrop} disabled=${!newCrop.label.trim()} class="btn btn-sm" style=${{marginTop:6,padding:'6px 10px'}}>+ Add shared crop</button><div style=${{fontSize:9,color:'#999',marginTop:4}}>Rye, Soybeans and Field Corn are built in. New crops sync to every farm device and appear in year assignments, map visibility and Farm Map questions.</div></div>`:null}
+      ${showCropManager&&!simpleMap?html`<div style=${{marginTop:8,paddingTop:8,borderTop:'1px solid #e5eaee'}}><div style=${{fontWeight:800,fontSize:10,marginBottom:5}}>Add crop to shared library</div><div style=${{display:'grid',gridTemplateColumns:'minmax(130px,2fr) 55px 72px 110px',gap:5}}><input class="ti" value=${newCrop.label} onInput=${e=>setNewCrop(c=>({...c,label:e.target.value}))} placeholder="Crop name" style=${{fontSize:10,padding:'6px'}}/><input class="ti" value=${newCrop.icon} onInput=${e=>setNewCrop(c=>({...c,icon:e.target.value}))} placeholder="🌱" style=${{fontSize:10,padding:'6px'}}/><input type="color" value=${newCrop.color} onInput=${e=>setNewCrop(c=>({...c,color:e.target.value}))} style=${{width:'100%',height:31,border:'1px solid #ddd',borderRadius:6}}/><select value=${newCrop.planningMode} onChange=${e=>setNewCrop(c=>({...c,planningMode:e.target.value}))} style=${{fontSize:10,border:'1px solid #ddd',borderRadius:6}}><option value="simple">Simple acreage</option><option value="row">Row crop</option></select></div>${newCrop.planningMode==='row'?html`<div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5,marginTop:5}}><label style=${{fontSize:9}}>Row centres (ft)<input class="ti" type="number" value=${newCrop.rowSpacing} onInput=${e=>setNewCrop(c=>({...c,rowSpacing:e.target.value}))} style=${{fontSize:10,padding:'5px'}}/></label><label style=${{fontSize:9}}>Plant spacing (in)<input class="ti" type="number" value=${newCrop.plantSpacing} onInput=${e=>setNewCrop(c=>({...c,plantSpacing:e.target.value}))} style=${{fontSize:10,padding:'5px'}}/></label></div>`:null}<button onClick=${addCustomCrop} disabled=${!newCrop.label.trim()} class="btn btn-sm" style=${{marginTop:6,padding:'6px 10px'}}>+ Add shared crop</button><div style=${{fontSize:9,color:'#999',marginTop:4}}>Tunnel Strawberries, Peppers, Caribbean Pumpkin, Rye, Soybeans and Field Corn are built in. New crops sync to every farm device and appear in year assignments, map visibility and Farm Map questions.</div>${customCrops.length?html`<div style=${{marginTop:8,paddingTop:7,borderTop:'1px solid #eee'}}><div style=${{fontSize:9,fontWeight:800,color:'#666',marginBottom:4}}>CUSTOM CROPS</div><div style=${{display:'flex',gap:4,flexWrap:'wrap'}}>${customCrops.map(c=>html`<span key=${c.id} style=${{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 6px',border:'1px solid '+c.color,borderRadius:12,fontSize:9,background:c.color+'12'}}>${c.icon} ${c.label}<button title="Remove custom crop" onClick=${()=>removeCustomCrop(c.id)} style=${{border:'none',background:'transparent',color:'#b42318',fontWeight:900,cursor:'pointer',padding:0}}>×</button></span>`)}</div></div>`:null}</div>`:null}
     </div>
 
     <div class="card" style=${{padding:'9px 10px',marginBottom:8}}>
@@ -5938,7 +6104,8 @@ function FieldMapper({staffProfile}){
     return html`<div><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><button onClick=${()=>switchFieldMode('overview')} class="btn btn-sm btn-out">← Farm Map</button><span style=${{fontWeight:700,fontSize:14}}>${fc.icon} ${draft.name}</span>${canEditFields?html`<button onClick=${()=>editField(draft)} class="btn btn-sm">Edit</button>`:null}</div>
       <div class="card" style=${{overflow:'hidden',marginBottom:8}}><div ref=${mapRef} style=${{height:420,background:'#e0e8e0',position:'relative'}}>${!mapLoaded?html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:12,color:'#888'}}>Loading satellite map…</div>`:null}</div></div>
       <div style=${{fontSize:11,color:'#666',margin:'-1px 0 8px',padding:'0 4px'}}><strong>${bearingLabel(draft)}</strong> · Section 1 from ${startSideLabel(draft)}</div>
-      ${stats?html`<div class="card" style=${{padding:'10px 14px'}}><div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:7}}>${[['Acres',stats.acreage.toFixed(2)],['Sections',stats.numSections],['Rows',stats.numRows],['Total row ft',Math.round(stats.totalRowFt).toLocaleString()],['Plants',stats.totalPlants.toLocaleString()],['Seeds + buffer',stats.seedsNeeded.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'#f7f7f5',borderRadius:7,padding:'7px',textAlign:'center'}}><div style=${{fontSize:13,fontWeight:700}}>${v}</div><div style=${{fontSize:9,color:'#999'}}>${l}</div></div>`)}</div>${draft.notes?html`<div style=${{fontSize:12,color:'#666',marginTop:9}}>${draft.notes}</div>`:null}</div>`:null}
+      ${stats&&!isTunnelStrawberryPlanningCrop(draft.crop)?html`<div class="card" style=${{padding:'10px 14px'}}><div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:7}}>${[['Acres',stats.acreage.toFixed(2)],['Sections',stats.numSections],['Rows',stats.numRows],['Total row ft',Math.round(stats.totalRowFt).toLocaleString()],['Plants',stats.totalPlants.toLocaleString()],['Seeds + buffer',stats.seedsNeeded.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'#f7f7f5',borderRadius:7,padding:'7px',textAlign:'center'}}><div style=${{fontSize:13,fontWeight:700}}>${v}</div><div style=${{fontSize:9,color:'#999'}}>${l}</div></div>`)}</div>${draft.notes?html`<div style=${{fontSize:12,color:'#666',marginTop:9}}>${draft.notes}</div>`:null}</div>`:null}
+      ${isTunnelStrawberryPlanningCrop(draft.crop)?(()=>{const ts=tunnelStrawberrySummary(draft.tunnelStrawberryPlan);return html`<div class="card" style=${{padding:'10px 14px',marginTop:8}}><div style=${{fontWeight:800,fontSize:12,color:'#71324d',marginBottom:6}}>🍓 Tunnel zone summary</div><div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:5,marginBottom:7}}>${[['Mapped ac',stats?stats.acreage.toFixed(2):'—'],['Bays',ts.totalBays],['Trays',Math.round(ts.totalTrays).toLocaleString()],['Plants',Math.round(ts.totalPlants).toLocaleString()],['Substrate',(ts.totalSubstrateL/1000).toFixed(1)+' m³']].map(([l,v])=>html`<div style=${{background:'#f7f1f4',borderRadius:6,padding:'6px',textAlign:'center'}}><strong>${v}</strong><div style=${{fontSize:8,color:'#999'}}>${l}</div></div>`)}</div>${ts.rows.map(z=>html`<div style=${{fontSize:10,padding:'3px 0',borderBottom:'1px solid #f0f0ed'}}><strong>${z.label}</strong> · ${z.bays} bays · ${Math.round(z.plants).toLocaleString()} plants · ${z.waterM3Hr.toFixed(1)} m³/hr</div>`)}</div>`;})():null}
     </div>`;
   }
 
@@ -5949,17 +6116,49 @@ function FieldMapper({staffProfile}){
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <label class="fl" style=${{fontSize:11}}>Field Name</label><input class="ti" type="text" value=${draft.name} onInput=${e=>setDraft(d=>({...d,name:e.target.value}))} placeholder="e.g. Cox South East"/>
-      <label class="fl" style=${{fontSize:11,marginTop:9}}>Crop</label><div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:6}}>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>{const cur=draftRef.current,nd={...cur,crop:k,varieties:[],sectionMeta:[],pumpkinPlan:k==='pumpkin'?normalizePumpkinPlan(cur.pumpkinPlan):cur.pumpkinPlan,watermelonPlan:k==='watermelon'?normalizeWatermelonPlan(cur.watermelonPlan):cur.watermelonPlan};applyDraft(nd);}} style=${{padding:'5px 10px',borderRadius:7,border:'1.5px solid '+(draft.crop===k?c.color:'#ddd'),background:draft.crop===k?c.color:'transparent',color:draft.crop===k?'#fff':'#888',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>${c.icon} ${c.label}</button>`)}</div>
-      <div style=${{fontSize:11,color:'#888'}}>${!FIELD_CROPS_CFG[draft.crop]?'Choose a crop to assign this field.':cfg.planningMode==='simple'?html`<strong>Simple acreage crop</strong> · boundary, acreage, year assignment, notes and rotation history only`:draft.crop==='pumpkin'?html`<strong>3-row Monosem</strong> · 5 ft row centres · 15 ft/pass · default 2 swaths (6 rows) planted perpendicular at each headland`:draft.crop==='watermelon'?html`<strong>8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath</strong> · triploid 36" · diploid 108" (1 pollinator : 3 seedless)`:html`Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>${cfg.twinRow?html` · ${cfg.twinRowSpacing}" twin-row spacing`:null}${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:null}`}</div>
-      ${FIELD_CROPS_CFG[draft.crop]&&cfg.planningMode!=='simple'?html`<div style=${{marginTop:9,paddingTop:8,borderTop:'1px solid #eee'}}><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Variety library — ${cropVarieties.length} varieties</div><div style=${{display:'flex',gap:5}}><input class="ti" type="text" value=${newVariety} onInput=${e=>setNewVariety(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'){e.preventDefault();addCustomVariety();}}} placeholder="Add a new ${cfg.label} variety…" style=${{flex:1,fontSize:11,padding:'6px 8px'}}/><button onClick=${addCustomVariety} disabled=${!newVariety.trim()} class="btn btn-sm" style=${{padding:'6px 10px',opacity:newVariety.trim()?1:.45}}>+ Add</button></div><div style=${{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}}>${cropVarieties.map(v=>html`<span style=${{display:'inline-flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:12,padding:'2px 5px 2px 7px',fontSize:9,background:'#fff'}}>${v}<button onClick=${()=>removeCustomVariety(v)} title="Remove variety" style=${{border:'none',background:'transparent',color:'#b42318',fontWeight:900,cursor:'pointer',padding:'0 2px'}}>×</button></span>`)}</div><div style=${{fontSize:9,color:'#999',marginTop:4}}>Add or remove varieties here. Changes sync to the other farm devices; existing saved plans are not silently rewritten.</div></div>`:html`<div style=${{fontSize:10,color:'#b36b00',marginTop:7}}>Assign a crop before building rows or varieties.</div>`}
+      <label class="fl" style=${{fontSize:11,marginTop:9}}>Crop</label><div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:6}}>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>{const cur=draftRef.current,nd={...cur,crop:k,varieties:[],sectionMeta:[],pumpkinPlan:isPumpkinPlanningCrop(k)?normalizePumpkinPlan(cur.pumpkinPlan):cur.pumpkinPlan,watermelonPlan:isWatermelonPlanningCrop(k)?normalizeWatermelonPlan(cur.watermelonPlan):cur.watermelonPlan,tunnelStrawberryPlan:isTunnelStrawberryPlanningCrop(k)?normalizeTunnelStrawberryPlan(cur.tunnelStrawberryPlan):cur.tunnelStrawberryPlan};applyDraft(nd);}} style=${{padding:'5px 10px',borderRadius:7,border:'1.5px solid '+(draft.crop===k?c.color:'#ddd'),background:draft.crop===k?c.color:'transparent',color:draft.crop===k?'#fff':'#888',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>${c.icon} ${c.label}</button>`)}</div>
+      <div style=${{fontSize:11,color:'#888'}}>${!FIELD_CROPS_CFG[draft.crop]?'Choose a crop to assign this field.':isTunnelStrawberryPlanningCrop(draft.crop)?html`<strong>Zone-based tunnel planner</strong> · 48 bays across Zones 1–5 · variety, plant density, substrate and irrigation capacity planning`:cfg.planningMode==='simple'?html`<strong>Simple acreage crop</strong> · boundary, acreage, year assignment, notes and rotation history only`:isPumpkinPlanningCrop(draft.crop)?html`<strong>3-row Monosem</strong> · 5 ft row centres · 15 ft/pass · default 2 swaths (6 rows) planted perpendicular at each headland`:isWatermelonPlanningCrop(draft.crop)?html`<strong>8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath</strong> · triploid 36" · diploid 108" (1 pollinator : 3 seedless)`:html`Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>${cfg.twinRow?html` · ${cfg.twinRowSpacing}" twin-row spacing`:null}${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:null}`}</div>
+      ${FIELD_CROPS_CFG[draft.crop]&&(cfg.planningMode!=='simple'||isTunnelStrawberryPlanningCrop(draft.crop))?html`<div style=${{marginTop:9,paddingTop:8,borderTop:'1px solid #eee'}}><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Variety library — ${cropVarieties.length} varieties</div><div style=${{display:'flex',gap:5}}><input class="ti" type="text" value=${newVariety} onInput=${e=>setNewVariety(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'){e.preventDefault();addCustomVariety();}}} placeholder="Add a new ${cfg.label} variety…" style=${{flex:1,fontSize:11,padding:'6px 8px'}}/><button onClick=${addCustomVariety} disabled=${!newVariety.trim()} class="btn btn-sm" style=${{padding:'6px 10px',opacity:newVariety.trim()?1:.45}}>+ Add</button></div><div style=${{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}}>${cropVarieties.map(v=>html`<span style=${{display:'inline-flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:12,padding:'2px 5px 2px 7px',fontSize:9,background:'#fff'}}>${v}<button onClick=${()=>removeCustomVariety(v)} title="Remove variety" style=${{border:'none',background:'transparent',color:'#b42318',fontWeight:900,cursor:'pointer',padding:'0 2px'}}>×</button></span>`)}</div><div style=${{fontSize:9,color:'#999',marginTop:4}}>Add or remove varieties here. Changes sync to the other farm devices; existing saved plans are not silently rewritten.</div></div>`:html`<div style=${{fontSize:10,color:'#b36b00',marginTop:7}}>Assign a crop before building rows or varieties.</div>`}
     </div>
+
+
+    ${isTunnelStrawberryPlanningCrop(draft.crop)?html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,borderColor:'#c8a8bb'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,marginBottom:8}}><div><div style=${{fontWeight:800,fontSize:13,color:'#71324d'}}>🍓 Tunnel Strawberry Zone Plan</div><div style=${{fontSize:10,color:'#777',marginTop:2}}>Build each irrigation zone by bays. A bay = ${tunnelStrawberryPP.rowsPerBay} rows × ${tunnelStrawberryPP.traysPerRow} one-metre trays = <strong>${tunnelStrawberryStats.traysPerBay.toLocaleString()} trays</strong>.</div></div><div style=${{fontSize:10,fontWeight:800,color:tunnelStrawberryStats.totalBays===48?'#2e7d32':'#c62828',whiteSpace:'nowrap'}}>${tunnelStrawberryStats.totalBays} / 48 bays</div></div>
+
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:6,marginBottom:10}}>${[
+        ['TRAYS',Math.round(tunnelStrawberryStats.totalTrays).toLocaleString()],
+        ['PLANTS',Math.round(tunnelStrawberryStats.totalPlants).toLocaleString()],
+        ['SUBSTRATE',(tunnelStrawberryStats.totalSubstrateL/1000).toFixed(1)+' m³'],
+        ['NEW COIR BAYS',tunnelStrawberryStats.newBays.toFixed(1)]
+      ].map(([l,v])=>html`<div style=${{background:'#f7f1f4',borderRadius:7,padding:'7px',textAlign:'center'}}><div style=${{fontSize:13,fontWeight:800,color:'#71324d'}}>${v}</div><div style=${{fontSize:8,color:'#999'}}>${l}</div></div>`)}</div>
+
+      <details style=${{marginBottom:9}}><summary style=${{cursor:'pointer',fontSize:10,fontWeight:800,color:'#666'}}>Tunnel constants / future expansion</summary><div style=${{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:6,marginTop:7}}><label class="fl">Rows / bay<input class="ti" type="number" min="1" value=${tunnelStrawberryPP.rowsPerBay} onInput=${e=>patchTunnelStrawberryPlan({rowsPerBay:e.target.value})}/></label><label class="fl">Trays / row<input class="ti" type="number" min="1" value=${tunnelStrawberryPP.traysPerRow} onInput=${e=>patchTunnelStrawberryPlan({traysPerRow:e.target.value})}/></label><label class="fl">Tray length (m)<input class="ti" type="number" min="0.1" step="0.1" value=${tunnelStrawberryPP.trayLengthM} onInput=${e=>patchTunnelStrawberryPlan({trayLengthM:e.target.value})}/></label><label class="fl">Substrate L / tray<input class="ti" type="number" min="1" step="0.5" value=${tunnelStrawberryPP.substrateLPerTray} onInput=${e=>patchTunnelStrawberryPlan({substrateLPerTray:e.target.value})}/></label></div></details>
+
+      ${tunnelStrawberryPP.zones.map((z,zi)=>{const zs=tunnelStrawberryStats.rows.find(x=>x.id===z.id),partBaySum=z.parts.reduce((a,p)=>a+(parseFloat(p.bays)||0),0);return html`<div style=${{border:'1px solid #eadde4',borderLeft:'4px solid '+(zi%2?'#8e4162':'#b06c8a'),borderRadius:9,padding:'9px 10px',marginBottom:8}}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:6}}><div><strong style=${{fontSize:12}}>${z.label}</strong><span style=${{fontSize:9,color:'#888',marginLeft:6}}>${z.bays} bays · ${Math.round(zs?.trays||0).toLocaleString()} trays · ${Math.round(zs?.plants||0).toLocaleString()} plants</span></div><label style=${{display:'flex',alignItems:'center',gap:4,fontSize:9,fontWeight:700,color:'#666'}}><input type="checkbox" checked=${z.split} onChange=${e=>toggleTunnelZoneSplit(z.id,e.target.checked)}/> Split N/S</label></div>
+        <div style=${{display:'grid',gridTemplateColumns:'90px repeat(4,minmax(0,1fr))',gap:5,alignItems:'end',marginBottom:6}}><label class="fl">Zone bays<input class="ti" type="number" min="0" step="1" value=${z.bays} onInput=${e=>patchTunnelZone(z.id,{bays:e.target.value})}/></label><label class="fl">Priva valve<input class="ti" value=${z.irrigation.privaValve} onInput=${e=>patchTunnelIrrigation(z.id,{privaValve:e.target.value})} placeholder="e.g. 2"/></label><label class="fl">Unit L/hr<input class="ti" type="number" min="0.1" step="0.1" value=${z.irrigation.unitCapacityLph} onInput=${e=>patchTunnelIrrigation(z.id,{unitCapacityLph:e.target.value})}/></label><label class="fl">Drippers / tray<input class="ti" type="number" min="1" step="1" value=${z.irrigation.drippersPerTray} onInput=${e=>patchTunnelIrrigation(z.id,{drippersPerTray:e.target.value})}/></label><label class="fl">Valve group<input class="ti" value=${z.irrigation.privaValveGroup} onInput=${e=>patchTunnelIrrigation(z.id,{privaValveGroup:e.target.value})} placeholder="group"/></label></div>
+        <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:9,color:'#666',marginBottom:7}}><label style=${{display:'flex',gap:4,alignItems:'center'}}><input type="checkbox" checked=${z.irrigation.smsStation} onChange=${e=>patchTunnelIrrigation(z.id,{smsStation:e.target.checked})}/> SMS station</label><span>Drip units <strong>${Math.round(zs?.dripUnits||0).toLocaleString()}</strong></span><span>2-min cycle <strong>${(zs?.cycleMl||0).toFixed(0)} mL</strong></span><span>≈ <strong>${(zs?.cyclePct||0).toFixed(2)}%</strong> of substrate volume / drip unit</span><span>Water <strong>${(zs?.waterM3Hr||0).toFixed(1)} m³/hr</strong></span></div>
+        ${z.parts.map((part,pi)=>{const ps=zs?.parts?.[pi];return html`<div style=${{display:'grid',gridTemplateColumns:z.split?'1.05fr 65px 1.2fr 80px 1.25fr 92px':'1.2fr 1.2fr 80px 1.25fr 92px',gap:5,alignItems:'end',padding:'6px',background:'#faf8f9',borderRadius:7,marginTop:5}}>${z.split?html`<label class="fl">Block<input class="ti" value=${part.label} onInput=${e=>patchTunnelPart(z.id,pi,{label:e.target.value})}/></label><label class="fl">Bays<input class="ti" type="number" min="0" step="1" value=${part.bays} onInput=${e=>patchTunnelPart(z.id,pi,{bays:e.target.value})}/></label>`:html`<div><div class="fl">Block</div><div style=${{fontSize:11,fontWeight:700,paddingBottom:8}}>${part.label}</div></div>`}<label class="fl">Variety<select class="ti" value=${part.variety} onChange=${e=>patchTunnelPart(z.id,pi,{variety:e.target.value})}><option value="">Unassigned</option>${cropVarieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Plants / tray<input class="ti" type="number" min="5" max="10" step="1" value=${part.plantsPerTray} onInput=${e=>patchTunnelPart(z.id,pi,{plantsPerTray:e.target.value})}/></label><label class="fl">Substrate<input class="ti" value=${part.substrate} onInput=${e=>patchTunnelPart(z.id,pi,{substrate:e.target.value})} placeholder="Coir type / supplier"/></label><label class="fl">Material<select class="ti" value=${part.substrateStatus} onChange=${e=>patchTunnelPart(z.id,pi,{substrateStatus:e.target.value})}><option value="new">New substrate</option><option value="reused">Reused substrate</option></select></label><div style=${{gridColumn:'1/-1',fontSize:9,color:'#777'}}>${Math.round(ps?.trays||0).toLocaleString()} trays · <strong>${Math.round(ps?.plants||0).toLocaleString()} plants</strong> · ${(ps?.substrateL||0)/1000?((ps?.substrateL||0)/1000).toFixed(1)+' m³ substrate':''}</div></div>`;})}
+        ${z.split&&Math.abs(partBaySum-z.bays)>.01?html`<div style=${{fontSize:9,color:'#c62828',fontWeight:700,marginTop:5}}>⚠ Split blocks total ${partBaySum} bays but ${z.label} is set to ${z.bays} bays.</div>`:null}
+      </div>`;})}
+
+      <div style=${{borderTop:'1px solid #eadde4',paddingTop:9,marginTop:3}}><div style=${{fontSize:11,fontWeight:800,color:'#71324d',marginBottom:6}}>Plant order summary</div>${tunnelStrawberryStats.varieties.sort((a,b)=>b.plants-a.plants).map(v=>html`<div style=${{display:'flex',justifyContent:'space-between',fontSize:10,padding:'2px 0'}}><span>${v.variety} · ${v.bays.toFixed(1)} bays</span><strong>${Math.round(v.plants).toLocaleString()} plants</strong></div>`)}</div>
+      <div style=${{borderTop:'1px solid #eadde4',paddingTop:9,marginTop:9}}><div style=${{fontSize:11,fontWeight:800,color:'#71324d',marginBottom:6}}>Substrate allocation</div>${tunnelStrawberryStats.substrates.sort((a,b)=>b.bays-a.bays).map(x=>html`<div style=${{display:'flex',justifyContent:'space-between',gap:8,fontSize:10,padding:'2px 0'}}><span>${x.substrate} · ${x.status==='reused'?'reused':'new'} · ${x.bays.toFixed(1)} bays</span><strong>${(x.litres/1000).toFixed(1)} m³</strong></div>`)}</div>
+
+      <div style=${{borderTop:'1px solid #eadde4',paddingTop:9,marginTop:9}}><div style=${{fontSize:11,fontWeight:800,color:'#71324d',marginBottom:5}}>Substrate order planner</div><div style=${{fontSize:9,color:'#777',marginBottom:7}}>New-substrate blocks only: ${tunnelStrawberryStats.newBays.toFixed(1)} bays · ${Math.round(tunnelStrawberryStats.newTrays).toLocaleString()} trays · ${(tunnelStrawberryStats.newSubstrateL/1000).toFixed(1)} m³ hydrated volume.</div>
+        <div style=${{display:'grid',gridTemplateColumns:'1.25fr .8fr .8fr .8fr',gap:6,alignItems:'end',marginBottom:7}}><label class="fl">Pallet planning basis<select class="ti" value=${tunnelStrawberryPP.palletBasis} onChange=${e=>patchTunnelStrawberryPlan({palletBasis:e.target.value})}><option value="pallets_per_bay">Pallets per bay</option><option value="bays_per_pallet">Bays filled per pallet</option></select></label><label class="fl">Factor<input class="ti" type="number" min="0.01" step="0.01" value=${tunnelStrawberryPP.palletFactor} onInput=${e=>patchTunnelStrawberryPlan({palletFactor:e.target.value})}/></label><label class="fl">Pallets / container<input class="ti" type="number" min="1" value=${tunnelStrawberryPP.containerPallets} onInput=${e=>patchTunnelStrawberryPlan({containerPallets:e.target.value})}/></label><label class="fl">MT / container<input class="ti" type="number" min="0.1" step="0.1" value=${tunnelStrawberryPP.containerMt} onInput=${e=>patchTunnelStrawberryPlan({containerMt:e.target.value})}/></label></div>
+        <div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:5,marginBottom:8}}>${[['PALLETS',tunnelStrawberryStats.palletsNeeded.toFixed(1)],['CONTAINER EQ.',tunnelStrawberryStats.containerEq.toFixed(2)],['FULL CONTAINERS',tunnelStrawberryStats.fullContainers],['EST. METRIC TONS',tunnelStrawberryStats.metricTons.toFixed(1)]].map(([l,v])=>html`<div style=${{background:'#f6f6f2',borderRadius:7,padding:'6px',textAlign:'center'}}><div style=${{fontSize:12,fontWeight:800}}>${v}</div><div style=${{fontSize:8,color:'#999'}}>${l}</div></div>`)}</div>
+        <div style=${{fontSize:9,color:'#777',marginBottom:5}}>Supplier comparison · CAD/MT includes exchange rate plus optional landed extras. Cost/tray uses the 22 MT / 24 pallet container weight entered above.</div>${tunnelCoirQuotes.map(q=>html`<div style=${{display:'grid',gridTemplateColumns:'1.5fr .8fr .65fr .75fr .9fr 28px',gap:5,alignItems:'end',padding:'5px 0',borderBottom:'1px solid #f0f0ed'}}><label class="fl">Supplier<input class="ti" value=${q.supplier} onInput=${e=>patchTunnelQuote(q.id,{supplier:e.target.value})}/></label><label class="fl">USD / MT<input class="ti" type="number" step="0.01" value=${q.usdPerMt} onInput=${e=>patchTunnelQuote(q.id,{usdPerMt:e.target.value})}/></label><label class="fl">FX<input class="ti" type="number" step="0.001" value=${q.fxCadPerUsd} onInput=${e=>patchTunnelQuote(q.id,{fxCadPerUsd:e.target.value})}/></label><label class="fl">Extra CAD/MT<input class="ti" type="number" step="1" value=${q.extraCadPerMt} onInput=${e=>patchTunnelQuote(q.id,{extraCadPerMt:e.target.value})}/></label><div style=${{fontSize:9,lineHeight:1.45,paddingBottom:4}}><strong>${q.cadPerMt.toFixed(2)} CAD/MT</strong><br/>${q.cadPerTray.toFixed(2)} CAD/tray<br/>Plan ${Math.round(q.planCost).toLocaleString()} CAD</div><button onClick=${()=>removeTunnelQuote(q.id)} class="btn btn-sm btn-danger" style=${{padding:'4px 6px',marginBottom:3}}>×</button></div>`)}<button onClick=${addTunnelQuote} class="btn btn-sm btn-out" style=${{marginTop:6}}>+ Supplier quote</button>
+      </div>
+      <div style=${{fontSize:9,color:'#999',marginTop:8}}>Irrigation capacities are stored with each zone for future integration, but this version does not change the Irrigation tab.</div>
+    </div>`:null}
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8,borderColor:'#ef9a9a'}}>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginBottom:7}}><div style=${{fontWeight:800,fontSize:12,color:'#b71c1c'}}>🚑 Emergency Access</div><button onClick=${beginEmergencyPoint} class="btn btn-sm btn-out" style=${{padding:'5px 8px',borderColor:'#c62828',color:'#c62828'}}>📍 Set on map</button></div>
       <label class="fl" style=${{fontSize:10}}>Civic address emergency services should use</label><input class="ti" type="text" value=${normalizeEmergency(draft.emergency,draft.name).address} onInput=${e=>{const cur=draftRef.current;applyDraft({...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),address:e.target.value,updatedAt:new Date().toISOString()}},false);}} placeholder="e.g. 48556 John Wise Line, Aylmer, ON"/>
       <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginTop:6}}><div><label class="fl" style=${{fontSize:10}}>GPS latitude</label><input class="ti" type="number" step="0.000001" value=${normalizeEmergency(draft.emergency,draft.name).lat??''} onInput=${e=>{const cur=draftRef.current;applyDraft({...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),lat:e.target.value===''?null:+e.target.value,updatedAt:new Date().toISOString()}},false);}}/></div><div><label class="fl" style=${{fontSize:10}}>GPS longitude</label><input class="ti" type="number" step="0.000001" value=${normalizeEmergency(draft.emergency,draft.name).lng??''} onInput=${e=>{const cur=draftRef.current;applyDraft({...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),lng:e.target.value===''?null:+e.target.value,updatedAt:new Date().toISOString()}},false);}}/></div></div>
       <label class="fl" style=${{fontSize:10,marginTop:6}}>Access / rendezvous notes</label><input class="ti" type="text" value=${normalizeEmergency(draft.emergency,draft.name).accessNotes} onInput=${e=>{const cur=draftRef.current;applyDraft({...cur,emergency:{...normalizeEmergency(cur.emergency,cur.name),accessNotes:e.target.value,updatedAt:new Date().toISOString()}},false);}} placeholder="e.g. enter from north laneway; meet ambulance at field entrance"/>
-      <div style=${{fontSize:9,color:emergencyRequiredForCrop(draft.crop)?'#b71c1c':'#888',fontWeight:emergencyRequiredForCrop(draft.crop)?700:400,marginTop:5}}>${emergencyRequiredForCrop(draft.crop)?'Required for this crop. Set the EMS meeting point before the field plan is considered emergency-ready.':'Optional for this crop. Emergency locations are only required on the annual report for Strawberry, Watermelon, Pumpkin and Sweet Corn.'} This safety information is permanent and stays with the field when the crop changes next year.</div>
+      <div style=${{fontSize:9,color:emergencyRequiredForCrop(draft.crop)?'#b71c1c':'#888',fontWeight:emergencyRequiredForCrop(draft.crop)?700:400,marginTop:5}}>${emergencyRequiredForCrop(draft.crop)?'Required for this crop. Set the EMS meeting point before the field plan is considered emergency-ready.':'Optional for this crop. Emergency locations are required on the annual report for Field/Tunnel Strawberries, Watermelon, Pumpkin/Caribbean Pumpkin and Sweet Corn.'} This safety information is permanent and stays with the field when the crop changes next year.</div>
     </div>
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
@@ -5985,7 +6184,7 @@ function FieldMapper({staffProfile}){
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}><label style=${{display:'flex',gap:8,alignItems:'center',cursor:'pointer',marginBottom:useManual?8:0,fontSize:12}}><input type="checkbox" checked=${useManual} onChange=${e=>setUseManual(e.target.checked)}/>Enter dimensions manually instead of GPS boundary</label>${useManual?html`<div style=${{display:'flex',gap:8}}><div style=${{flex:1}}><label class="fl" style=${{fontSize:11}}>Length (ft)</label><input class="ti" type="number" value=${manualLen} onInput=${e=>setManualLen(e.target.value)} placeholder="1320"/></div><div style=${{flex:1}}><label class="fl" style=${{fontSize:11}}>Width (ft)</label><input class="ti" type="number" value=${manualWid} onInput=${e=>setManualWid(e.target.value)} placeholder="660"/></div></div>`:null}</div>
 
-    ${draft.crop==='pumpkin'?html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,borderColor:'#f1c29d'}}>
+    ${isPumpkinPlanningCrop(draft.crop)?html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,borderColor:'#f1c29d'}}>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:4}}><div style=${{fontWeight:800,fontSize:13,color:'#b84300'}}>🎃 Pumpkin Planting Plan</div><div style=${{fontSize:10,color:'#999'}}>3-row Monosem · whole passes</div></div>
       <div style=${{fontSize:10,color:'#777',lineHeight:1.45,marginBottom:9}}>Main rows are 5 ft centres. Two 3-row swaths (6 rows) are planted perpendicular across each enabled headland. Variety blocks snap to complete 3-row planter passes.</div>
       <div style=${{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:7,marginBottom:10}}>
@@ -6006,7 +6205,7 @@ function FieldMapper({staffProfile}){
       ${pumpkinAlloc?html`<div style=${{marginTop:9,padding:'8px 10px',background:pumpkinAlloc.unassignedPasses?'#fff8e1':'#edf7ed',borderRadius:7,fontSize:10,color:pumpkinAlloc.unassignedPasses?'#8a6100':'#2e7d32'}}>${pumpkinAlloc.unassignedPasses?`Unassigned main field: ${pumpkinAlloc.unassignedPasses} planter passes / ${pumpkinAlloc.unassignedRows} rows · ${pumpkinAlloc.unassignedAcres.toFixed(2)} ac`:'✓ Main field passes allocated'}${pumpkinSummary.length?html`<div style=${{marginTop:5,color:'#555'}}>${pumpkinSummary.map(x=>`${x.variety}: ${x.actualAcres.toFixed(2)} ac · ${x.seeds.toLocaleString()} seed`).join('  |  ')}</div>`:null}</div>`:null}
     </div>`:null}
 
-    ${draft.crop==='watermelon'&&watermelonMaterials?html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,borderColor:'#efc4c1'}}>
+    ${isWatermelonPlanningCrop(draft.crop)&&watermelonMaterials?html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,borderColor:'#efc4c1'}}>
       <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',marginBottom:4}}><div style=${{fontWeight:800,fontSize:13,color:'#a72d24'}}>🍉 Watermelon Material Planner</div><div style=${{fontSize:10,color:'#999'}}>actual clipped row footage</div></div>
       <div style=${{fontSize:10,color:'#777',marginBottom:9,lineHeight:1.45}}>8 plastic beds × 6.5 ft + 13 ft driveway = <strong>65 ft/section</strong>. Plastic and drip orders use the exact linear feet of mapped rows rather than acreage estimates.</div>
       <div style=${{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:6,marginBottom:9}}>
@@ -6026,12 +6225,12 @@ function FieldMapper({staffProfile}){
       ${watermelonVarieties.length?html`<div style=${{marginTop:8,borderTop:'1px solid #eee',paddingTop:7}}><div style=${{fontSize:10,fontWeight:700,marginBottom:4}}>Assigned variety totals</div>${watermelonVarieties.map(x=>html`<div style=${{display:'flex',justifyContent:'space-between',gap:8,fontSize:10,padding:'2px 0'}}><span>${x.variety} · ${x.sections} section${x.sections===1?'':'s'}</span><span><strong>${x.acres.toFixed(2)} ac</strong> · ${Math.round(x.rowFt).toLocaleString()} row ft</span></div>`)}</div>`:null}
     </div>`:null}
 
-    ${stats?html`<div style=${{background:'linear-gradient(135deg,#1a2b1a,#2d4a30)',borderRadius:12,padding:'14px 16px',marginBottom:8,color:'#fff'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><div style=${{fontSize:12,opacity:.75,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase'}}>Field Calculations</div><span style=${{fontSize:9,opacity:.6}}>${stats.source==='polygon'?'actual polygon rows · '+bearingLabel(draft):'manual rectangle'}</span></div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>${[['Acres',stats.acreage.toFixed(3)],['Sections',stats.numSections],['Rows',stats.numRows]].map(([lbl,val])=>html`<div style=${{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'8px',textAlign:'center'}}><div style=${{fontSize:17,fontWeight:700}}>${val}</div><div style=${{fontSize:10,opacity:.7}}>${lbl}</div></div>`)}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>${[['AVG ROW LENGTH',stats.rowLenFt.toFixed(0)+' ft'],['TOTAL ROW FT',Math.round(stats.totalRowFt).toLocaleString()+' ft'],['PLANTS / HILLS',displayPlants.toLocaleString()],['SEEDS (+ buffer)',displaySeeds.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>${l}</div><div style=${{fontWeight:700}}>${v}</div></div>`)}${cfg.twinRow?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>TWIN-ROW PLANTING LINE</div><div style=${{fontWeight:700}}>${Math.round(stats.plantingLineFt).toLocaleString()} ft</div></div>`:null}${stats.pollinators?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>POLLINATORS</div><div style=${{fontWeight:700}}>${stats.pollinators.toLocaleString()}</div></div>`:null}${stats.plasticFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>PLASTIC MULCH</div><div style=${{fontWeight:700}}>${(stats.plasticFt/5280).toFixed(2)} mi · ${Math.round(stats.plasticFt).toLocaleString()} ft</div></div>`:null}${stats.dripFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>DRIP TAPE</div><div style=${{fontWeight:700}}>${(stats.dripFt/5280).toFixed(2)} mi · ${Math.round(stats.dripFt).toLocaleString()} ft</div></div>`:null}<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>SECTION WIDTH</div><div style=${{fontWeight:700}}>${stats.sectionWidth.toFixed(1)} ft</div></div>${stats.unusedFt>1?html`<div style=${{background:'rgba(255,200,0,.15)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.7,fontSize:10}}>UNUSED EDGE</div><div style=${{fontWeight:700,color:'#ffd'}}>${stats.unusedFt.toFixed(1)} ft</div></div>`:null}</div></div>
-      ${stats.numSections>0&&draft.crop!=='pumpkin'?html`<div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
-      <div style=${{fontWeight:700,fontSize:12,marginBottom:3}}>${draft.crop==='watermelon'?'🍉 Watermelon Section + Greenhouse Plan':draft.crop==='sweetcorn'?'🌽 Sweet Corn Staging Plan':'Variety Assignment by Section'}</div>
-      ${draft.crop==='watermelon'?html`<div style=${{fontSize:10,color:'#777',marginBottom:8}}>Each 65 ft section carries both a triploid seedless variety and a diploid pollinator. Counts use 36" triploid spacing and 108" pollinator spacing = 1:3.</div>`:draft.crop==='sweetcorn'?html`<div style=${{fontSize:10,color:'#777',marginBottom:8}}>Plan by week, then check off the actual planting. Grouping sections into roughly 2–5 acres per week helps stage market supply.</div>`:null}
+    ${stats&&!isTunnelStrawberryPlanningCrop(draft.crop)?html`<div style=${{background:'linear-gradient(135deg,#1a2b1a,#2d4a30)',borderRadius:12,padding:'14px 16px',marginBottom:8,color:'#fff'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><div style=${{fontSize:12,opacity:.75,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase'}}>Field Calculations</div><span style=${{fontSize:9,opacity:.6}}>${stats.source==='polygon'?'actual polygon rows · '+bearingLabel(draft):'manual rectangle'}</span></div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>${[['Acres',stats.acreage.toFixed(3)],['Sections',stats.numSections],['Rows',stats.numRows]].map(([lbl,val])=>html`<div style=${{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'8px',textAlign:'center'}}><div style=${{fontSize:17,fontWeight:700}}>${val}</div><div style=${{fontSize:10,opacity:.7}}>${lbl}</div></div>`)}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>${[['AVG ROW LENGTH',stats.rowLenFt.toFixed(0)+' ft'],['TOTAL ROW FT',Math.round(stats.totalRowFt).toLocaleString()+' ft'],['PLANTS / HILLS',displayPlants.toLocaleString()],['SEEDS (+ buffer)',displaySeeds.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>${l}</div><div style=${{fontWeight:700}}>${v}</div></div>`)}${cfg.twinRow?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>TWIN-ROW PLANTING LINE</div><div style=${{fontWeight:700}}>${Math.round(stats.plantingLineFt).toLocaleString()} ft</div></div>`:null}${stats.pollinators?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>POLLINATORS</div><div style=${{fontWeight:700}}>${stats.pollinators.toLocaleString()}</div></div>`:null}${stats.plasticFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>PLASTIC MULCH</div><div style=${{fontWeight:700}}>${(stats.plasticFt/5280).toFixed(2)} mi · ${Math.round(stats.plasticFt).toLocaleString()} ft</div></div>`:null}${stats.dripFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>DRIP TAPE</div><div style=${{fontWeight:700}}>${(stats.dripFt/5280).toFixed(2)} mi · ${Math.round(stats.dripFt).toLocaleString()} ft</div></div>`:null}<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>SECTION WIDTH</div><div style=${{fontWeight:700}}>${stats.sectionWidth.toFixed(1)} ft</div></div>${stats.unusedFt>1?html`<div style=${{background:'rgba(255,200,0,.15)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.7,fontSize:10}}>UNUSED EDGE</div><div style=${{fontWeight:700,color:'#ffd'}}>${stats.unusedFt.toFixed(1)} ft</div></div>`:null}</div></div>
+      ${stats.numSections>0&&!isPumpkinPlanningCrop(draft.crop)?html`<div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
+      <div style=${{fontWeight:700,fontSize:12,marginBottom:3}}>${isWatermelonPlanningCrop(draft.crop)?'🍉 Watermelon Section + Greenhouse Plan':isSweetCornPlanningCrop(draft.crop)?'🌽 Sweet Corn Staging Plan':'Variety Assignment by Section'}</div>
+      ${isWatermelonPlanningCrop(draft.crop)?html`<div style=${{fontSize:10,color:'#777',marginBottom:8}}>Each 65 ft section carries both a triploid seedless variety and a diploid pollinator. Counts use 36" triploid spacing and 108" pollinator spacing = 1:3.</div>`:isSweetCornPlanningCrop(draft.crop)?html`<div style=${{fontSize:10,color:'#777',marginBottom:8}}>Plan by week, then check off the actual planting. Grouping sections into roughly 2–5 acres per week helps stage market supply.</div>`:null}
       <div style=${{display:'grid',gap:7}}>${Array.from({length:stats.numSections},(_,i)=>{const wm=watermelonMaterials?.sections?.find(x=>x.section===i+1),meta=sectionMetaAt(draft.sectionMeta,i),cnt=wm?watermelonSectionSeedCounts(wm):null;return html`<div key=${i} style=${{background:'#f8f8f5',border:'1px solid #e8e8e4',borderRadius:8,padding:'7px 8px'}}><div style=${{fontSize:10,fontWeight:800,marginBottom:5}}>Section ${i+1}${wm?` · ${wm.acres.toFixed(2)} ac · ${Math.round(wm.rowFt).toLocaleString()} row ft`:''}</div>
-        ${draft.crop==='watermelon'?html`<div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}}><label class="fl">Seedless<select class="ti" value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${WATERMELON_SEEDLESS.filter(v=>cropVarieties.includes(v)).map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Pollinator<select class="ti" value=${meta.pollinatorVariety||''} onChange=${e=>patchSectionMeta(i,{pollinatorVariety:e.target.value})}><option value="">Choose…</option>${WATERMELON_POLLINATORS.filter(v=>cropVarieties.includes(v)).map(v=>html`<option value=${v}>${v}</option>`)}</select></label></div><div style=${{fontSize:9,color:'#666',margin:'4px 0'}}>${cnt?`${cnt.seedless.toLocaleString()} seedless + ${cnt.pollinator.toLocaleString()} pollinator plants`:''}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:5}}><label class="fl">Seedless tray<select class="ti" value=${meta.seedlessTraySize||98} onChange=${e=>patchSectionMeta(i,{seedlessTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Pollinator tray<select class="ti" value=${meta.pollinatorTraySize||128} onChange=${e=>patchSectionMeta(i,{pollinatorTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Planned seed date<input class="ti" type="date" value=${meta.plannedSeedDate||''} onInput=${e=>patchSectionMeta(i,{plannedSeedDate:e.target.value})}/></label><label class="fl">Plant week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label></div><div style=${{display:'flex',gap:5,marginTop:5,flexWrap:'wrap'}}><button onClick=${()=>markSectionDate(i,'seededDate')} class="btn btn-sm btn-out" style=${{padding:'4px 7px',fontSize:9}}>${meta.seededDate?'✓ Seeded '+meta.seededDate:'Mark seeded today'}</button><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm" style=${{padding:'4px 7px',fontSize:9}}>${meta.fieldPlantedDate?'✓ Field planted '+meta.fieldPlantedDate:'Mark field planted today'}</button></div>`:html`<div style=${{display:'grid',gridTemplateColumns:'1.2fr .9fr .9fr 1.3fr',gap:5,alignItems:'end'}}><label class="fl">Variety<select class="ti" value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${cropVarieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></label>${draft.crop==='sweetcorn'?html`<label class="fl">Planned week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm btn-out" style=${{height:31,padding:'4px 6px',fontSize:9}}>${meta.fieldPlantedDate?'✓ '+meta.fieldPlantedDate:'Mark planted'}</button><label class="fl">Harvest result<select class="ti" value=${meta.harvestAssessment||''} onChange=${e=>patchSectionMeta(i,{harvestAssessment:e.target.value})}><option value="">Not rated</option><option value="perfect">Perfect amount staged</option><option value="too_much">Too much came on at once</option><option value="too_little">Planted too little</option></select></label>`:null}</div>`}
+        ${isWatermelonPlanningCrop(draft.crop)?html`<div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}}><label class="fl">Seedless<select class="ti" value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${WATERMELON_SEEDLESS.filter(v=>cropVarieties.includes(v)).map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Pollinator<select class="ti" value=${meta.pollinatorVariety||''} onChange=${e=>patchSectionMeta(i,{pollinatorVariety:e.target.value})}><option value="">Choose…</option>${WATERMELON_POLLINATORS.filter(v=>cropVarieties.includes(v)).map(v=>html`<option value=${v}>${v}</option>`)}</select></label></div><div style=${{fontSize:9,color:'#666',margin:'4px 0'}}>${cnt?`${cnt.seedless.toLocaleString()} seedless + ${cnt.pollinator.toLocaleString()} pollinator plants`:''}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:5}}><label class="fl">Seedless tray<select class="ti" value=${meta.seedlessTraySize||98} onChange=${e=>patchSectionMeta(i,{seedlessTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Pollinator tray<select class="ti" value=${meta.pollinatorTraySize||128} onChange=${e=>patchSectionMeta(i,{pollinatorTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Planned seed date<input class="ti" type="date" value=${meta.plannedSeedDate||''} onInput=${e=>patchSectionMeta(i,{plannedSeedDate:e.target.value})}/></label><label class="fl">Plant week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label></div><div style=${{display:'flex',gap:5,marginTop:5,flexWrap:'wrap'}}><button onClick=${()=>markSectionDate(i,'seededDate')} class="btn btn-sm btn-out" style=${{padding:'4px 7px',fontSize:9}}>${meta.seededDate?'✓ Seeded '+meta.seededDate:'Mark seeded today'}</button><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm" style=${{padding:'4px 7px',fontSize:9}}>${meta.fieldPlantedDate?'✓ Field planted '+meta.fieldPlantedDate:'Mark field planted today'}</button></div>`:html`<div style=${{display:'grid',gridTemplateColumns:'1.2fr .9fr .9fr 1.3fr',gap:5,alignItems:'end'}}><label class="fl">Variety<select class="ti" value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${cropVarieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></label>${isSweetCornPlanningCrop(draft.crop)?html`<label class="fl">Planned week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm btn-out" style=${{height:31,padding:'4px 6px',fontSize:9}}>${meta.fieldPlantedDate?'✓ '+meta.fieldPlantedDate:'Mark planted'}</button><label class="fl">Harvest result<select class="ti" value=${meta.harvestAssessment||''} onChange=${e=>patchSectionMeta(i,{harvestAssessment:e.target.value})}><option value="">Not rated</option><option value="perfect">Perfect amount staged</option><option value="too_much">Too much came on at once</option><option value="too_little">Planted too little</option></select></label>`:null}</div>`}
       </div>`;})}</div></div>`:null}`:null}
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}><label class="fl" style=${{fontSize:11}}>Notes</label><textarea value=${draft.notes} onInput=${e=>setDraft(d=>({...d,notes:e.target.value}))} placeholder="Soil type, drainage, access points, previous crop…" style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',height:55,resize:'vertical',boxSizing:'border-box'}}/></div>
