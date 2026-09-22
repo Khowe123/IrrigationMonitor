@@ -1861,19 +1861,30 @@ function pendingOrderDeletes(){return LS.get(ORDER_DELETE_QUEUE_KEY,[]).filter(B
 function queueOrderDelete(id){const q=[...new Set([...pendingOrderDeletes(),id])];LS.set(ORDER_DELETE_QUEUE_KEY,q);return q;}
 function clearQueuedOrderDelete(id){const q=pendingOrderDeletes().filter(x=>x!==id);LS.set(ORDER_DELETE_QUEUE_KEY,q);return q;}
 
+function orderCloudTs(o){
+  const t=Date.parse(o?.updatedAt||o?.createdAt||'');return Number.isFinite(t)?t:0;
+}
+function orderForCloud(order){
+  const{_cloudPending,...clean}=order||{};return clean;
+}
 async function sbOrderPush(order){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
-  if(!u||!k)return{ok:false};
-  const row={id:order.id,team_id:t,entry_data:{...order,_type:'order'},updated_at:new Date().toISOString()};
-  try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok,status:r.status};}
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
+  if(!u||!k)return{ok:false,msg:'Cloud sync is not configured'};
+  const clean=orderForCloud(order),updatedAt=clean.updatedAt||new Date().toISOString();
+  const row={id:clean.id,team_id:t,entry_data:{...clean,_type:'order',updatedAt},updated_at:updatedAt};
+  try{const r=await sbReq('POST','harvest_logs',row,u,k);if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||e?.details||('HTTP '+r.status)};}return{ok:true,status:r.status};}
   catch(e){return{ok:false,msg:e.message};}
 }
+// Order deletions are tombstones rather than hard DELETEs. Every other device
+// can therefore learn that the PO was intentionally removed instead of keeping
+// an old local copy forever.
 async function sbOrderDelete(orderId){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
   if(!u||!k)return{ok:false,msg:'Cloud sync is not configured'};
+  const updatedAt=new Date().toISOString();
+  const row={id:orderId,team_id:t,entry_data:{id:orderId,_type:'order',_deleted:true,updatedAt},updated_at:updatedAt};
   try{
-    const path='harvest_logs?id=eq.'+encodeURIComponent(orderId)+'&team_id=eq.'+encodeURIComponent(t);
-    const r=await sbReq('DELETE',path,null,u,k);
+    const r=await sbReq('POST','harvest_logs',row,u,k);
     if(!r.ok){const e=await r.json().catch(()=>({}));return{ok:false,status:r.status,msg:e?.message||e?.details||('HTTP '+r.status)};}
     return{ok:true,status:r.status};
   }catch(e){return{ok:false,msg:e.message};}
@@ -1885,27 +1896,39 @@ async function flushOrderDeletes(){
   return{ok:failed.length===0,failed};
 }
 async function sbInventoryPush(inv){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
   if(!u||!k)return{ok:false};
   const row={id:t+'_inventory',team_id:t,entry_data:{...inv,_type:'inventory',savedAt:new Date().toISOString()},updated_at:new Date().toISOString()};
   try{const r=await sbReq('POST','harvest_logs',row,u,k);return{ok:r.ok};}
   catch(e){return{ok:false};}
 }
 async function sbInventoryPull(){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
   if(!u||!k)return null;
   try{const r=await sbReq('GET','harvest_logs?id=eq.'+encodeURIComponent(t+'_inventory')+'&select=entry_data',null,u,k);
     if(!r.ok)return null;const rows=await r.json();return rows[0]?.entry_data||null;}
   catch(e){return null;}
 }
 async function sbOrderPull(){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
   if(!u||!k)return null;
   try{const r=await sbReq('GET','harvest_logs?team_id=eq.'+encodeURIComponent(t)+'&select=entry_data,updated_at&order=updated_at.desc&limit=2000',null,u,k);
     if(!r.ok)return null;const rows=await r.json();
-    const pending=new Set(pendingOrderDeletes());
-    return rows.filter(r=>r.entry_data?._type==='order'&&!pending.has(r.entry_data?.id)).map(r=>r.entry_data);}
+    return rows.filter(r=>r.entry_data?._type==='order').map(r=>({...r.entry_data,updatedAt:r.entry_data.updatedAt||r.updated_at}));}
   catch(e){return null;}
+}
+function reconcileOrderSnapshot(local,remote){
+  const queued=new Set(pendingOrderDeletes()),rmap=new Map(),deleted=new Set();
+  (remote||[]).forEach(r=>{if(!r?.id)return;if(r._deleted){deleted.add(r.id);rmap.delete(r.id);return;}if(!queued.has(r.id))rmap.set(r.id,r);});
+  const out={};
+  rmap.forEach((r,id)=>{if(!deleted.has(id)&&!queued.has(id)){const{_type,_deleted,...clean}=r;out[id]={...clean,_cloudPending:false};}});
+  // The cloud is authoritative after a successful pull. The only local-only
+  // records we preserve are changes explicitly marked as waiting to upload.
+  (local||[]).forEach(l=>{
+    if(!l?.id||queued.has(l.id)||deleted.has(l.id)||!l._cloudPending)return;
+    const r=rmap.get(l.id);if(!r||orderCloudTs(l)>orderCloudTs(r))out[l.id]=l;
+  });
+  return Object.values(out).sort((a,b)=>b.shipDate.localeCompare(a.shipDate)||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
 }
 
 function exportCustomerHistory(customer, orders, skus, crop){
@@ -2119,27 +2142,32 @@ function OrderBrain(){
   const[histCust,setHistCust]=useState(null);
   const[showHistFor,setShowHistFor]=useState(null);
 
-  // Auto-pull orders + inventory from Supabase on mount. Pending deletes are
-  // flushed first, and queued IDs are never re-imported while offline.
+  async function pullOrdersFromCloud(showStatus=false){
+    if(showStatus)setSyncSt('syncing');
+    const delRes=await flushOrderDeletes(),remote=await sbOrderPull();
+    if(remote){
+      setOrders(prev=>{const merged=reconcileOrderSnapshot(prev,remote);LS.set('hff:ord:list',merged);return merged;});
+      if(showStatus)setSyncSt(delRes.ok?'ok':'err');
+    }else if(showStatus)setSyncSt('err');
+    if(showStatus)setTimeout(()=>setSyncSt('idle'),3000);
+    return remote!==null;
+  }
+  async function pullInventoryFromCloud(){
+    const remInv=await sbInventoryPull();
+    if(remInv&&remInv._type==='inventory'){
+      const{_type,savedAt,...inv}=remInv;setInventory(inv);LS.set('hff:ord:inv',inv);
+      if(inv._pickPlan){setPickPlan(inv._pickPlan);LS.set('hff:ord:pick_plan',inv._pickPlan);}
+    }
+  }
+  // Orders refresh on open, when this browser regains focus, and periodically.
+  // This keeps a second office PC from sitting on yesterday's localStorage copy.
   useEffect(()=>{
-    (async()=>{
-      await flushOrderDeletes();
-      const remote=await sbOrderPull();
-      if(remote&&remote.length){
-        const pending=new Set(pendingOrderDeletes());
-        const map={};orders.filter(o=>!pending.has(o.id)).forEach(o=>{map[o.id]=o;});
-        remote.forEach(o=>{if(!map[o.id]||o.updatedAt>map[o.id].updatedAt)map[o.id]=o;});
-        const merged=Object.values(map).sort((a,b)=>b.shipDate.localeCompare(a.shipDate));
-        setOrders(merged);LS.set('hff:ord:list',merged);
-      }
-    })();
-    sbInventoryPull().then(remInv=>{
-      if(remInv&&remInv._type==='inventory'){
-        const{_type,savedAt,...inv}=remInv;
-        setInventory(inv);LS.set('hff:ord:inv',inv);
-        if(inv._pickPlan){setPickPlan(inv._pickPlan);LS.set('hff:ord:pick_plan',inv._pickPlan);}
-      }
-    });
+    pullOrdersFromCloud(false);pullInventoryFromCloud();
+    const refresh=()=>{pullOrdersFromCloud(false);pullInventoryFromCloud();};
+    const onVisible=()=>{if(document.visibilityState==='visible')refresh();};
+    window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',onVisible);
+    const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh();},60000);
+    return()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',onVisible);clearInterval(timer);};
   },[]);
   // Merge default + custom SKUs for current crop
   const allCustom=customSkus.filter(s=>s.crop===draftCrop);
@@ -2185,18 +2213,19 @@ function OrderBrain(){
   async function saveOrder(){
     if(!draftCust.trim()){alert('Customer name required');return;}
     addCustIfNew(draftCust);
-    const id=editId||('ord_'+Date.now());
+    const id=editId||('ord_'+Date.now()),existing=editId?orders.find(o=>o.id===editId):null,now=new Date().toISOString();
     // Auto-detect crop from which SKUs have quantities
     const _wm=ORDER_SKUS.watermelon.some(s=>(draftSkus[s.id]||0)>0);
     const _pm=ORDER_SKUS.pumpkin.some(s=>(draftSkus[s.id]||0)>0);
     const _autoCrop=_wm&&_pm?'mixed':_wm?'watermelon':_pm?'pumpkin':draftCrop||'pumpkin';
     const order={id,crop:_autoCrop,shipDate:draftDate,customer:draftCust.trim(),po:draftPO.trim(),
-      notes:draftNotes,skus:{...draftSkus},shipped:false,shippedAt:null,
-      createdAt:editId?undefined:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      notes:draftNotes,skus:{...draftSkus},shipped:existing?.shipped||false,shippedAt:existing?.shippedAt||null,
+      inventoryDeducted:existing?.inventoryDeducted||false,createdAt:existing?.createdAt||now,updatedAt:now,_cloudPending:true};
     const upd=editId?orders.map(o=>o.id===editId?order:o):[order,...orders];
-    setOrders(upd);LS.set('hff:ord:list',upd);
-    setAdding(false);setEditId(null);
-    setSyncSt('syncing');const r=await sbOrderPush(order);setSyncSt(r.ok?'ok':'err');setTimeout(()=>setSyncSt('idle'),3000);
+    setOrders(upd);LS.set('hff:ord:list',upd);setAdding(false);setEditId(null);setSyncSt('syncing');
+    const r=await sbOrderPush(order);
+    if(r.ok){setOrders(prev=>{const next=prev.map(o=>o.id===id&&o.updatedAt===now?{...o,_cloudPending:false}:o);LS.set('hff:ord:list',next);return next;});}
+    setSyncSt(r.ok?'ok':'err');setTimeout(()=>setSyncSt('idle'),3000);
   }
 
   async function toggleShipped(id){
@@ -2223,7 +2252,7 @@ function OrderBrain(){
       shipped:markingShipped,
       shippedAt:markingShipped?new Date().toISOString():null,
       inventoryDeducted:markingShipped?true:false,
-      updatedAt:new Date().toISOString()
+      updatedAt:new Date().toISOString(),_cloudPending:true
     };
     const upd=orders.map(x=>x.id===id?updated:x);
     setOrders(upd);LS.set('hff:ord:list',upd);
@@ -2233,6 +2262,7 @@ function OrderBrain(){
       sbOrderPush(updated),
       shouldAdjust?sbInventoryPush(nextInv):Promise.resolve({ok:true})
     ]);
+    if(orderRes.ok){setOrders(prev=>{const next=prev.map(x=>x.id===id&&x.updatedAt===updated.updatedAt?{...x,_cloudPending:false}:x);LS.set('hff:ord:list',next);return next;});}
     setSyncSt(orderRes.ok&&invRes.ok?'ok':'err');
     setTimeout(()=>setSyncSt('idle'),3000);
   }
@@ -2400,17 +2430,7 @@ function OrderBrain(){
   function downloadPumpkinCrewXLSX(onlyCrewId=null){return exportPumpkinCrewXLSX(onlyCrewId);}
 
   async function syncNow(){
-    setSyncSt('syncing');
-    const delRes=await flushOrderDeletes();
-    const remote=await sbOrderPull();
-    if(remote){
-      const pending=new Set(pendingOrderDeletes());
-      const map={};orders.filter(o=>!pending.has(o.id)).forEach(o=>{map[o.id]=o;});
-      remote.forEach(o=>{if(!map[o.id]||o.updatedAt>map[o.id].updatedAt)map[o.id]=o;});
-      const merged=Object.values(map).sort((a,b)=>b.shipDate.localeCompare(a.shipDate)||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
-      setOrders(merged);LS.set('hff:ord:list',merged);setSyncSt(delRes.ok?'ok':'err');
-    }else setSyncSt('err');
-    setTimeout(()=>setSyncSt('idle'),3000);
+    await Promise.all([pullOrdersFromCloud(true),pullInventoryFromCloud()]);
   }
 
   // ── Pick list calculations ────────────────────────────────────────────
@@ -3662,7 +3682,7 @@ function queueResourceDelete(id){const q=[...new Set([...pendingResourceDeletes(
 function clearQueuedResourceDelete(id){const q=pendingResourceDeletes().filter(x=>x!==id);LS.set(RESOURCE_DELETE_QUEUE_KEY,q);return q;}
 
 async function sbResourcePush(res){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
   if(!u||!k)return{ok:false};
   // Only push metadata + link, not base64 blobs (too large for Supabase row)
   const {files,...meta}=res;
@@ -3671,7 +3691,7 @@ async function sbResourcePush(res){
   catch(e){return{ok:false,msg:e.message};}
 }
 async function sbResourceDelete(id){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
   if(!u||!k)return{ok:false,msg:'Cloud sync is not configured'};
   try{
     const path='harvest_logs?id=eq.'+encodeURIComponent(id)+'&team_id=eq.'+encodeURIComponent(t);
@@ -3687,7 +3707,7 @@ async function flushResourceDeletes(){
   return{ok:failed.length===0,failed};
 }
 async function sbResourcePull(){
-  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
   if(!u||!k)return null;
   try{const r=await sbReq('GET','harvest_logs?team_id=eq.'+encodeURIComponent(t)+'&select=entry_data&order=updated_at.desc&limit=200',null,u,k);
     if(!r.ok)return null;const rows=await r.json();
@@ -4047,7 +4067,7 @@ function TaskCompleteOverlay({task, onClose, onSave}){
       photoUrl,photoThumb
     };
     // Save to Supabase
-    const sbRow={id:completion.id,team_id:LS.get('hff:sb_team','howe-farms'),
+    const sbRow={id:completion.id,team_id:LS.get('hff:sb_team','howe-farms-2026'),
       entry_data:{...completion,_type:'task_completion'},updated_at:new Date().toISOString()};
     const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
     if(u&&k)await sbReq('POST','harvest_logs',sbRow,u,k).catch(()=>{});
@@ -4100,7 +4120,7 @@ function TaskCompleteOverlay({task, onClose, onSave}){
 function TaskCompletions({taskId}){
   const[completions,setCompletions]=useState([]);
   useEffect(()=>{
-    const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms');
+    const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key',''),t=LS.get('hff:sb_team','howe-farms-2026');
     if(!u||!k)return;
     sbReq('GET','harvest_logs?team_id=eq.'+encodeURIComponent(t)+'&select=entry_data&order=created_at.desc&limit=50',null,u,k)
       .then(r=>r.json()).then(rows=>{
@@ -5856,7 +5876,7 @@ function FieldMapper({staffProfile}){
           <div ref=${mapRef} class="farm-map-canvas">${!mapLoaded?html`<div style=${{display:'flex',height:'100%',alignItems:'center',justifyContent:'center',fontSize:12,color:'#777'}}>Loading satellite map…</div>`:null}</div>
         </div>
         ${selectedMapField?html`<div class="card" style=${{padding:'10px 12px',marginBottom:8,border:'2px solid #cfd8dc'}}>
-          <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start',marginBottom:7}}><div><div style=${{fontSize:14,fontWeight:800}}>${selectedMapField.name}</div><div style=${{fontSize:10,color:'#777'}}>${fieldDisplayAcres(selectedMapField).toFixed(2)} ac · ${FIELD_CROPS_CFG[selectedMapField.crop]?.label||'Not selected'}</div></div>${!simpleMap?html`<div style=${{display:'flex',gap:4}}><button onClick=${()=>viewField(selectedMapField)} class="btn btn-sm btn-out">Plan</button><button onClick=${()=>editField(selectedMapField)} class="btn btn-sm">Edit</button></div>`:null}</div>
+          <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start',marginBottom:7}}><div><div style=${{fontSize:14,fontWeight:800}}>${selectedMapField.name}</div><div style=${{fontSize:10,color:'#777'}}>${fieldDisplayAcres(selectedMapField).toFixed(2)} ac · ${FIELD_CROPS_CFG[selectedMapField.crop]?.label||'Not selected'}</div></div>${!simpleMap?html`<div style=${{display:'flex',gap:4,flexWrap:'wrap'}}><button onClick=${()=>viewField(selectedMapField)} class="btn btn-sm btn-out">Plan</button><button onClick=${()=>editField(selectedMapField)} class="btn btn-sm">Edit</button>${canEditFields?html`<button onClick=${()=>deleteField(selectedMapField.id)} class="btn btn-sm btn-danger">Delete</button>`:null}</div>`:null}</div>
           ${!simpleMap&&canEditFields?html`<div><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Assign crop for ${fieldYear}</div><div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button onClick=${()=>assignFieldCrop(selectedMapField.id,'')} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid #999',background:!FIELD_CROPS_CFG[selectedMapField.crop]?'#eceff1':'#fff',fontSize:9,fontWeight:700}}>⬜ Not selected</button>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>assignFieldCrop(selectedMapField.id,k)} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid '+c.color,background:selectedMapField.crop===k?c.color:c.color+'12',color:selectedMapField.crop===k?'#fff':c.color,fontSize:9,fontWeight:700}}>${c.icon} ${c.label}</button>`)}</div></div>`:html`<div style=${{fontSize:10,color:'#777'}}>Simple Map is view-only. Use Ask Farm Map or the crop visibility controls above.</div>`}
         </div>`:html`<div style=${{fontSize:10,color:'#888',textAlign:'center',padding:'4px 0 10px'}}>Tap a field on the map or sidebar to assign its crop or open its planting plan.</div>`}
       </div>
