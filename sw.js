@@ -1,5 +1,5 @@
-// hff-v46 — expanded shared crop library + Caribbean pumpkin planning; network-first HTML, offline app shell
-const CACHE='hff-v47';
+// hff-v48 — mapped tunnel strawberry zones; network-first HTML, offline app shell
+const CACHE='hff-v48';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
