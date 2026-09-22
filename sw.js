@@ -1,5 +1,5 @@
-// hff-v44 — compact shipped history + automatic inventory deduction on shipment; network-first HTML, offline app shell
-const CACHE='hff-v44';
+// hff-v45 — shared order snapshot/tombstone sync + map field deletion; network-first HTML, offline app shell
+const CACHE='hff-v45';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
