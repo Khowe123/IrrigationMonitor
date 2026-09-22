@@ -4660,12 +4660,70 @@ const TUNNEL_STRAWBERRY_ZONE_DEFAULTS=[
   {id:'z4',label:'Zone 4',bays:14},
   {id:'z5',label:'Zone 5',bays:6},
 ];
+
+const TUNNEL_ZONE_COLORS={z1:'#6f8fbd',z2:'#4d78a8',z3:'#8bc34a',z4:'#7d97c4',z5:'#a978a0'};
+function tunnelZoneColor(id){return TUNNEL_ZONE_COLORS[id]||'#8e4162';}
+function tunnelBayIds(tunnelsPerSide=24){
+  const out=[];for(const side of ['N','S'])for(let i=1;i<=tunnelsPerSide;i++)out.push(side+i);return out;
+}
+function defaultTunnelBayAssignments(tunnelsPerSide=24){
+  const out={};let col=1;
+  TUNNEL_STRAWBERRY_ZONE_DEFAULTS.forEach(z=>{
+    const pairs=Math.floor(z.bays/2);
+    for(let i=0;i<pairs&&col<=tunnelsPerSide;i++,col++){out['N'+col]=z.id;out['S'+col]=z.id;}
+  });
+  while(col<=tunnelsPerSide){out['N'+col]='';out['S'+col]='';col++;}
+  return out;
+}
+function normalizeTunnelBayAssignments(src,tunnelsPerSide=24){
+  const valid=new Set(TUNNEL_STRAWBERRY_ZONE_DEFAULTS.map(z=>z.id)),def=defaultTunnelBayAssignments(tunnelsPerSide),x=(src&&typeof src==='object')?src:{};
+  const out={};for(const id of tunnelBayIds(tunnelsPerSide)){
+    const val=Object.prototype.hasOwnProperty.call(x,id)?String(x[id]||''):String(def[id]||'');out[id]=valid.has(val)?val:'';
+  }
+  return out;
+}
+function tunnelAssignmentCounts(assignments,tunnelsPerSide=24){
+  const counts={};TUNNEL_STRAWBERRY_ZONE_DEFAULTS.forEach(z=>counts[z.id]={N:0,S:0,total:0});
+  for(const side of ['N','S'])for(let i=1;i<=tunnelsPerSide;i++){
+    const z=assignments[side+i];if(counts[z]){counts[z][side]++;counts[z].total++;}
+  }
+  return counts;
+}
+function buildTunnelStrawberryMapLayout(latlngs,bearingDeg,startSide,p){
+  const tp=normalizeTunnelStrawberryPlan(p),proj=fieldProjection(latlngs);if(!proj||proj.pts.length<3)return null;
+  const axes=fieldAxes(bearingDeg),uv=proj.pts.map(q=>xyToUV(q,axes));
+  const us=uv.map(q=>q.u),vs=uv.map(q=>q.v),uMin=Math.min(...us),uMax=Math.max(...us),vMin=Math.min(...vs),vMax=Math.max(...vs);
+  const availU=uMax-uMin,availV=vMax-vMin,physicalLen=tp.northLengthFt+tp.southLengthFt;
+  const lenScale=physicalLen>0?Math.min(1,availU/physicalLen):1,nLen=tp.northLengthFt*lenScale,sLen=tp.southLengthFt*lenScale;
+  const centreGap=Math.max(0,availU-nLen-sLen),northPositive=axes.uy>=0;
+  let northRange,southRange;
+  if(northPositive){northRange=[uMax-nLen,uMax];southRange=[uMin,uMin+sLen];}
+  else{northRange=[uMin,uMin+nLen];southRange=[uMax-sLen,uMax];}
+  const cols=tp.tunnelsPerSide,totalW=cols*tp.tunnelWidthFt,widthScale=totalW>0?Math.min(1,availV/totalW):1,cellW=tp.tunnelWidthFt*widthScale;
+  const usedW=cellW*cols,marginV=Math.max(0,(availV-usedW)/2),vLow=vMin+marginV,vHigh=vMax-marginV;
+  const cells=[];
+  for(let col=1;col<=cols;col++){
+    let lo,hi;if(startSide==='max'){hi=vHigh-(col-1)*cellW;lo=hi-cellW;}else{lo=vLow+(col-1)*cellW;hi=lo+cellW;}
+    for(const side of ['N','S']){
+      const ur=side==='N'?northRange:southRange,uLo=Math.min(...ur),uHi=Math.max(...ur),cornersUV=[{u:uLo,v:lo},{u:uHi,v:lo},{u:uHi,v:hi},{u:uLo,v:hi}];
+      const latlngsCell=cornersUV.map(q=>{const xy=uvToXY(q.u,q.v,axes);return proj.toLatLng(xy.x,xy.y);});
+      const centerUV={u:(uLo+uHi)/2,v:(lo+hi)/2},xy=uvToXY(centerUV.u,centerUV.v,axes),center=proj.toLatLng(xy.x,xy.y),id=side+col;
+      cells.push({id,side,col,zoneId:tp.bayAssignments[id]||'',latlngs:latlngsCell,center});
+    }
+  }
+  const zoneCenters={};TUNNEL_STRAWBERRY_ZONE_DEFAULTS.forEach(z=>{const arr=cells.filter(c=>c.zoneId===z.id);if(!arr.length)return;zoneCenters[z.id]={lat:arr.reduce((a,c)=>a+c.center.lat,0)/arr.length,lng:arr.reduce((a,c)=>a+c.center.lng,0)/arr.length};});
+  const northInner=northPositive?Math.min(...northRange):Math.max(...northRange),southInner=northPositive?Math.max(...southRange):Math.min(...southRange),centreU=(northInner+southInner)/2;
+  const cxy1=uvToXY(centreU,vLow,axes),cxy2=uvToXY(centreU,vHigh,axes),centreLine=[proj.toLatLng(cxy1.x,cxy1.y),proj.toLatLng(cxy2.x,cxy2.y)];
+  return{plan:tp,projection:proj,axes,cells,zoneCenters,centreLine,availableLengthFt:availU,availableWidthFt:availV,visualTunnelWidthFt:cellW,centreGapFt:centreGap,widthScale,lenScale};
+}
 function newTunnelStrawberryPart(id,label,bays){
   return{id,label,bays,variety:'Florida Beauty',plantsPerTray:6,substrate:'Dutch Plantin Berrymix',substrateStatus:'new',notes:''};
 }
 function newTunnelStrawberryPlan(){
   return{
+    tunnelsPerSide:24,tunnelWidthFt:30,northLengthFt:300,southLengthFt:307,
     rowsPerBay:7,traysPerRow:95,trayLengthM:1,substrateLPerTray:16,
+    bayAssignments:defaultTunnelBayAssignments(24),
     palletBasis:'pallets_per_bay',palletFactor:1.35,containerPallets:24,containerMt:22,
     zones:TUNNEL_STRAWBERRY_ZONE_DEFAULTS.map(z=>({
       ...z,split:false,
@@ -4687,15 +4745,19 @@ function normalizeTunnelStrawberryPart(p,defId,defLabel,defBays){
 }
 function normalizeTunnelStrawberryPlan(p){
   const d=newTunnelStrawberryPlan(),x=p||{};
+  const tunnelsPerSide=Math.max(1,parseInt(x.tunnelsPerSide,10)||d.tunnelsPerSide),tunnelWidthFt=Math.max(1,parseFloat(x.tunnelWidthFt)||d.tunnelWidthFt);
+  const northLengthFt=Math.max(1,parseFloat(x.northLengthFt)||d.northLengthFt),southLengthFt=Math.max(1,parseFloat(x.southLengthFt)||d.southLengthFt);
   const rowsPerBay=Math.max(1,parseInt(x.rowsPerBay,10)||d.rowsPerBay),traysPerRow=Math.max(1,parseInt(x.traysPerRow,10)||d.traysPerRow);
   const trayLengthM=Math.max(.1,parseFloat(x.trayLengthM)||d.trayLengthM),substrateLPerTray=Math.max(1,parseFloat(x.substrateLPerTray)||d.substrateLPerTray);
+  const bayAssignments=normalizeTunnelBayAssignments(x.bayAssignments,tunnelsPerSide),counts=tunnelAssignmentCounts(bayAssignments,tunnelsPerSide);
   const srcZones=Array.isArray(x.zones)?x.zones:[];
   const zones=TUNNEL_STRAWBERRY_ZONE_DEFAULTS.map((zd,zi)=>{
-    const z=srcZones.find(v=>v?.id===zd.id)||srcZones[zi]||{},bays=Math.max(0,isFinite(parseFloat(z.bays))?parseFloat(z.bays):zd.bays),split=!!z.split;
+    const z=srcZones.find(v=>v?.id===zd.id)||srcZones[zi]||{},bays=counts[zd.id]?.total||0,split=!!z.split;
     let parts=Array.isArray(z.parts)?z.parts:[];
     if(split){
-      const a=parts[0]||{},b=parts[1]||{},halfA=isFinite(parseFloat(a.bays))?parseFloat(a.bays):Math.ceil(bays/2),halfB=isFinite(parseFloat(b.bays))?parseFloat(b.bays):Math.max(0,bays-halfA);
-      parts=[normalizeTunnelStrawberryPart(a,zd.id+'_n',zd.label+' North',halfA),normalizeTunnelStrawberryPart(b,zd.id+'_s',zd.label+' South',halfB)];
+      const a=parts.find(v=>String(v?.id||'').endsWith('_n'))||parts[0]||{},b=parts.find(v=>String(v?.id||'').endsWith('_s'))||parts[1]||{};
+      parts=[normalizeTunnelStrawberryPart(a,zd.id+'_n',zd.label+' North',counts[zd.id]?.N||0),normalizeTunnelStrawberryPart(b,zd.id+'_s',zd.label+' South',counts[zd.id]?.S||0)];
+      parts[0].bays=counts[zd.id]?.N||0;parts[0].label=zd.label+' North';parts[1].bays=counts[zd.id]?.S||0;parts[1].label=zd.label+' South';
     }else{
       const a=parts[0]||{};parts=[normalizeTunnelStrawberryPart(a,zd.id+'_all',zd.label,bays)];parts[0].bays=bays;parts[0].label=zd.label;
     }
@@ -4712,6 +4774,7 @@ function normalizeTunnelStrawberryPlan(p){
     usdPerMt:Math.max(0,parseFloat(q.usdPerMt)||0),fxCadPerUsd:Math.max(.01,parseFloat(q.fxCadPerUsd)||1.37),extraCadPerMt:Math.max(0,parseFloat(q.extraCadPerMt)||0)
   }));
   return{
+    tunnelsPerSide,tunnelWidthFt,northLengthFt,southLengthFt,bayAssignments,
     rowsPerBay,traysPerRow,trayLengthM,substrateLPerTray,
     palletBasis:x.palletBasis==='bays_per_pallet'?'bays_per_pallet':'pallets_per_bay',
     palletFactor:Math.max(.01,parseFloat(x.palletFactor)||d.palletFactor),
@@ -4740,7 +4803,8 @@ function tunnelStrawberrySummary(p){
   });
   const palletsNeeded=tp.palletBasis==='bays_per_pallet'?newBays/tp.palletFactor:newBays*tp.palletFactor;
   const palletMt=tp.containerMt/tp.containerPallets,metricTons=palletsNeeded*palletMt,containerEq=palletsNeeded/tp.containerPallets,fullContainers=palletsNeeded>0?Math.ceil(containerEq):0;
-  return{plan:tp,traysPerBay,totalBays,totalTrays,totalPlants,totalSubstrateL,newBays,newTrays,newSubstrateL,rows,varieties:Object.values(varieties),substrates:Object.values(substrates),palletsNeeded,palletMt,metricTons,containerEq,fullContainers};
+  const physicalBays=tp.tunnelsPerSide*2,unassignedBays=Math.max(0,physicalBays-totalBays);
+  return{plan:tp,traysPerBay,totalBays,physicalBays,unassignedBays,totalTrays,totalPlants,totalSubstrateL,newBays,newTrays,newSubstrateL,rows,varieties:Object.values(varieties),substrates:Object.values(substrates),palletsNeeded,palletMt,metricTons,containerEq,fullContainers};
 }
 function tunnelCoirQuoteRows(summary){
   return(summary?.plan?.quotes||[]).map(q=>{const cadPerMt=q.usdPerMt*q.fxCadPerUsd+q.extraCadPerMt,planCost=summary.metricTons*cadPerMt,fullContainerCost=summary.fullContainers*summary.plan.containerMt*cadPerMt,cadPerTray=summary.newTrays>0?planCost/summary.newTrays:0;return{...q,cadPerMt,planCost,fullContainerCost,cadPerTray};});
@@ -5198,6 +5262,7 @@ function FieldMapper({staffProfile}){
   const[openCropGroups,setOpenCropGroups]=useState({});
   const[farmLocations,setFarmLocations]=useState(()=>{const saved=normalizeFarmLocations(LS.get('hff:farm_locations',[]));return saved.length?mergeFarmLocations(defaultFarmLocations(),saved):defaultFarmLocations();});
   const[emergencyEditLoc,setEmergencyEditLoc]=useState(null);
+  const[tunnelAssignZone,setTunnelAssignZone]=useState(null); // z1..z5 or '' for unassigned; select then tap tunnel on map
 
   const mapRef=useRef(null);
   const leafletRef=useRef(null);
@@ -5379,7 +5444,27 @@ function FieldMapper({staffProfile}){
       markerLayerRef.current=L.layerGroup(handles).addTo(map);
     }
     const layers=[];
-    if(pts.length>=3&&cropCfg){
+    if(pts.length>=3&&cropCfg&&isTunnelStrawberryPlanningCrop(d.crop)){
+      const tl=buildTunnelStrawberryMapLayout(pts,fieldBearing(d),d.startSide,d.tunnelStrawberryPlan);
+      if(tl){
+        tl.cells.forEach(cell=>{
+          const co=cell.zoneId?tunnelZoneColor(cell.zoneId):'#9e9e9e',assigned=cell.zoneId||'Unassigned';
+          const pg=L.polygon(cell.latlngs.map(p=>[p.lat,p.lng]),{color:co,fillColor:co,fillOpacity:cell.zoneId?.28:.08,weight:cell.zoneId?1.5:1,dashArray:cell.zoneId?null:'4 3',interactive:showVertices});
+          if(showVertices){
+            pg.bindTooltip((cell.side==='N'?'North':'South')+' tunnel '+cell.col+' · '+assigned,{sticky:true,direction:'top'});
+            pg.on('click',e=>{L.DomEvent.stopPropagation(e);if(tunnelAssignZone!==null)assignTunnelBay(cell.id,tunnelAssignZone);});
+          }
+          layers.push(pg);
+        });
+        Object.entries(tl.zoneCenters).forEach(([zid,center])=>{
+          const z=tl.plan.zones.find(x=>x.id===zid),co=tunnelZoneColor(zid),partText=z?.split?'N '+(z.parts[0]?.variety||'')+' / S '+(z.parts[1]?.variety||''):(z?.parts?.[0]?.variety||'');
+          const txt=(z?.label||zid)+(partText?' · '+partText:'');
+          layers.push(L.marker([center.lat,center.lng],{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:rgba(255,255,255,.94);border:2px solid '+co+';color:'+co+';font:bold 9px system-ui;border-radius:9px;padding:2px 5px;white-space:nowrap">'+txt+'</div>',iconSize:[130,19],iconAnchor:[65,9]})}));
+        });
+        // Emphasize the centre lane separating north and south tunnel halves.
+        if(tl.centreLine?.length===2)layers.push(L.polyline(tl.centreLine.map(p=>[p.lat,p.lng]),{color:'#333',weight:2,opacity:.55,dashArray:'8 5'}));
+      }
+    }else if(pts.length>=3&&cropCfg){
       const plan=buildPolygonFieldPlan(cropCfg,pts,d.orientation,d.bearingDeg,d.startSide,d.pumpkinPlan);
       if(plan){
         const isPumpkin=isPumpkinPlanningCrop(d.crop),alloc=isPumpkin?calcPumpkinVarietyPlan(plan,d.pumpkinPlan):null;
@@ -5599,13 +5684,22 @@ function FieldMapper({staffProfile}){
   function patchTunnelStrawberryPlan(patch){
     const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);setTunnelStrawberryPlan({...tp,...patch});
   }
+  function assignTunnelBay(bayId,zoneId){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan),next={...tp.bayAssignments,[bayId]:zoneId||''};
+    setTunnelStrawberryPlan({...tp,bayAssignments:next});
+  }
+  function resetTunnelBayAssignments(){
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);
+    setTunnelStrawberryPlan({...tp,bayAssignments:defaultTunnelBayAssignments(tp.tunnelsPerSide)});
+    setTunnelAssignZone(null);
+  }
   function patchTunnelZone(zoneId,patch){
     const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);setTunnelStrawberryPlan({...tp,zones:tp.zones.map(z=>z.id===zoneId?{...z,...patch}:z)});
   }
   function toggleTunnelZoneSplit(zoneId,on){
-    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan);const zones=tp.zones.map(z=>{
+    const tp=normalizeTunnelStrawberryPlan(draftRef.current.tunnelStrawberryPlan),counts=tunnelAssignmentCounts(tp.bayAssignments,tp.tunnelsPerSide);const zones=tp.zones.map(z=>{
       if(z.id!==zoneId)return z;
-      if(on){const src=z.parts[0]||newTunnelStrawberryPart(z.id+'_all',z.label,z.bays),north=Math.ceil(z.bays/2),south=Math.max(0,z.bays-north);return{...z,split:true,parts:[{...src,id:z.id+'_n',label:z.label+' North',bays:north},{...src,id:z.id+'_s',label:z.label+' South',bays:south}]};}
+      if(on){const src=z.parts[0]||newTunnelStrawberryPart(z.id+'_all',z.label,z.bays),north=counts[z.id]?.N||0,south=counts[z.id]?.S||0;return{...z,split:true,parts:[{...src,id:z.id+'_n',label:z.label+' North',bays:north},{...src,id:z.id+'_s',label:z.label+' South',bays:south}]};}
       const src=z.parts[0]||newTunnelStrawberryPart(z.id+'_all',z.label,z.bays);return{...z,split:false,parts:[{...src,id:z.id+'_all',label:z.label,bays:z.bays}]};
     });setTunnelStrawberryPlan({...tp,zones});
   }
@@ -5733,7 +5827,7 @@ function FieldMapper({staffProfile}){
   useEffect(()=>{
     recalcCurrent(draft);
     if(leafletRef.current&&!useManual&&draft.latlngs?.length>=3)renderPlanOnMap(draft,mode==='edit');
-  },[draft.crop,draft.orientation,draft.bearingDeg,draft.startSide,draft.latlngs,draft.pumpkinPlan,draft.watermelonPlan,draft.tunnelStrawberryPlan,manualLen,manualWid,useManual,boundaryEdit,selectedVertex]);
+  },[draft.crop,draft.orientation,draft.bearingDeg,draft.startSide,draft.latlngs,draft.pumpkinPlan,draft.watermelonPlan,draft.tunnelStrawberryPlan,manualLen,manualWid,useManual,boundaryEdit,selectedVertex,tunnelAssignZone]);
 
   function clearDraw(){
     const nd={...draftRef.current,latlngs:[],startEdgePoint:null};applyDraft(nd,false);setStats(null);setSelectedVertex(null);setBoundaryEdit(false);setMapTool(null);clearMapLayers();
@@ -6117,13 +6211,15 @@ function FieldMapper({staffProfile}){
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <label class="fl" style=${{fontSize:11}}>Field Name</label><input class="ti" type="text" value=${draft.name} onInput=${e=>setDraft(d=>({...d,name:e.target.value}))} placeholder="e.g. Cox South East"/>
       <label class="fl" style=${{fontSize:11,marginTop:9}}>Crop</label><div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:6}}>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>{const cur=draftRef.current,nd={...cur,crop:k,varieties:[],sectionMeta:[],pumpkinPlan:isPumpkinPlanningCrop(k)?normalizePumpkinPlan(cur.pumpkinPlan):cur.pumpkinPlan,watermelonPlan:isWatermelonPlanningCrop(k)?normalizeWatermelonPlan(cur.watermelonPlan):cur.watermelonPlan,tunnelStrawberryPlan:isTunnelStrawberryPlanningCrop(k)?normalizeTunnelStrawberryPlan(cur.tunnelStrawberryPlan):cur.tunnelStrawberryPlan};applyDraft(nd);}} style=${{padding:'5px 10px',borderRadius:7,border:'1.5px solid '+(draft.crop===k?c.color:'#ddd'),background:draft.crop===k?c.color:'transparent',color:draft.crop===k?'#fff':'#888',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>${c.icon} ${c.label}</button>`)}</div>
-      <div style=${{fontSize:11,color:'#888'}}>${!FIELD_CROPS_CFG[draft.crop]?'Choose a crop to assign this field.':isTunnelStrawberryPlanningCrop(draft.crop)?html`<strong>Zone-based tunnel planner</strong> · 48 bays across Zones 1–5 · variety, plant density, substrate and irrigation capacity planning`:cfg.planningMode==='simple'?html`<strong>Simple acreage crop</strong> · boundary, acreage, year assignment, notes and rotation history only`:isPumpkinPlanningCrop(draft.crop)?html`<strong>3-row Monosem</strong> · 5 ft row centres · 15 ft/pass · default 2 swaths (6 rows) planted perpendicular at each headland`:isWatermelonPlanningCrop(draft.crop)?html`<strong>8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath</strong> · triploid 36" · diploid 108" (1 pollinator : 3 seedless)`:html`Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>${cfg.twinRow?html` · ${cfg.twinRowSpacing}" twin-row spacing`:null}${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:null}`}</div>
+      <div style=${{fontSize:11,color:'#888'}}>${!FIELD_CROPS_CFG[draft.crop]?'Choose a crop to assign this field.':isTunnelStrawberryPlanningCrop(draft.crop)?html`<strong>Mapped tunnel planner</strong> · 24 north + 24 south tunnels · assign each 30 ft tunnel to Zones 1–5 · variety, substrate and irrigation planning`:cfg.planningMode==='simple'?html`<strong>Simple acreage crop</strong> · boundary, acreage, year assignment, notes and rotation history only`:isPumpkinPlanningCrop(draft.crop)?html`<strong>3-row Monosem</strong> · 5 ft row centres · 15 ft/pass · default 2 swaths (6 rows) planted perpendicular at each headland`:isWatermelonPlanningCrop(draft.crop)?html`<strong>8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath</strong> · triploid 36" · diploid 108" (1 pollinator : 3 seedless)`:html`Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>${cfg.twinRow?html` · ${cfg.twinRowSpacing}" twin-row spacing`:null}${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:null}`}</div>
       ${FIELD_CROPS_CFG[draft.crop]&&(cfg.planningMode!=='simple'||isTunnelStrawberryPlanningCrop(draft.crop))?html`<div style=${{marginTop:9,paddingTop:8,borderTop:'1px solid #eee'}}><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Variety library — ${cropVarieties.length} varieties</div><div style=${{display:'flex',gap:5}}><input class="ti" type="text" value=${newVariety} onInput=${e=>setNewVariety(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'){e.preventDefault();addCustomVariety();}}} placeholder="Add a new ${cfg.label} variety…" style=${{flex:1,fontSize:11,padding:'6px 8px'}}/><button onClick=${addCustomVariety} disabled=${!newVariety.trim()} class="btn btn-sm" style=${{padding:'6px 10px',opacity:newVariety.trim()?1:.45}}>+ Add</button></div><div style=${{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}}>${cropVarieties.map(v=>html`<span style=${{display:'inline-flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:12,padding:'2px 5px 2px 7px',fontSize:9,background:'#fff'}}>${v}<button onClick=${()=>removeCustomVariety(v)} title="Remove variety" style=${{border:'none',background:'transparent',color:'#b42318',fontWeight:900,cursor:'pointer',padding:'0 2px'}}>×</button></span>`)}</div><div style=${{fontSize:9,color:'#999',marginTop:4}}>Add or remove varieties here. Changes sync to the other farm devices; existing saved plans are not silently rewritten.</div></div>`:html`<div style=${{fontSize:10,color:'#b36b00',marginTop:7}}>Assign a crop before building rows or varieties.</div>`}
     </div>
 
 
     ${isTunnelStrawberryPlanningCrop(draft.crop)?html`<div class="card" style=${{padding:'12px 14px',marginBottom:8,borderColor:'#c8a8bb'}}>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,marginBottom:8}}><div><div style=${{fontWeight:800,fontSize:13,color:'#71324d'}}>🍓 Tunnel Strawberry Zone Plan</div><div style=${{fontSize:10,color:'#777',marginTop:2}}>Build each irrigation zone by bays. A bay = ${tunnelStrawberryPP.rowsPerBay} rows × ${tunnelStrawberryPP.traysPerRow} one-metre trays = <strong>${tunnelStrawberryStats.traysPerBay.toLocaleString()} trays</strong>.</div></div><div style=${{fontSize:10,fontWeight:800,color:tunnelStrawberryStats.totalBays===48?'#2e7d32':'#c62828',whiteSpace:'nowrap'}}>${tunnelStrawberryStats.totalBays} / 48 bays</div></div>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,marginBottom:8}}><div><div style=${{fontWeight:800,fontSize:13,color:'#71324d'}}>🍓 Tunnel Strawberry Zone Plan</div><div style=${{fontSize:10,color:'#777',marginTop:2}}>The satellite map now draws each tunnel individually: <strong>${tunnelStrawberryPP.tunnelsPerSide} north × ${tunnelStrawberryPP.northLengthFt} ft</strong> and <strong>${tunnelStrawberryPP.tunnelsPerSide} south × ${tunnelStrawberryPP.southLengthFt} ft</strong>, each ${tunnelStrawberryPP.tunnelWidthFt} ft wide. Zone 1 starts from the selected start side.</div></div><div style=${{fontSize:10,fontWeight:800,color:tunnelStrawberryStats.unassignedBays===0?'#2e7d32':'#c62828',whiteSpace:'nowrap'}}>${tunnelStrawberryStats.totalBays} / ${tunnelStrawberryStats.physicalBays} assigned</div></div>
+
+      <div style=${{background:'#f8f3f6',border:'1px solid #eadde4',borderRadius:8,padding:'8px 9px',marginBottom:9}}><div style=${{fontSize:10,fontWeight:800,color:'#71324d',marginBottom:5}}>Assign tunnels on the map</div><div style=${{fontSize:9,color:'#777',marginBottom:6}}>Choose a zone below, then tap individual north/south tunnel bays on the satellite map. Use <strong>Zone 1 side / Flip</strong> above the map to mirror the whole layout.</div><div style=${{display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>${tunnelStrawberryPP.zones.map(z=>html`<button onClick=${()=>setTunnelAssignZone(tunnelAssignZone===z.id?null:z.id)} style=${{padding:'5px 8px',borderRadius:7,border:'2px solid '+tunnelZoneColor(z.id),background:tunnelAssignZone===z.id?tunnelZoneColor(z.id):'#fff',color:tunnelAssignZone===z.id?'#fff':tunnelZoneColor(z.id),fontWeight:800,fontSize:10,cursor:'pointer'}}>${z.label} · ${z.bays}</button>`)}<button onClick=${()=>setTunnelAssignZone(tunnelAssignZone===''?null:'')} style=${{padding:'5px 8px',borderRadius:7,border:'2px solid #999',background:tunnelAssignZone===''?'#777':'#fff',color:tunnelAssignZone===''?'#fff':'#666',fontWeight:800,fontSize:10,cursor:'pointer'}}>Unassigned</button><button onClick=${resetTunnelBayAssignments} class="btn btn-sm btn-out" style=${{padding:'5px 8px',marginLeft:'auto'}}>Reset default 6/10/12/14/6</button></div>${tunnelAssignZone!==null?html`<div style=${{fontSize:9,fontWeight:700,color:'#71324d',marginTop:6}}>Map assignment active: ${tunnelAssignZone===''?'tap tunnels to unassign them':('tap tunnels to add them to '+(tunnelStrawberryPP.zones.find(z=>z.id===tunnelAssignZone)?.label||tunnelAssignZone))}.</div>`:null}</div>
 
       <div style=${{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:6,marginBottom:10}}>${[
         ['TRAYS',Math.round(tunnelStrawberryStats.totalTrays).toLocaleString()],
@@ -6132,14 +6228,13 @@ function FieldMapper({staffProfile}){
         ['NEW COIR BAYS',tunnelStrawberryStats.newBays.toFixed(1)]
       ].map(([l,v])=>html`<div style=${{background:'#f7f1f4',borderRadius:7,padding:'7px',textAlign:'center'}}><div style=${{fontSize:13,fontWeight:800,color:'#71324d'}}>${v}</div><div style=${{fontSize:8,color:'#999'}}>${l}</div></div>`)}</div>
 
-      <details style=${{marginBottom:9}}><summary style=${{cursor:'pointer',fontSize:10,fontWeight:800,color:'#666'}}>Tunnel constants / future expansion</summary><div style=${{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:6,marginTop:7}}><label class="fl">Rows / bay<input class="ti" type="number" min="1" value=${tunnelStrawberryPP.rowsPerBay} onInput=${e=>patchTunnelStrawberryPlan({rowsPerBay:e.target.value})}/></label><label class="fl">Trays / row<input class="ti" type="number" min="1" value=${tunnelStrawberryPP.traysPerRow} onInput=${e=>patchTunnelStrawberryPlan({traysPerRow:e.target.value})}/></label><label class="fl">Tray length (m)<input class="ti" type="number" min="0.1" step="0.1" value=${tunnelStrawberryPP.trayLengthM} onInput=${e=>patchTunnelStrawberryPlan({trayLengthM:e.target.value})}/></label><label class="fl">Substrate L / tray<input class="ti" type="number" min="1" step="0.5" value=${tunnelStrawberryPP.substrateLPerTray} onInput=${e=>patchTunnelStrawberryPlan({substrateLPerTray:e.target.value})}/></label></div></details>
+      <details style=${{marginBottom:9}} open><summary style=${{cursor:'pointer',fontSize:10,fontWeight:800,color:'#666'}}>Tunnel geometry + tray constants</summary><div style=${{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:6,marginTop:7}}><label class="fl">Tunnels / side<input class="ti" type="number" min="1" value=${tunnelStrawberryPP.tunnelsPerSide} onInput=${e=>patchTunnelStrawberryPlan({tunnelsPerSide:e.target.value})}/></label><label class="fl">Tunnel width (ft)<input class="ti" type="number" min="1" step="1" value=${tunnelStrawberryPP.tunnelWidthFt} onInput=${e=>patchTunnelStrawberryPlan({tunnelWidthFt:e.target.value})}/></label><label class="fl">North length (ft)<input class="ti" type="number" min="1" step="1" value=${tunnelStrawberryPP.northLengthFt} onInput=${e=>patchTunnelStrawberryPlan({northLengthFt:e.target.value})}/></label><label class="fl">South length (ft)<input class="ti" type="number" min="1" step="1" value=${tunnelStrawberryPP.southLengthFt} onInput=${e=>patchTunnelStrawberryPlan({southLengthFt:e.target.value})}/></label><label class="fl">Rows / tunnel<input class="ti" type="number" min="1" value=${tunnelStrawberryPP.rowsPerBay} onInput=${e=>patchTunnelStrawberryPlan({rowsPerBay:e.target.value})}/></label><label class="fl">Trays / row<input class="ti" type="number" min="1" value=${tunnelStrawberryPP.traysPerRow} onInput=${e=>patchTunnelStrawberryPlan({traysPerRow:e.target.value})}/></label><label class="fl">Tray length (m)<input class="ti" type="number" min="0.1" step="0.1" value=${tunnelStrawberryPP.trayLengthM} onInput=${e=>patchTunnelStrawberryPlan({trayLengthM:e.target.value})}/></label><label class="fl">Substrate L / tray<input class="ti" type="number" min="1" step="0.5" value=${tunnelStrawberryPP.substrateLPerTray} onInput=${e=>patchTunnelStrawberryPlan({substrateLPerTray:e.target.value})}/></label></div></details>
 
-      ${tunnelStrawberryPP.zones.map((z,zi)=>{const zs=tunnelStrawberryStats.rows.find(x=>x.id===z.id),partBaySum=z.parts.reduce((a,p)=>a+(parseFloat(p.bays)||0),0);return html`<div style=${{border:'1px solid #eadde4',borderLeft:'4px solid '+(zi%2?'#8e4162':'#b06c8a'),borderRadius:9,padding:'9px 10px',marginBottom:8}}>
+      ${tunnelStrawberryPP.zones.map((z,zi)=>{const zs=tunnelStrawberryStats.rows.find(x=>x.id===z.id),partBaySum=z.parts.reduce((a,p)=>a+(parseFloat(p.bays)||0),0);return html`<div style=${{border:'1px solid #eadde4',borderLeft:'4px solid '+tunnelZoneColor(z.id),borderRadius:9,padding:'9px 10px',marginBottom:8}}>
         <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:6}}><div><strong style=${{fontSize:12}}>${z.label}</strong><span style=${{fontSize:9,color:'#888',marginLeft:6}}>${z.bays} bays · ${Math.round(zs?.trays||0).toLocaleString()} trays · ${Math.round(zs?.plants||0).toLocaleString()} plants</span></div><label style=${{display:'flex',alignItems:'center',gap:4,fontSize:9,fontWeight:700,color:'#666'}}><input type="checkbox" checked=${z.split} onChange=${e=>toggleTunnelZoneSplit(z.id,e.target.checked)}/> Split N/S</label></div>
-        <div style=${{display:'grid',gridTemplateColumns:'90px repeat(4,minmax(0,1fr))',gap:5,alignItems:'end',marginBottom:6}}><label class="fl">Zone bays<input class="ti" type="number" min="0" step="1" value=${z.bays} onInput=${e=>patchTunnelZone(z.id,{bays:e.target.value})}/></label><label class="fl">Priva valve<input class="ti" value=${z.irrigation.privaValve} onInput=${e=>patchTunnelIrrigation(z.id,{privaValve:e.target.value})} placeholder="e.g. 2"/></label><label class="fl">Unit L/hr<input class="ti" type="number" min="0.1" step="0.1" value=${z.irrigation.unitCapacityLph} onInput=${e=>patchTunnelIrrigation(z.id,{unitCapacityLph:e.target.value})}/></label><label class="fl">Drippers / tray<input class="ti" type="number" min="1" step="1" value=${z.irrigation.drippersPerTray} onInput=${e=>patchTunnelIrrigation(z.id,{drippersPerTray:e.target.value})}/></label><label class="fl">Valve group<input class="ti" value=${z.irrigation.privaValveGroup} onInput=${e=>patchTunnelIrrigation(z.id,{privaValveGroup:e.target.value})} placeholder="group"/></label></div>
+        <div style=${{display:'grid',gridTemplateColumns:'90px repeat(4,minmax(0,1fr))',gap:5,alignItems:'end',marginBottom:6}}><div><div class="fl">Assigned bays</div><div style=${{padding:'8px 6px',border:'1px solid #ddd',borderRadius:7,background:'#f7f7f5',fontSize:12,fontWeight:800,color:tunnelZoneColor(z.id)}}>${z.bays}</div></div><label class="fl">Priva valve<input class="ti" value=${z.irrigation.privaValve} onInput=${e=>patchTunnelIrrigation(z.id,{privaValve:e.target.value})} placeholder="e.g. 2"/></label><label class="fl">Unit L/hr<input class="ti" type="number" min="0.1" step="0.1" value=${z.irrigation.unitCapacityLph} onInput=${e=>patchTunnelIrrigation(z.id,{unitCapacityLph:e.target.value})}/></label><label class="fl">Drippers / tray<input class="ti" type="number" min="1" step="1" value=${z.irrigation.drippersPerTray} onInput=${e=>patchTunnelIrrigation(z.id,{drippersPerTray:e.target.value})}/></label><label class="fl">Valve group<input class="ti" value=${z.irrigation.privaValveGroup} onInput=${e=>patchTunnelIrrigation(z.id,{privaValveGroup:e.target.value})} placeholder="group"/></label></div>
         <div style=${{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:9,color:'#666',marginBottom:7}}><label style=${{display:'flex',gap:4,alignItems:'center'}}><input type="checkbox" checked=${z.irrigation.smsStation} onChange=${e=>patchTunnelIrrigation(z.id,{smsStation:e.target.checked})}/> SMS station</label><span>Drip units <strong>${Math.round(zs?.dripUnits||0).toLocaleString()}</strong></span><span>2-min cycle <strong>${(zs?.cycleMl||0).toFixed(0)} mL</strong></span><span>≈ <strong>${(zs?.cyclePct||0).toFixed(2)}%</strong> of substrate volume / drip unit</span><span>Water <strong>${(zs?.waterM3Hr||0).toFixed(1)} m³/hr</strong></span></div>
-        ${z.parts.map((part,pi)=>{const ps=zs?.parts?.[pi];return html`<div style=${{display:'grid',gridTemplateColumns:z.split?'1.05fr 65px 1.2fr 80px 1.25fr 92px':'1.2fr 1.2fr 80px 1.25fr 92px',gap:5,alignItems:'end',padding:'6px',background:'#faf8f9',borderRadius:7,marginTop:5}}>${z.split?html`<label class="fl">Block<input class="ti" value=${part.label} onInput=${e=>patchTunnelPart(z.id,pi,{label:e.target.value})}/></label><label class="fl">Bays<input class="ti" type="number" min="0" step="1" value=${part.bays} onInput=${e=>patchTunnelPart(z.id,pi,{bays:e.target.value})}/></label>`:html`<div><div class="fl">Block</div><div style=${{fontSize:11,fontWeight:700,paddingBottom:8}}>${part.label}</div></div>`}<label class="fl">Variety<select class="ti" value=${part.variety} onChange=${e=>patchTunnelPart(z.id,pi,{variety:e.target.value})}><option value="">Unassigned</option>${cropVarieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Plants / tray<input class="ti" type="number" min="5" max="10" step="1" value=${part.plantsPerTray} onInput=${e=>patchTunnelPart(z.id,pi,{plantsPerTray:e.target.value})}/></label><label class="fl">Substrate<input class="ti" value=${part.substrate} onInput=${e=>patchTunnelPart(z.id,pi,{substrate:e.target.value})} placeholder="Coir type / supplier"/></label><label class="fl">Material<select class="ti" value=${part.substrateStatus} onChange=${e=>patchTunnelPart(z.id,pi,{substrateStatus:e.target.value})}><option value="new">New substrate</option><option value="reused">Reused substrate</option></select></label><div style=${{gridColumn:'1/-1',fontSize:9,color:'#777'}}>${Math.round(ps?.trays||0).toLocaleString()} trays · <strong>${Math.round(ps?.plants||0).toLocaleString()} plants</strong> · ${(ps?.substrateL||0)/1000?((ps?.substrateL||0)/1000).toFixed(1)+' m³ substrate':''}</div></div>`;})}
-        ${z.split&&Math.abs(partBaySum-z.bays)>.01?html`<div style=${{fontSize:9,color:'#c62828',fontWeight:700,marginTop:5}}>⚠ Split blocks total ${partBaySum} bays but ${z.label} is set to ${z.bays} bays.</div>`:null}
+        ${z.parts.map((part,pi)=>{const ps=zs?.parts?.[pi];return html`<div style=${{display:'grid',gridTemplateColumns:z.split?'1.05fr 65px 1.2fr 80px 1.25fr 92px':'1.2fr 1.2fr 80px 1.25fr 92px',gap:5,alignItems:'end',padding:'6px',background:'#faf8f9',borderRadius:7,marginTop:5}}>${z.split?html`<label class="fl">Block<input class="ti" value=${part.label} onInput=${e=>patchTunnelPart(z.id,pi,{label:e.target.value})}/></label><div><div class="fl">Bays</div><div style=${{padding:'8px 6px',border:'1px solid #ddd',borderRadius:7,background:'#f7f7f5',fontSize:11,fontWeight:800}}>${part.bays}</div></div>`:html`<div><div class="fl">Block</div><div style=${{fontSize:11,fontWeight:700,paddingBottom:8}}>${part.label}</div></div>`}<label class="fl">Variety<select class="ti" value=${part.variety} onChange=${e=>patchTunnelPart(z.id,pi,{variety:e.target.value})}><option value="">Unassigned</option>${cropVarieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Plants / tray<input class="ti" type="number" min="5" max="10" step="1" value=${part.plantsPerTray} onInput=${e=>patchTunnelPart(z.id,pi,{plantsPerTray:e.target.value})}/></label><label class="fl">Substrate<input class="ti" value=${part.substrate} onInput=${e=>patchTunnelPart(z.id,pi,{substrate:e.target.value})} placeholder="Coir type / supplier"/></label><label class="fl">Material<select class="ti" value=${part.substrateStatus} onChange=${e=>patchTunnelPart(z.id,pi,{substrateStatus:e.target.value})}><option value="new">New substrate</option><option value="reused">Reused substrate</option></select></label><div style=${{gridColumn:'1/-1',fontSize:9,color:'#777'}}>${Math.round(ps?.trays||0).toLocaleString()} trays · <strong>${Math.round(ps?.plants||0).toLocaleString()} plants</strong> · ${(ps?.substrateL||0)/1000?((ps?.substrateL||0)/1000).toFixed(1)+' m³ substrate':''}</div></div>`;})}
       </div>`;})}
 
       <div style=${{borderTop:'1px solid #eadde4',paddingTop:9,marginTop:3}}><div style=${{fontSize:11,fontWeight:800,color:'#71324d',marginBottom:6}}>Plant order summary</div>${tunnelStrawberryStats.varieties.sort((a,b)=>b.plants-a.plants).map(v=>html`<div style=${{display:'flex',justifyContent:'space-between',fontSize:10,padding:'2px 0'}}><span>${v.variety} · ${v.bays.toFixed(1)} bays</span><strong>${Math.round(v.plants).toLocaleString()} plants</strong></div>`)}</div>
@@ -6169,7 +6264,7 @@ function FieldMapper({staffProfile}){
         <button onClick=${beginAB} style=${{flex:'1 1 130px',padding:'7px 8px',borderRadius:7,border:'1.5px solid '+(draft.orientation==='AB'||mapTool==='abA'||mapTool==='abB'?'#1976d2':'#ddd'),background:draft.orientation==='AB'?'#eaf3ff':'#fff',color:draft.orientation==='AB'?'#155da0':'#555',fontWeight:700,fontSize:11,cursor:'pointer'}}>📍 Set A–B Line</button>
       </div>
       ${draft.orientation==='AB'?html`<div style=${{display:'flex',alignItems:'center',gap:6,marginTop:8}}><button onClick=${()=>adjustBearing(-.5)} class="btn btn-sm btn-out" style=${{padding:'5px 9px'}}>↶ −0.5°</button><div style=${{flex:1,textAlign:'center',fontSize:13,fontWeight:800,color:'#155da0'}}>A–B ${fieldBearing(draft).toFixed(1)}°</div><button onClick=${()=>adjustBearing(.5)} class="btn btn-sm btn-out" style=${{padding:'5px 9px'}}>+0.5° ↷</button></div>`:null}
-      <div style=${{display:'flex',alignItems:'center',gap:6,marginTop:9,flexWrap:'wrap'}}><span style=${{fontSize:11,fontWeight:600,color:'#666'}}>Section 1:</span><span style=${{fontSize:11,color:'#7a5200',fontWeight:700}}>${startSideLabel(draft)}</span><button onClick=${beginStartEdge} style=${{padding:'5px 8px',borderRadius:6,border:'1px solid #f0b43c',background:mapTool==='start'?'#fff3cd':'#fff',fontSize:10,fontWeight:700,color:'#7a5200',cursor:'pointer'}}>📍 Set Section 1 Edge</button><button onClick=${flipStartSide} style=${{padding:'5px 8px',borderRadius:6,border:'1px solid #ddd',background:'#fff',fontSize:10,fontWeight:700,color:'#666',cursor:'pointer'}}>⇄ Flip</button></div>
+      <div style=${{display:'flex',alignItems:'center',gap:6,marginTop:9,flexWrap:'wrap'}}><span style=${{fontSize:11,fontWeight:600,color:'#666'}}>${isTunnelStrawberryPlanningCrop(draft.crop)?'Zone 1 side:':'Section 1:'}</span><span style=${{fontSize:11,color:'#7a5200',fontWeight:700}}>${startSideLabel(draft)}</span><button onClick=${beginStartEdge} style=${{padding:'5px 8px',borderRadius:6,border:'1px solid #f0b43c',background:mapTool==='start'?'#fff3cd':'#fff',fontSize:10,fontWeight:700,color:'#7a5200',cursor:'pointer'}}>📍 ${isTunnelStrawberryPlanningCrop(draft.crop)?'Set Zone 1 Side':'Set Section 1 Edge'}</button><button onClick=${flipStartSide} style=${{padding:'5px 8px',borderRadius:6,border:'1px solid #ddd',background:'#fff',fontSize:10,fontWeight:700,color:'#666',cursor:'pointer'}}>⇄ Flip</button></div>
       <div style=${{fontSize:10,color:'#999',marginTop:6}}>For tractor GPS, set A and B along the fence/road you will actually use. Rows are generated parallel to that exact heading.</div>
     </div>
 
@@ -6177,8 +6272,8 @@ function FieldMapper({staffProfile}){
       <div style=${{padding:'8px 12px',borderBottom:'1px solid #f0f0f0',display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,flexWrap:'wrap'}}><span style=${{fontWeight:600,fontSize:12}}>📍 Satellite Boundary + Row Plan</span><div style=${{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}><label style=${{padding:'4px 9px',border:'1px solid #bbb',borderRadius:6,fontSize:10,fontWeight:600,cursor:'pointer',color:'#666'}}>↑ GeoJSON/KML<input type="file" accept=".geojson,.json,.kml" style=${{display:'none'}} onChange=${e=>{importBoundaryFile(e.target.files?.[0],true);e.target.value='';}}/></label><button onClick=${()=>setMapTool(t=>t==='draw'?null:'draw')} style=${{padding:'4px 10px',borderRadius:6,border:'1.5px solid '+(mapTool==='draw'?'#e65100':'#ddd'),background:mapTool==='draw'?'#e65100':'transparent',color:mapTool==='draw'?'#fff':'#888',fontSize:10,fontWeight:700,cursor:'pointer'}}>${mapTool==='draw'?'● Tap corners…':'Draw'}</button><button onClick=${toggleBoundaryEdit} style=${{padding:'4px 9px',borderRadius:6,border:'1.5px solid '+(boundaryEdit?'#1976d2':'#ddd'),background:boundaryEdit?'#eaf3ff':'#fff',color:boundaryEdit?'#155da0':'#666',fontSize:10,fontWeight:700,cursor:'pointer'}}>✏ Boundary</button><button onClick=${beginAddBoundaryPoint} disabled=${draft.latlngs.length<3} style=${{padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',background:'#fff',fontSize:10,fontWeight:700,color:'#666',opacity:draft.latlngs.length<3?.4:1}}>+ Point</button>${boundaryEdit?html`<button onClick=${deleteSelectedBoundaryPoint} disabled=${selectedVertex===null} style=${{padding:'4px 8px',borderRadius:6,border:'1px solid #ef9a9a',background:'#fff',fontSize:10,fontWeight:700,color:'#c62828',opacity:selectedVertex===null?.4:1}}>Delete point</button>`:null}<button onClick=${clearDraw} style=${{padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',background:'transparent',fontSize:10,cursor:'pointer',color:'#888'}}>Clear</button></div></div>
       ${boundaryEdit?html`<div style=${{padding:'6px 12px',background:'#eaf3ff',color:'#155da0',fontSize:10,fontWeight:600}}>Boundary edit: drag the white corner handles. Tap a handle to select it; use + Point or Delete point to change the polygon.</div>`:null}
       ${toolHint?html`<div style=${{padding:'6px 12px',background:'#fff8e1',color:'#8a6100',fontSize:11,fontWeight:700}}>👉 ${toolHint}</div>`:null}
-      <div ref=${mapRef} style=${{height:360,background:'#e0e8e0',position:'relative'}}>${!mapLoaded?html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#888',fontSize:12}}>${mapError||'Loading satellite map…'}</div>`:null}</div>
-      ${draft.latlngs?.length?html`<div style=${{padding:'5px 12px',fontSize:11,color:'#2e7d32',background:'#f0faf4'}}>${draft.latlngs.length} boundary corners · ${(polyAreaSqFt(draft.latlngs)/43560).toFixed(2)} actual acres · ${bearingLabel(draft)}</div>`:null}
+      <div ref=${mapRef} style=${{height:isTunnelStrawberryPlanningCrop(draft.crop)?500:360,background:'#e0e8e0',position:'relative'}}>${!mapLoaded?html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#888',fontSize:12}}>${mapError||'Loading satellite map…'}</div>`:null}</div>
+      ${draft.latlngs?.length?html`<div style=${{padding:'5px 12px',fontSize:11,color:'#2e7d32',background:'#f0faf4'}}>${draft.latlngs.length} boundary corners · ${(polyAreaSqFt(draft.latlngs)/43560).toFixed(2)} actual acres · ${bearingLabel(draft)}${isTunnelStrawberryPlanningCrop(draft.crop)?` · ${tunnelStrawberryPP.tunnelsPerSide} north + ${tunnelStrawberryPP.tunnelsPerSide} south tunnels`:''}</div>`:null}
       ${importMsg?html`<div style=${{padding:'5px 12px',fontSize:10,color:importMsg.startsWith('⚠')?'#c62828':'#2e7d32',background:'#fafafa'}}>${importMsg}</div>`:null}
     </div>
 
