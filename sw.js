@@ -1,5 +1,5 @@
-// hff-v48 — mapped tunnel strawberry zones; network-first HTML, offline app shell
-const CACHE='hff-v48';
+// hff-v49 — field + season seed ordering tallies; network-first HTML, offline app shell
+const CACHE='hff-v49';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
