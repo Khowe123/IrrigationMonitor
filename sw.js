@@ -1,5 +1,5 @@
-// hff-v49 — field + season seed ordering tallies; network-first HTML, offline app shell
-const CACHE='hff-v49';
+// hff-v52 — Soil sampling + SoilOptix shapefile viewer; network-first HTML, offline app shell
+const CACHE='hff-v52';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
@@ -22,7 +22,6 @@ self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
   if(e.request.url.includes('api.anthropic.com'))return;
   if(e.request.url.includes('supabase.co'))return;
-  // Satellite tiles can be numerous; rely on the browser/Esri cache instead of filling the PWA cache.
   if(e.request.url.includes('arcgisonline.com')){e.respondWith(fetch(e.request));return;}
 
   const url=new URL(e.request.url);
@@ -40,7 +39,6 @@ self.addEventListener('fetch',e=>{
     return;
   }
 
-  // Cache-first for libraries, map support files, icons, and other static assets.
   e.respondWith(
     caches.match(e.request).then(hit=>{
       if(hit)return hit;
