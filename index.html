@@ -273,6 +273,7 @@ hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://unpkg.com/shpjs@6.2.0/dist/shp.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
@@ -2003,25 +2004,28 @@ async function hffBuildCrewLabelBytes(crew,crewIndex,assignedSkus,pickPlan,calcN
   const displayCrew=/^Crew\s+\d+$/i.test(crewName)?crewName.replace(/\s+(\d+)$/,' #$1'):crewName;
   const field=hffCrewField(crew,assignedSkus,pickPlan);
 
-  // Simple tractor-driver format: only assigned sizes + target quantity.
-  // The unused cells/rows deliberately remain blank for handwritten wagon tallies
-  // and a running balance of bins still required.
+  // Compact tractor-driver format: one row per assigned SKU.
+  // Columns B-D stay blank so the driver has one continuous tally area without
+  // extra spacer rows between SKUs.
   xml=hffXlsxSetCell(xml,'A1',displayCrew);
   xml=hffXlsxSetCell(xml,'E1',pageCount>1?('Page '+pageNo+'/'+pageCount):'');
-  xml=hffXlsxSetCell(xml,'A2','Field');xml=hffXlsxSetCell(xml,'B2',field);
+  if(field){
+    xml=hffXlsxSetCell(xml,'A2','Field');xml=hffXlsxSetCell(xml,'B2',field);
+  }else{
+    xml=hffXlsxSetCell(xml,'A2','');xml=hffXlsxSetCell(xml,'B2','');
+  }
   xml=hffXlsxSetCell(xml,'C2','');xml=hffXlsxSetCell(xml,'D2','');xml=hffXlsxSetCell(xml,'E2','');
   xml=hffXlsxSetCell(xml,'A3','Pumpkin size / type');
-  xml=hffXlsxSetCell(xml,'B3','');xml=hffXlsxSetCell(xml,'C3','');xml=hffXlsxSetCell(xml,'D3','');xml=hffXlsxSetCell(xml,'E3','Pick');
+  xml=hffXlsxSetCell(xml,'B3','Tally / remaining');xml=hffXlsxSetCell(xml,'C3','');xml=hffXlsxSetCell(xml,'D3','');xml=hffXlsxSetCell(xml,'E3','Pick');
 
   // Clear the old full-list contents first. Keep the tested cell formatting/borders.
   for(let row=4;row<=27;row++)for(const col of ['A','B','C','D','E'])xml=hffXlsxSetCell(xml,col+row,'');
 
-  // 8 categories maximum per 100x150 mm label: item row + two blank writing rows.
-  const itemRows=[4,7,10,13,16,19,22,25];
+  // 10 assigned SKUs per label, one compact row each.
+  const itemRows=[4,5,6,7,8,9,10,11,12,13];
   assignedSkus.slice(0,itemRows.length).forEach((sk,i)=>{
     const row=itemRows[i],pick=Math.max(0,parseInt(pickPlan.allocations?.[sk.id]?.[crew.id])||parseInt(sk._crewQty)||0);
     xml=hffXlsxSetCell(xml,'A'+row,sk.label);
-    // Write as inline text rather than a numeric cell so the quantity survives every Excel/SATO template variant.
     xml=hffXlsxSetCell(xml,'E'+row,pick>0?String(pick):'');
   });
   if(!assignedSkus.length)xml=hffXlsxSetCell(xml,'A4','No items assigned');
@@ -2084,15 +2088,19 @@ function hffPrint100x150(title,pages,opts={}){
     .hff-label{width:94mm;height:144mm;overflow:hidden;padding:0;margin:0}
     .landscape-canvas{width:144mm;height:94mm;transform-origin:0 0;transform:translateY(144mm) rotate(-90deg)}
     .landscape-canvas .hff-label{width:144mm;height:94mm}
-    .crew-title{font-size:${landscape?'13':'12'}pt;font-weight:700;margin:0 0 1.2mm}
-    .crew-field{font-size:${landscape?'9.5':'9'}pt;margin:0 0 1.2mm;min-height:4mm}
+    .crew-title{font-size:${landscape?'13':'12'}pt;font-weight:700;margin:0 0 .8mm}
+    .crew-field{font-size:${landscape?'9':'9'}pt;margin:0 0 .8mm;min-height:0}
     table{width:100%;border-collapse:collapse;table-layout:fixed}
-    th,td{border:.35mm solid #000;padding:${landscape?'.8mm 1.2mm':'1mm 1.2mm'};vertical-align:middle}
-    th{font-size:${landscape?'9':'8.5'}pt;font-weight:700;text-align:left}
-    td{font-size:${landscape?'9.5':'9'}pt}
-    .pick-col{width:${landscape?'24':'18'}mm;text-align:center;font-weight:700;font-size:${landscape?'12':'10'}pt}
-    .crew-item td{height:${landscape?'5.6':'6'}mm;font-weight:700}
-    .write-row td{height:${landscape?'4.0':'5.3'}mm;color:#777;font-size:7pt}
+    th,td{border:.35mm solid #000;padding:${landscape?'.55mm 1mm':'1mm 1.2mm'};vertical-align:middle}
+    th{font-size:${landscape?'8.5':'8.5'}pt;font-weight:700;text-align:left}
+    td{font-size:${landscape?'9.2':'9'}pt}
+    .crew-table .sku-col{width:52mm}
+    .crew-table .pick-col{width:20mm;text-align:center;font-weight:700;font-size:11.5pt}
+    .crew-table .tally-col{width:auto}
+    .crew-item td{height:${landscape?'6.8':'6'}mm;font-weight:700}
+    .crew-item td.tally-col{font-weight:400}
+    .pick-col{width:${landscape?'20':'18'}mm;text-align:center;font-weight:700;font-size:${landscape?'11.5':'10'}pt}
+    .write-row td{height:${landscape?'3.6':'5.3'}mm;color:#777;font-size:7pt}
     .load-meta td{height:6.2mm;font-size:9pt}
     .load-meta td:first-child{width:38mm;font-weight:700}
     .load-items th:last-child,.load-items td:last-child{width:18mm;text-align:right}
@@ -2343,7 +2351,7 @@ function OrderBrain(){
 
   function directPrintPumpkinCrewSheets(onlyCrewId=null){
     const crews=(pickPlan.crews||[]).filter(c=>!onlyCrewId||c.id===onlyCrewId);if(!crews.length)return;
-    const pages=[]; const PAGE_ITEMS=5;
+    const pages=[]; const PAGE_ITEMS=10;
     for(const crew of crews){
       const assigned=ORDER_SKUS.pumpkin.filter(sk=>crewPickQty(crew.id,sk.id)>0);
       const chunks=[];for(let i=0;i<Math.max(1,assigned.length);i+=PAGE_ITEMS)chunks.push(assigned.slice(i,i+PAGE_ITEMS));
@@ -2353,9 +2361,9 @@ function OrderBrain(){
         const field=hffCrewField(crew,chunk,pickPlan);
         const rows=chunk.length?chunk.map(sk=>{
           const qty=crewPickQty(crew.id,sk.id);
-          return `<tr class="crew-item"><td>${escPrint(sk.label)}</td><td class="pick-col">${qty}</td></tr><tr class="write-row"><td colspan="2"></td></tr><tr class="write-row"><td colspan="2"></td></tr>`;
-        }).join(''):'<tr class="crew-item"><td>No items assigned</td><td class="pick-col"></td></tr>';
-        pages.push(`<section class="hff-label"><div class="crew-title">${escPrint(crewName)}${chunks.length>1?` <span class="small">Page ${pi+1}/${chunks.length}</span>`:''}</div><div class="crew-field"><strong>Field:</strong> ${escPrint(field)}</div><table><thead><tr><th>Pumpkin size / type</th><th class="pick-col">Pick</th></tr></thead><tbody>${rows}</tbody></table></section>`);
+          return `<tr class="crew-item"><td class="sku-col">${escPrint(sk.label)}</td><td class="tally-col"></td><td class="pick-col">${qty}</td></tr>`;
+        }).join(''):'<tr class="crew-item"><td class="sku-col">No items assigned</td><td class="tally-col"></td><td class="pick-col"></td></tr>';
+        pages.push(`<section class="hff-label"><div class="crew-title">${escPrint(crewName)}${chunks.length>1?` <span class="small">Page ${pi+1}/${chunks.length}</span>`:''}</div>${field?`<div class="crew-field"><strong>Field:</strong> ${escPrint(field)}</div>`:''}<table class="crew-table"><thead><tr><th class="sku-col">Pumpkin size / type</th><th class="tally-col">Tally / remaining</th><th class="pick-col">Pick</th></tr></thead><tbody>${rows}</tbody></table></section>`);
       });
     }
     hffPrint100x150('Pumpkin Pick List',pages,{landscape:true});
@@ -2391,7 +2399,7 @@ function OrderBrain(){
   async function exportPumpkinCrewXLSX(onlyCrewId=null){
     const crews=(pickPlan.crews||[]).filter(c=>!onlyCrewId||c.id===onlyCrewId);if(!crews.length)return;
     const allSkus=ORDER_SKUS.pumpkin;
-    const PAGE_ITEMS=8;
+    const PAGE_ITEMS=10;
     const pagesForCrew=crew=>{
       const assigned=allSkus.filter(sk=>crewPickQty(crew.id,sk.id)>0).map(sk=>({...sk,_crewQty:crewPickQty(crew.id,sk.id)}));
       const pages=[];for(let i=0;i<Math.max(1,assigned.length);i+=PAGE_ITEMS)pages.push(assigned.slice(i,i+PAGE_ITEMS));
@@ -2711,7 +2719,7 @@ function OrderBrain(){
             <button onClick=${savePickCrewPlan} class="btn btn-sm" style=${{background:pickPlanSync==='ok'?'#2e7d32':pickPlanSync==='err'?'#c62828':'#5c2d0a'}}>${pickPlanSync==='saving'?'⟳ Saving…':pickPlanSync==='ok'?'✓ Saved & synced':pickPlanSync==='err'?'⚠ Sync failed':'☁ Save crew plan'}</button>
             <button onClick=${()=>printPumpkinCrewSheets()} class="btn btn-sm btn-out">🖨 Print all crew labels</button>
             <button onClick=${()=>downloadPumpkinCrewXLSX()} class="btn btn-sm btn-out">↓ XLSX backup (.zip)</button>
-            <span style=${{fontSize:9,color:'#999'}}>Crew labels direct-print at 150×100 mm landscape. Load sheets remain 100×150 mm portrait. Each crew label includes only manually assigned SKUs and that crew's exact bin target. XLSX remains as a backup.</span>
+            <span style=${{fontSize:9,color:'#999'}}>Crew labels direct-print at 150×100 mm landscape. Load sheets remain 100×150 mm portrait. Each crew label uses one compact row per assigned SKU, with a wide blank Tally / remaining column for handwritten wagon counts. Up to 10 SKUs fit on one label. XLSX remains as a backup.</span>
           </div>
         </div>
       </details>
@@ -4044,6 +4052,144 @@ async function uploadFarmDoc(file, folder='SOPs'){
 }
 
 
+// Download a Storage object using the current staff session. This works with
+// private buckets as long as the user's Storage RLS permits SELECT.
+async function downloadFarmFile(storagePath){
+  const u=LS.get('hff:sb_url',''),k=LS.get('hff:sb_key','');
+  if(!u||!k)throw new Error('Supabase not configured');
+  if(LS.get('hff:sb_session',null)?.refresh_token)await sbRefreshSession();
+  const a=sbAuthToken(),headers={'apikey':k};
+  if(a.isUser&&a.token)headers['Authorization']='Bearer '+a.token;
+  else if(a.token&&!sbKeyIsPublishable(k))headers['Authorization']='Bearer '+a.token;
+  const r=await fetch(u.replace(/\/+$/,'')+'/storage/v1/object/authenticated/Farm-files/'+storagePath,{headers});
+  if(!r.ok)throw new Error((await r.text().catch(()=>''))||('Storage HTTP '+r.status));
+  return await r.blob();
+}
+async function openFarmStoredFile(storagePath,fileName='farm-file'){
+  try{
+    const blob=await downloadFarmFile(storagePath),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.target='_blank';a.rel='noopener';a.download=fileName||'farm-file';a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }catch(e){alert('Could not open file: '+e.message);}
+}
+function cleanStorageName(v='file'){return String(v).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,100)||'file';}
+
+// ── SOIL / SOILOPTIX HELPERS ───────────────────────────────────────────────
+function normalizeSoilRecord(r={}){
+  return{
+    id:r.id||('soil_'+Date.now().toString(36)),
+    year:parseInt(r.year)||new Date().getFullYear(),
+    provider:String(r.provider||'SoilOptix'),
+    sampleDate:String(r.sampleDate||''),
+    method:String(r.method||'SoilOptix high-resolution scan'),
+    status:String(r.status||'Results received'),
+    nextDueYear:r.nextDueYear?parseInt(r.nextDueYear):'',
+    notes:String(r.notes||''),
+    files:Array.isArray(r.files)?r.files:[],
+    spatial:r.spatial||null,
+    createdAt:r.createdAt||new Date().toISOString(),
+    updatedAt:r.updatedAt||new Date().toISOString()
+  };
+}
+function normalizeSoilRecords(v){return(Array.isArray(v)?v:[]).map(normalizeSoilRecord).sort((a,b)=>(b.year||0)-(a.year||0)||String(b.sampleDate).localeCompare(String(a.sampleDate)));}
+function soilNumericProps(fc){
+  const seen=new Map(),features=(fc?.features||[]).slice(0,750);
+  features.forEach(f=>Object.entries(f?.properties||{}).forEach(([k,v])=>{const n=typeof v==='number'?v:parseFloat(v);if(v!==''&&v!=null&&Number.isFinite(n)){const x=seen.get(k)||{count:0,min:Infinity,max:-Infinity};x.count++;x.min=Math.min(x.min,n);x.max=Math.max(x.max,n);seen.set(k,x);}}));
+  return Array.from(seen.entries()).filter(([,x])=>x.count>=Math.min(3,Math.max(1,features.length*.1))).map(([name,x])=>({name,min:x.min,max:x.max,count:x.count}));
+}
+function soilLayerInfoFromGeo(data){
+  const arr=Array.isArray(data)?data:[data];
+  return arr.filter(x=>x?.type==='FeatureCollection').map((fc,i)=>({
+    index:i,name:fc.fileName||('Layer '+(i+1)),featureCount:(fc.features||[]).length,
+    geometryType:fc.features?.[0]?.geometry?.type||'',numericProps:soilNumericProps(fc)
+  }));
+}
+function soilRampColor(v,min,max){
+  if(!Number.isFinite(v))return'#bdbdbd';const t=max>min?Math.max(0,Math.min(1,(v-min)/(max-min))):.5;
+  const stops=['#a50026','#f46d43','#fee08b','#d9ef8b','#66bd63','#006837'];return stops[Math.min(stops.length-1,Math.floor(t*stops.length))];
+}
+
+function SoilRecordsPanel({fields,fieldYear,canEditFields,onUpdateField,onBack}){
+  const[selectedId,setSelectedId]=useState(null),[editRec,setEditRec]=useState(null),[msg,setMsg]=useState('');
+  const[geoData,setGeoData]=useState(null),[layerIdx,setLayerIdx]=useState(0),[prop,setProp]=useState(''),[loading,setLoading]=useState(false);
+  const mapEl=useRef(null),mapObj=useRef(null),soilLayer=useRef(null);
+  const selected=fields.find(f=>f.id===selectedId)||null,records=selected?normalizeSoilRecords(selected.soilRecords):[];
+  const currentRec=editRec?normalizeSoilRecord(editRec):null;
+  const layerInfo=geoData?soilLayerInfoFromGeo(geoData):[];
+  const activeLayer=layerInfo[layerIdx]||null,activeFc=geoData?(Array.isArray(geoData)?geoData[layerIdx]:geoData):null;
+  const activePropInfo=activeLayer?.numericProps?.find(x=>x.name===prop)||activeLayer?.numericProps?.[0]||null;
+
+  useEffect(()=>{if(activePropInfo&&!prop)setProp(activePropInfo.name);},[layerIdx,geoData]);
+  useEffect(()=>{
+    if(!selected||!mapEl.current||!window.L)return;const L=window.L;
+    if(mapObj.current){mapObj.current.remove();mapObj.current=null;soilLayer.current=null;}
+    const map=L.map(mapEl.current,{zoomControl:true,preferCanvas:true}).setView([42.74,-81.0],15);mapObj.current=map;
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri World Imagery',maxZoom:20}).addTo(map);
+    const pts=selected.latlngs||[];if(pts.length>=3){L.polygon(pts.map(p=>[p.lat,p.lng]),{color:'#111',weight:2,fill:false,dashArray:'5,4'}).addTo(map);map.fitBounds(L.latLngBounds(pts.map(p=>[p.lat,p.lng])),{padding:[15,15],maxZoom:17});}
+    return()=>{map.remove();mapObj.current=null;soilLayer.current=null;};
+  },[selectedId]);
+  useEffect(()=>{
+    const map=mapObj.current,L=window.L;if(!map||!activeFc)return;if(soilLayer.current){soilLayer.current.remove();soilLayer.current=null;}
+    const total=(activeFc.features||[]).length,step=Math.max(1,Math.ceil(total/12000)),fc={...activeFc,features:(activeFc.features||[]).filter((_,i)=>i%step===0)};
+    const pinfo=activePropInfo;
+    const val=f=>{const x=pinfo?f?.properties?.[pinfo.name]:null,n=typeof x==='number'?x:parseFloat(x);return Number.isFinite(n)?n:null;};
+    soilLayer.current=L.geoJSON(fc,{
+      style:f=>({color:soilRampColor(val(f),pinfo?.min||0,pinfo?.max||1),weight:1,fillColor:soilRampColor(val(f),pinfo?.min||0,pinfo?.max||1),fillOpacity:.62}),
+      pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:4,weight:1,color:'#333',fillColor:soilRampColor(val(f),pinfo?.min||0,pinfo?.max||1),fillOpacity:.8}),
+      onEachFeature:(f,l)=>{if(pinfo){const v=f?.properties?.[pinfo.name];l.bindTooltip(`${pinfo.name}: ${v??'—'}`);}}
+    }).addTo(map);
+    try{const b=soilLayer.current.getBounds();if(b?.isValid())map.fitBounds(b,{padding:[15,15],maxZoom:17});}catch{}
+  },[geoData,layerIdx,prop]);
+
+  async function loadSpatial(r){
+    if(!r?.spatial?.geojsonPath)return;setLoading(true);setMsg('Loading spatial soil layer…');
+    try{const blob=await downloadFarmFile(r.spatial.geojsonPath),data=JSON.parse(await blob.text());setGeoData(data);setLayerIdx(0);const li=soilLayerInfoFromGeo(data);setProp(li[0]?.numericProps?.[0]?.name||'');setMsg('✓ Spatial layer loaded.');}
+    catch(e){setMsg('⚠ Could not load spatial layer: '+e.message);}finally{setLoading(false);}
+  }
+  async function importSoilOptix(file){
+    if(!file||!selected||!editRec)return;setLoading(true);setMsg('Parsing '+file.name+'…');
+    try{
+      if(!/\.zip$/i.test(file.name))throw new Error('Upload the original SoilOptix shapefile ZIP containing .shp/.dbf/.prj files.');
+      if(typeof window.shp!=='function')throw new Error('Shapefile parser did not load. Check internet and reload the app.');
+      const data=await window.shp(await file.arrayBuffer()),layers=soilLayerInfoFromGeo(data);if(!layers.length)throw new Error('No shapefile layers were found in the ZIP.');
+      const rec=normalizeSoilRecord(editRec),folder='Soil/'+cleanStorageName(selected.id+'_'+selected.name)+'/'+rec.year+'_'+cleanStorageName(rec.id),sourcePath=folder+'/'+cleanStorageName(file.name),geoPath=folder+'/soil_layers.geojson';
+      setMsg('Uploading original SoilOptix ZIP + web map copy…');
+      const [src,gj]=await Promise.all([uploadFarmFile(file,sourcePath,file.type||'application/zip'),uploadFarmFile(new Blob([JSON.stringify(data)],{type:'application/geo+json'}),geoPath,'application/geo+json')]);
+      if(!src.ok)throw new Error('Original ZIP upload failed: '+src.error);if(!gj.ok)throw new Error('GeoJSON upload failed: '+gj.error);
+      const next={...rec,provider:rec.provider||'SoilOptix',spatial:{sourceName:file.name,originalPath:sourcePath,geojsonPath:geoPath,layers,importedAt:new Date().toISOString()},updatedAt:new Date().toISOString()};
+      setEditRec(next);setGeoData(data);setLayerIdx(0);setProp(layers[0]?.numericProps?.[0]?.name||'');setMsg(`✓ Imported ${layers.length} SoilOptix layer${layers.length===1?'':'s'} with ${layers.reduce((s,x)=>s+x.featureCount,0).toLocaleString()} mapped features.`);
+    }catch(e){setMsg('⚠ '+e.message);}finally{setLoading(false);}
+  }
+  async function addAttachments(files){
+    if(!files?.length||!selected||!editRec)return;setLoading(true);const rec=normalizeSoilRecord(editRec),out=[...(rec.files||[])];
+    try{for(const f of Array.from(files)){const path='Soil/'+cleanStorageName(selected.id+'_'+selected.name)+'/'+rec.year+'_'+cleanStorageName(rec.id)+'/docs/'+cleanStorageName(f.name),r=await uploadFarmFile(f,path,f.type||'application/octet-stream');if(!r.ok)throw new Error(f.name+': '+r.error);out.push({name:f.name,type:f.type||'',path,uploadedAt:new Date().toISOString()});}setEditRec({...rec,files:out,updatedAt:new Date().toISOString()});setMsg('✓ Soil report attachment uploaded.');}catch(e){setMsg('⚠ '+e.message);}finally{setLoading(false);}
+  }
+  async function saveRecord(){
+    if(!selected||!editRec)return;const rec=normalizeSoilRecord(editRec),existing=normalizeSoilRecords(selected.soilRecords),next=[rec,...existing.filter(x=>x.id!==rec.id)];await onUpdateField(selected.id,{soilRecords:next},'Soil sampling record saved and shared.');setEditRec(null);setMsg('✓ Soil sampling record saved.');
+  }
+  async function deleteRecord(id){if(!selected||!confirm('Delete this soil sampling record from the field history? The original Storage files are not automatically deleted.'))return;await onUpdateField(selected.id,{soilRecords:records.filter(r=>r.id!==id)},'Soil sampling record deleted.');setEditRec(null);setGeoData(null);}
+
+  const yearNow=new Date().getFullYear();
+  if(!selected)return html`<div><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10}}><div><div style=${{fontWeight:900,fontSize:16}}>🧪 Soil Sampling + Records</div><div style=${{fontSize:10,color:'#777'}}>Permanent field history · SoilOptix spatial layers, PDFs/CSV and next-sample tracking</div></div><button onClick=${onBack} class="btn btn-sm btn-out">← Farm Map</button></div>
+    <div class="card" style=${{padding:'10px 12px',marginBottom:9,background:'#f8fbf5'}}><strong>Soil sampling status</strong><div style=${{fontSize:10,color:'#666',marginTop:3}}>Select a field. Soil records stay attached to the physical field even when the crop changes in later years.</div></div>
+    ${fields.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(f=>{const rr=normalizeSoilRecords(f.soilRecords),last=rr[0],due=last?.nextDueYear?yearNow>=last.nextDueYear:false;return html`<button onClick=${()=>{setSelectedId(f.id);setEditRec(null);setGeoData(null);setMsg('');}} class="card" style=${{width:'100%',padding:'9px 12px',marginBottom:6,textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fff',cursor:'pointer'}}><span><strong>${f.name}</strong><span style=${{fontSize:10,color:'#888',marginLeft:7}}>${fieldDisplayAcres(f).toFixed(2)} ac</span></span><span style=${{fontSize:10,fontWeight:800,color:!last?'#b42318':due?'#b36b00':'#2e7d32'}}>${!last?'No soil record':`${last.provider} ${last.year}${due?' · DUE':''}`}</span></button>`;})}</div>`;
+
+  return html`<div><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}><div><button onClick=${()=>{setSelectedId(null);setEditRec(null);setGeoData(null);}} class="btn btn-sm btn-out" style=${{marginRight:8}}>← Soil fields</button><strong style=${{fontSize:15}}>🧪 ${selected.name}</strong><span style=${{fontSize:10,color:'#888',marginLeft:7}}>${fieldDisplayAcres(selected).toFixed(2)} ac</span></div><button onClick=${onBack} class="btn btn-sm btn-out">Farm Map</button></div>
+    ${msg?html`<div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,marginBottom:8,background:msg.startsWith('⚠')?'#fff1f1':'#edf7ed',color:msg.startsWith('⚠')?'#b42318':'#2e7d32'}}>${msg}</div>`:null}
+    <div class="card" style=${{overflow:'hidden',marginBottom:9}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',borderBottom:'1px solid #eee'}}><div><strong>Soil map</strong><div style=${{fontSize:9,color:'#888'}}>Satellite + imported SoilOptix shapefile layer</div></div>${geoData?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><select value=${layerIdx} onChange=${e=>{setLayerIdx(+e.target.value);setProp('');}} style=${{fontSize:9,padding:'4px 6px'}}>${layerInfo.map((l,i)=>html`<option value=${i}>${l.name} (${l.featureCount.toLocaleString()})</option>`)}</select>${activeLayer?.numericProps?.length?html`<select value=${activePropInfo?.name||''} onChange=${e=>setProp(e.target.value)} style=${{fontSize:9,padding:'4px 6px'}}>${activeLayer.numericProps.map(p=>html`<option value=${p.name}>${p.name}</option>`)}</select>`:null}</div>`:null}</div><div ref=${mapEl} style=${{height:390,background:'#e0e8e0'}}></div>${activePropInfo?html`<div style=${{padding:'6px 10px',fontSize:9,color:'#666'}}>Showing <strong>${activePropInfo.name}</strong> · ${activePropInfo.min.toFixed(2)} → ${activePropInfo.max.toFixed(2)}${activeLayer.featureCount>12000?' · map display sampled for performance; original data remains complete':''}</div>`:null}</div>
+    ${canEditFields&&!editRec?html`<button onClick=${()=>setEditRec(normalizeSoilRecord({year:fieldYear,provider:'SoilOptix',sampleDate:'',method:'SoilOptix high-resolution scan',status:'Results received'}))} class="btn" style=${{marginBottom:9}}>+ Soil Sampling Record</button>`:null}
+    ${editRec?html`<div class="card" style=${{padding:'10px 12px',marginBottom:10,border:'2px solid #8fb78b'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><strong>${records.some(r=>r.id===editRec.id)?'Edit':'New'} soil sampling record</strong><button onClick=${()=>setEditRec(null)} class="btn btn-sm btn-out">Cancel</button></div><div style=${{display:'grid',gridTemplateColumns:'90px 1fr 1fr 1fr',gap:6,marginBottom:7}}><div><label class="fl">Year sampled</label><input class="ti" type="number" value=${editRec.year} onInput=${e=>setEditRec({...editRec,year:+e.target.value})}/></div><div><label class="fl">Provider</label><input class="ti" value=${editRec.provider} onInput=${e=>setEditRec({...editRec,provider:e.target.value})}/></div><div><label class="fl">Sample date</label><input class="ti" type="date" value=${editRec.sampleDate} onInput=${e=>setEditRec({...editRec,sampleDate:e.target.value})}/></div><div><label class="fl">Next due year</label><input class="ti" type="number" placeholder="optional" value=${editRec.nextDueYear||''} onInput=${e=>setEditRec({...editRec,nextDueYear:e.target.value?+e.target.value:''})}/></div></div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:7}}><div><label class="fl">Method</label><input class="ti" value=${editRec.method} onInput=${e=>setEditRec({...editRec,method:e.target.value})}/></div><div><label class="fl">Status</label><select class="ti" value=${editRec.status} onChange=${e=>setEditRec({...editRec,status:e.target.value})}><option>Planned</option><option>Collected</option><option>Sent to lab</option><option>Results received</option><option>Complete</option></select></div></div>
+      <label class="fl">Notes / recommendations</label><textarea value=${editRec.notes} onInput=${e=>setEditRec({...editRec,notes:e.target.value})} placeholder="Sampling depth, lab, agronomist notes, lime/fertility recommendations…" style=${{width:'100%',height:58,padding:8,border:'1px solid #ddd',borderRadius:7,fontFamily:'inherit',marginBottom:8}}></textarea>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}><label style=${{border:'1.5px dashed #7b9d78',borderRadius:8,padding:'10px',cursor:'pointer',background:'#f7fbf6'}}><strong>🗺 Import SoilOptix Shapefile ZIP</strong><div style=${{fontSize:9,color:'#777',marginTop:3}}>Upload the original .zip containing .shp + .dbf + .prj. It is preserved in Storage and converted to a web map layer.</div><input type="file" accept=".zip,application/zip" style=${{display:'none'}} onChange=${e=>{importSoilOptix(e.target.files?.[0]);e.target.value='';}}/></label><label style=${{border:'1.5px dashed #8da4bb',borderRadius:8,padding:'10px',cursor:'pointer',background:'#f7f9fb'}}><strong>📎 Attach reports / CSV</strong><div style=${{fontSize:9,color:'#777',marginTop:3}}>PDF lab report, SoilOptix PDF, CSV, recommendation or other supporting file.</div><input type="file" multiple accept=".pdf,.csv,.xlsx,.xls,.json,.geojson" style=${{display:'none'}} onChange=${e=>{addAttachments(e.target.files);e.target.value='';}}/></label></div>
+      ${editRec.spatial?html`<div style=${{fontSize:9,color:'#2e7d32',marginBottom:6}}>✓ Spatial file: ${editRec.spatial.sourceName} · ${(editRec.spatial.layers||[]).map(x=>`${x.name} (${x.featureCount})`).join(', ')}</div>`:null}
+      ${(editRec.files||[]).length?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:7}}>${editRec.files.map(f=>html`<button onClick=${()=>openFarmStoredFile(f.path,f.name)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>📄 ${f.name}</button>`)}</div>`:null}
+      <div style=${{display:'flex',justifyContent:'flex-end',gap:6}}><button onClick=${saveRecord} disabled=${loading} class="btn">${loading?'Working…':'Save soil record'}</button></div></div>`:null}
+    <div class="card"><div style=${{padding:'8px 10px',fontWeight:900,borderBottom:'1px solid #eee'}}>Sampling history</div>${records.length?records.map(r=>html`<div style=${{padding:'9px 10px',borderTop:'1px solid #eee'}}><div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start'}}><div><strong>${r.year} · ${r.provider}</strong><div style=${{fontSize:9,color:'#777',marginTop:2}}>${r.sampleDate||'Date not recorded'} · ${r.method} · ${r.status}${r.nextDueYear?' · next due '+r.nextDueYear:''}</div>${r.notes?html`<div style=${{fontSize:10,color:'#555',marginTop:3}}>${r.notes}</div>`:null}</div><div style=${{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end'}}>${r.spatial?html`<button onClick=${()=>loadSpatial(r)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>🗺 View layer</button><button onClick=${()=>openFarmStoredFile(r.spatial.originalPath,r.spatial.sourceName)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>↓ Original ZIP</button>`:null}${(r.files||[]).map(f=>html`<button onClick=${()=>openFarmStoredFile(f.path,f.name)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>📄 ${f.name}</button>`)}${canEditFields?html`<button onClick=${()=>{setEditRec(r);if(r.spatial)loadSpatial(r);}} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>Edit</button><button onClick=${()=>deleteRecord(r.id)} class="btn btn-sm btn-danger" style=${{fontSize:9,padding:'4px 7px'}}>×</button>`:null}</div></div></div>`):html`<div style=${{padding:12,fontSize:10,color:'#999'}}>No soil sampling records saved for this field yet.</div>`}</div>
+  </div>`;
+}
+
+
 // ── TASK COMPLETION overlay ─────────────────────────────────────────────────
 function TaskCompleteOverlay({task, onClose, onSave}){
   const[note,setNote]=useState('');
@@ -4819,7 +4965,9 @@ function newWatermelonPlan(){
     dripLinesPerBed:1,
     plasticRollFt:6000,
     dripRollFt:7000,
-    materialBufferPct:0
+    materialBufferPct:0,
+    seedlessSpacingIn:36,
+    pollinatorSpacingIn:108
   };
 }
 function normalizeWatermelonPlan(p){
@@ -4830,7 +4978,9 @@ function normalizeWatermelonPlan(p){
     dripLinesPerBed:Math.max(1,parseInt(x.dripLinesPerBed,10)||d.dripLinesPerBed),
     plasticRollFt:Math.max(100,parseFloat(x.plasticRollFt)||d.plasticRollFt),
     dripRollFt:Math.max(100,parseFloat(x.dripRollFt)||d.dripRollFt),
-    materialBufferPct:Math.max(0,parseFloat(x.materialBufferPct)||0)
+    materialBufferPct:Math.max(0,parseFloat(x.materialBufferPct)||0),
+    seedlessSpacingIn:Math.max(6,parseFloat(x.seedlessSpacingIn)||d.seedlessSpacingIn),
+    pollinatorSpacingIn:Math.max(6,parseFloat(x.pollinatorSpacingIn)||d.pollinatorSpacingIn)
   };
 }
 function watermelonMaxRunFt(p){return normalizeWatermelonPlan(p).dripEmitterSpacingIn===16?900:600;}
@@ -4878,14 +5028,37 @@ function watermelonVarietySummary(materials,varieties=[]){
 
 const WATERMELON_SEEDLESS=['Crackerjack','Rio Grande','Sunstone'];
 const WATERMELON_POLLINATORS=['Sureness','Premium','Nun 800 Sangria','Nun 2800 Sangria'];
+function canonicalWatermelonVarietyName(name){
+  const raw=String(name||'').trim(),n=raw.toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(!raw)return'';
+  if(n==='crackerjack')return'Crackerjack';
+  if(n==='riogrande')return'Rio Grande';
+  if(n==='sunstone')return'Sunstone';
+  if(n==='sureness')return'Sureness';
+  if(n.startsWith('premium'))return'Premium';
+  if(n.startsWith('nun800'))return'Nun 800 Sangria';
+  if(n.startsWith('nun2800'))return'Nun 2800 Sangria';
+  return raw;
+}
+function watermelonVarietyRole(name){
+  const c=canonicalWatermelonVarietyName(name);
+  if(WATERMELON_SEEDLESS.includes(c))return'seedless';
+  if(WATERMELON_POLLINATORS.includes(c))return'pollinator';
+  return null;
+}
+function watermelonSeedlessOptions(vars=[]){return Array.from(new Set((vars||[]).filter(v=>watermelonVarietyRole(v)==='seedless').map(canonicalWatermelonVarietyName)));}
+function watermelonPollinatorOptions(vars=[]){return Array.from(new Set((vars||[]).filter(v=>watermelonVarietyRole(v)==='pollinator').map(canonicalWatermelonVarietyName)));}
 const PROP_TRAY_SIZES=[72,98,128];
 function normalizeSectionMeta(arr=[]){return Array.isArray(arr)?arr.map(x=>({...x})):[];}
 function sectionMetaAt(arr,i){return {...(arr?.[i]||{})};}
-function watermelonSectionSeedCounts(sec){
-  const ft=Math.max(0,parseFloat(sec?.rowFt)||0);
-  // Howe program: triploids every 36" and one diploid for every 3 triploid plants.
-  const seedless=Math.ceil(ft/3),pollinator=Math.ceil(seedless/3);
-  return{seedless,pollinator,total:seedless+pollinator};
+function watermelonSectionSeedCounts(sec,meta={},plan={}){
+  const ft=Math.max(0,parseFloat(sec?.rowFt)||0),wp=normalizeWatermelonPlan(plan);
+  const seedlessSpacingIn=Math.max(6,parseFloat(meta?.seedlessSpacingIn)||wp.seedlessSpacingIn||36);
+  const pollinatorSpacingIn=Math.max(6,parseFloat(meta?.pollinatorSpacingIn)||wp.pollinatorSpacingIn||108);
+  const seedless=Math.ceil(ft/(seedlessSpacingIn/12));
+  const pollinator=Math.ceil(ft/(pollinatorSpacingIn/12));
+  const ratio=pollinator>0?seedless/pollinator:null;
+  return{seedless,pollinator,total:seedless+pollinator,seedlessSpacingIn,pollinatorSpacingIn,ratio};
 }
 function greenhouseRackPlan(seeds,traySize,roundToFive=true){
   const cells=PROP_TRAY_SIZES.includes(+traySize)?+traySize:98;
@@ -5040,7 +5213,8 @@ function normalizeFieldVarietyLibrary(lib={}){
     // Once a crop has an explicit library, keep it exactly as edited. This is
     // what allows a grower to remove old varieties instead of defaults reappearing.
     const vals=(lib&&Object.prototype.hasOwnProperty.call(lib,k)&&Array.isArray(lib[k]))?lib[k]:base[k];
-    out[k]=Array.from(new Set(vals.map(v=>String(v||'').trim()).filter(Boolean)));
+    const cleaned=vals.map(v=>String(v||'').trim()).filter(Boolean);
+    out[k]=Array.from(new Set((k==='watermelon'?cleaned.map(canonicalWatermelonVarietyName):cleaned)));
   });
   return out;
 }
@@ -5220,7 +5394,7 @@ function FieldMapper({staffProfile}){
     return saved||new Date().getFullYear()+1;
   });
   const[activeFid,setActiveFid]=useState(null);
-  const[mode,setMode]=useState(()=>LS.get('hff:field_mode','overview')); // overview | list | edit | view | emergency | seed
+  const[mode,setMode]=useState(()=>LS.get('hff:field_mode','overview')); // overview | list | edit | view | emergency | seed | soil
   const[draft,setDraft]=useState({name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],sectionMeta:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),tunnelStrawberryPlan:newTunnelStrawberryPlan(),latlngs:[],notes:'',emergency:normalizeEmergency({},'')});
   const[stats,setStats]=useState(null);
   const[mapTool,setMapTool]=useState(null); // draw | abA | abB | start | addVertex
@@ -5239,9 +5413,16 @@ function FieldMapper({staffProfile}){
       raw={...raw,watermelon:[...WATERMELON_SEEDLESS,...WATERMELON_POLLINATORS]};
       LS.set('hff:field_varieties',raw);LS.set('hff:variety_migration_v33',true);
     }
+    if(!LS.get('hff:variety_migration_v50',false)){
+      // Clean older aliases (Premium (Pollinator), NUN 800, NUN 2800) and
+      // reset Watermelon to the seven varieties currently used on the farm.
+      raw={...raw,watermelon:[...WATERMELON_SEEDLESS,...WATERMELON_POLLINATORS]};
+      LS.set('hff:field_varieties',raw);LS.set('hff:variety_migration_v50',true);
+    }
     return normalizeFieldVarietyLibrary(raw);
   });
   const[newVariety,setNewVariety]=useState('');
+  const[bulkSeedlessVariety,setBulkSeedlessVariety]=useState('');
   const[customCrops,setCustomCrops]=useState(()=>{const x=normalizeCustomCropLibrary(LS.get('hff:field_custom_crops',[]));registerCustomCrops(x);return x;});
   const[showCropManager,setShowCropManager]=useState(false);
   const[newCrop,setNewCrop]=useState({label:'',icon:'🌱',color:'#607d8b',planningMode:'simple',rowSpacing:'2.5',plantSpacing:'12'});
@@ -5275,6 +5456,8 @@ function FieldMapper({staffProfile}){
 
   const cfg=FIELD_CROPS_CFG[draft.crop]||FIELD_CROPS_CFG.sweetcorn;
   const cropVarieties=varietyLib[draft.crop]||cfg.varieties||[];
+  const wmSeedlessOptions=watermelonSeedlessOptions(cropVarieties);
+  const wmPollinatorOptions=watermelonPollinatorOptions(cropVarieties);
   const allVisibilityKeys=[...Object.keys(FIELD_CROPS_CFG),'unassigned'];
   function switchFieldMode(v){LS.set('hff:field_mode',v);setMode(v);setMapSelectedId(null);}
   useEffect(()=>{toolRef.current=mapTool;},[mapTool]);
@@ -5723,6 +5906,20 @@ function FieldMapper({staffProfile}){
     const cur=draftRef.current,meta=normalizeSectionMeta(cur.sectionMeta);meta[i]={...sectionMetaAt(meta,i),...patch};
     const nd={...cur,sectionMeta:meta};draftRef.current=nd;setDraft(nd);
   }
+  function applyWatermelonSeedlessAll(){
+    const value=canonicalWatermelonVarietyName(bulkSeedlessVariety||wmSeedlessOptions[0]||'');
+    const count=stats?.numSections||watermelonMaterials?.sections?.length||0;if(!value||count<1)return;
+    const cur=draftRef.current,vars=Array.from({length:count},()=>value),nd={...cur,varieties:vars};
+    draftRef.current=nd;setDraft(nd);setBulkSeedlessVariety(value);
+    setImportMsg('✓ '+value+' applied as the seedless variety to all '+count+' watermelon sections. Pollinators were left unchanged.');
+  }
+  function applyWatermelonSpacingAll(){
+    const count=stats?.numSections||watermelonMaterials?.sections?.length||0;if(count<1)return;
+    const cur=draftRef.current,meta=normalizeSectionMeta(cur.sectionMeta),wp=normalizeWatermelonPlan(cur.watermelonPlan);
+    for(let i=0;i<count;i++)meta[i]={...sectionMetaAt(meta,i),seedlessSpacingIn:wp.seedlessSpacingIn,pollinatorSpacingIn:wp.pollinatorSpacingIn};
+    const nd={...cur,sectionMeta:meta};draftRef.current=nd;setDraft(nd);
+    setImportMsg('✓ Field spacing defaults applied to all '+count+' watermelon sections.');
+  }
   async function markSectionDate(i,key){
     const cur=draftRef.current,meta=normalizeSectionMeta(cur.sectionMeta);meta[i]={...sectionMetaAt(meta,i),[key]:todayStr()};
     const nd={...cur,sectionMeta:meta};draftRef.current=nd;setDraft(nd);
@@ -5877,7 +6074,12 @@ function FieldMapper({staffProfile}){
       const cc=FIELD_CROPS_CFG[crop]||null;
       stats=cc&&cc.planningMode!=='simple'?(buildPolygonFieldPlan(cc,latlngs,orientation,bearingDeg,yp.startSide==='max'?'max':'min',pumpkinPlan)?.stats||boundaryOnlyStats(latlngs)):boundaryOnlyStats(latlngs);
     }
-    return{...f,...yp,yearPlans,crop,orientation,bearingDeg,startSide:yp.startSide==='max'?'max':'min',abLine:yp.abLine||[],startEdgePoint:yp.startEdgePoint||null,varieties:yp.varieties||[],sectionMeta:normalizeSectionMeta(yp.sectionMeta),pumpkinPlan,watermelonPlan,tunnelStrawberryPlan,latlngs,stats,emergency:normalizeEmergency(f.emergency,f.name)};
+    let varieties=yp.varieties||[],sectionMeta=normalizeSectionMeta(yp.sectionMeta);
+    if(isWatermelonPlanningCrop(crop)){
+      varieties=varieties.map(canonicalWatermelonVarietyName);
+      sectionMeta=sectionMeta.map(m=>({...m,pollinatorVariety:canonicalWatermelonVarietyName(m?.pollinatorVariety||'')}));
+    }
+    return{...f,...yp,yearPlans,crop,orientation,bearingDeg,startSide:yp.startSide==='max'?'max':'min',abLine:yp.abLine||[],startEdgePoint:yp.startEdgePoint||null,varieties,sectionMeta,pumpkinPlan,watermelonPlan,tunnelStrawberryPlan,latlngs,stats,emergency:normalizeEmergency(f.emergency,f.name)};
   }
 
   function startNew(){
@@ -5904,6 +6106,12 @@ function FieldMapper({staffProfile}){
     if(r.ok){LS.set('hff:field_delete_queue',q.filter(x=>x.id!==id));setSyncSt('ok');setCloudMsg('☁ Field deletion synced to connected devices.');}
     else if(r.reason==='not-configured'){setSyncSt('off');setCloudMsg('⚠ Field deleted here and queued for cloud deletion. It will sync after this device is connected to Supabase.');}
     else{setSyncSt('err');setCloudMsg('⚠ Field deleted locally; cloud deletion is queued and will retry automatically.');}
+  }
+
+  async function updatePermanentField(id,patch,okMessage='Field record saved and shared.'){
+    const now=new Date().toISOString(),raw=fields.find(f=>f.id===id);if(!raw)return{ok:false};
+    const next={...raw,...patch,updatedAt:now};const upd=fields.map(f=>f.id===id?next:f);setFields(upd);LS.set('hff:fields',upd);setSyncSt('syncing');
+    const r=await sbFieldPush(next);if(r.ok){setSyncSt('ok');setCloudMsg('☁ '+okMessage);}else{setSyncSt('err');setCloudMsg('⚠ Field record saved locally, but cloud sync failed'+(r.msg?' — '+r.msg:'')+'.');}return r;
   }
 
   async function assignFieldCrop(id,cropId){
@@ -6027,11 +6235,12 @@ function FieldMapper({staffProfile}){
   const watermelonPP=normalizeWatermelonPlan(draft.watermelonPlan);
   const watermelonMaterials=isWatermelonPlanningCrop(draft.crop)&&stats?calcWatermelonMaterials(polygonPlan,watermelonPP,useManual?stats:null):null;
   const watermelonVarieties=watermelonVarietySummary(watermelonMaterials,draft.varieties||[]);
+  const watermelonFieldCounts=(watermelonMaterials?.sections||[]).reduce((a,sec)=>{const i=sec.section-1,c=watermelonSectionSeedCounts(sec,sectionMetaAt(draft.sectionMeta,i),watermelonPP);a.seedless+=c.seedless;a.pollinator+=c.pollinator;a.total+=c.total;return a;},{seedless:0,pollinator:0,total:0});
   const tunnelStrawberryPP=normalizeTunnelStrawberryPlan(draft.tunnelStrawberryPlan);
   const tunnelStrawberryStats=tunnelStrawberrySummary(tunnelStrawberryPP);
   const tunnelCoirQuotes=tunnelCoirQuoteRows(tunnelStrawberryStats);
-  const displayPlants=isPumpkinPlanningCrop(draft.crop)&&pumpkinPlannedPlants>0?pumpkinPlannedPlants:(stats?.totalPlants||0);
-  const displaySeeds=isPumpkinPlanningCrop(draft.crop)&&pumpkinPlannedSeeds>0?pumpkinPlannedSeeds:(stats?.seedsNeeded||0);
+  const displayPlants=isPumpkinPlanningCrop(draft.crop)&&pumpkinPlannedPlants>0?pumpkinPlannedPlants:(isWatermelonPlanningCrop(draft.crop)&&watermelonFieldCounts.total>0?watermelonFieldCounts.total:(stats?.totalPlants||0));
+  const displaySeeds=isPumpkinPlanningCrop(draft.crop)&&pumpkinPlannedSeeds>0?pumpkinPlannedSeeds:(isWatermelonPlanningCrop(draft.crop)&&watermelonFieldCounts.total>0?watermelonFieldCounts.total:(stats?.seedsNeeded||0));
   const selectedMapRaw=mapSelectedId?fields.find(f=>f.id===mapSelectedId):null;
   const selectedMapField=selectedMapRaw?migratedField(selectedMapRaw):null;
   const activeYearFields=fields.map(f=>migratedField(f));
@@ -6050,7 +6259,7 @@ function FieldMapper({staffProfile}){
       if(isPumpkinPlanningCrop(f.crop)){
         const alloc=calcPumpkinVarietyPlan(plan,f.pumpkinPlan);pumpkinVarietySummary(alloc).forEach(x=>{if(!x.variety)return;const z=sum.pumpkin[x.variety]||(sum.pumpkin[x.variety]={variety:x.variety,seeds:0,plants:0,acres:0,fields:new Set()});z.seeds+=x.seeds;z.plants+=x.plants;z.acres+=x.actualAcres;z.fields.add(f.name);});
       }else if(isWatermelonPlanningCrop(f.crop)){
-        const mats=calcWatermelonMaterials(plan,f.watermelonPlan,null);(mats.sections||[]).forEach(sec=>{const i=sec.section-1,seedless=(f.varieties||[])[i]||'',m=sectionMetaAt(f.sectionMeta,i),poll=m.pollinatorVariety||'',cnt=watermelonSectionSeedCounts(sec);if(seedless){const z=sum.watermelon[seedless]||(sum.watermelon[seedless]={variety:seedless,type:'Seedless',seeds:0,acres:0,fields:new Set()});z.seeds+=cnt.seedless;z.acres+=sec.acres;z.fields.add(f.name);}if(poll){const z=sum.watermelon[poll]||(sum.watermelon[poll]={variety:poll,type:'Pollinator',seeds:0,acres:0,fields:new Set()});z.seeds+=cnt.pollinator;z.acres+=sec.acres;z.fields.add(f.name);}});
+        const mats=calcWatermelonMaterials(plan,f.watermelonPlan,null);(mats.sections||[]).forEach(sec=>{const i=sec.section-1,seedless=(f.varieties||[])[i]||'',m=sectionMetaAt(f.sectionMeta,i),poll=m.pollinatorVariety||'',cnt=watermelonSectionSeedCounts(sec,m,f.watermelonPlan);if(seedless){const z=sum.watermelon[seedless]||(sum.watermelon[seedless]={variety:seedless,type:'Seedless',seeds:0,acres:0,fields:new Set()});z.seeds+=cnt.seedless;z.acres+=sec.acres;z.fields.add(f.name);}if(poll){const z=sum.watermelon[poll]||(sum.watermelon[poll]={variety:poll,type:'Pollinator',seeds:0,acres:0,fields:new Set()});z.seeds+=cnt.pollinator;z.acres+=sec.acres;z.fields.add(f.name);}});
       }else if(isSweetCornPlanningCrop(f.crop)){
         const sm={};(plan.rows||[]).forEach(r=>{const x=sm[r.section]||(sm[r.section]={rowFt:0,rows:0});x.rowFt+=r.lengthFt||0;x.rows++;});Object.entries(sm).forEach(([sec,x])=>{const i=+sec-1,v=(f.varieties||[])[i]||'';if(!v)return;const plants=x.rowFt*2/(cc.plantSpacing/12),seeds=Math.ceil(plants*(cc.seedBuffer||1));const z=sum.sweetcorn[v]||(sum.sweetcorn[v]={variety:v,seeds:0,plants:0,acres:0,fields:new Set()});z.seeds+=seeds;z.plants+=plants;z.acres+=x.rowFt*cc.rowSpacing/43560;z.fields.add(f.name);});
       }
@@ -6074,9 +6283,9 @@ function FieldMapper({staffProfile}){
         Object.values(grouped).forEach(g=>{g.type=Array.from(new Set(g.typeParts)).join(' + ');delete g.typeParts;out.pumpkin.push(g);});
       }else if(isWatermelonPlanningCrop(f.crop)){
         const mats=calcWatermelonMaterials(plan,f.watermelonPlan,null),grouped={};
-        (mats.sections||[]).forEach(sec=>{const i=sec.section-1,seedless=(f.varieties||[])[i]||'',m=sectionMetaAt(f.sectionMeta,i),poll=m.pollinatorVariety||'',cnt=watermelonSectionSeedCounts(sec);
-          if(seedless){const key='Seedless|'+seedless,g=grouped[key]||(grouped[key]={field:f.name,variety:seedless,type:'Seedless',spacingIn:36,population:wmPop(36),sectionAcres:0,plants:0,seeds:0,sections:0});g.sectionAcres+=sec.acres||0;g.plants+=cnt.seedless;g.seeds+=cnt.seedless;g.sections++;}
-          if(poll){const key='Pollinator|'+poll,g=grouped[key]||(grouped[key]={field:f.name,variety:poll,type:'Pollinator',spacingIn:108,population:wmPop(108),sectionAcres:0,plants:0,seeds:0,sections:0});g.sectionAcres+=sec.acres||0;g.plants+=cnt.pollinator;g.seeds+=cnt.pollinator;g.sections++;}
+        (mats.sections||[]).forEach(sec=>{const i=sec.section-1,seedless=(f.varieties||[])[i]||'',m=sectionMetaAt(f.sectionMeta,i),poll=m.pollinatorVariety||'',cnt=watermelonSectionSeedCounts(sec,m,f.watermelonPlan);
+          if(seedless){const key='Seedless|'+canonicalWatermelonVarietyName(seedless)+'|'+cnt.seedlessSpacingIn,g=grouped[key]||(grouped[key]={field:f.name,variety:canonicalWatermelonVarietyName(seedless),type:'Seedless',spacingIn:cnt.seedlessSpacingIn,population:wmPop(cnt.seedlessSpacingIn),sectionAcres:0,plants:0,seeds:0,sections:0});g.sectionAcres+=sec.acres||0;g.plants+=cnt.seedless;g.seeds+=cnt.seedless;g.sections++;}
+          if(poll){const key='Pollinator|'+canonicalWatermelonVarietyName(poll)+'|'+cnt.pollinatorSpacingIn,g=grouped[key]||(grouped[key]={field:f.name,variety:canonicalWatermelonVarietyName(poll),type:'Pollinator',spacingIn:cnt.pollinatorSpacingIn,population:wmPop(cnt.pollinatorSpacingIn),sectionAcres:0,plants:0,seeds:0,sections:0});g.sectionAcres+=sec.acres||0;g.plants+=cnt.pollinator;g.seeds+=cnt.pollinator;g.sections++;}
         });Object.values(grouped).forEach(g=>out.watermelon.push(g));
       }else if(isSweetCornPlanningCrop(f.crop)){
         const sm={};(plan.rows||[]).forEach(r=>{const x=sm[r.section]||(sm[r.section]={rowFt:0});x.rowFt+=r.lengthFt||0;});
@@ -6089,9 +6298,10 @@ function FieldMapper({staffProfile}){
   function seasonSeedTotals(detail){
     const out={pumpkin:{},watermelon:{},sweetcorn:{}};
     (detail.pumpkin||[]).forEach(r=>{const z=out.pumpkin[r.variety]||(out.pumpkin[r.variety]={variety:r.variety,acres:0,targetAcres:0,plants:0,seeds:0,spacing:new Set(),popWeight:0,popAcres:0,fields:new Set()});z.acres+=r.actualAcres||0;z.targetAcres+=r.targetAcres||0;z.plants+=r.plants||0;z.seeds+=r.seeds||0;z.spacing.add(r.spacingIn);z.popWeight+=(r.population||0)*(r.actualAcres||0);z.popAcres+=r.actualAcres||0;z.fields.add(r.field);});
-    (detail.watermelon||[]).forEach(r=>{const key=r.type+'|'+r.variety,z=out.watermelon[key]||(out.watermelon[key]={variety:r.variety,type:r.type,acres:0,plants:0,seeds:0,spacing:new Set(),population:r.population||0,fields:new Set()});z.acres+=r.sectionAcres||0;z.plants+=r.plants||0;z.seeds+=r.seeds||0;z.spacing.add(r.spacingIn);z.fields.add(r.field);});
+    (detail.watermelon||[]).forEach(r=>{const key=r.type+'|'+r.variety,z=out.watermelon[key]||(out.watermelon[key]={variety:r.variety,type:r.type,acres:0,plants:0,seeds:0,spacing:new Set(),population:0,popWeight:0,popAcres:0,fields:new Set()});const ac=r.sectionAcres||0;z.acres+=ac;z.plants+=r.plants||0;z.seeds+=r.seeds||0;z.spacing.add(r.spacingIn);z.popWeight+=(r.population||0)*ac;z.popAcres+=ac;z.fields.add(r.field);});
     (detail.sweetcorn||[]).forEach(r=>{const z=out.sweetcorn[r.variety]||(out.sweetcorn[r.variety]={variety:r.variety,acres:0,plants:0,seeds:0,spacing:new Set(),population:r.population||0,fields:new Set()});z.acres+=r.acres||0;z.plants+=r.plants||0;z.seeds+=r.seeds||0;z.spacing.add(r.spacingIn);z.fields.add(r.field);});
     Object.values(out.pumpkin).forEach(z=>{z.population=z.popAcres>0?z.popWeight/z.popAcres:0;});
+    Object.values(out.watermelon).forEach(z=>{z.population=z.popAcres>0?z.popWeight/z.popAcres:0;});
     return out;
   }
   function seedSpacingText(set){const a=Array.from(set||[]).map(Number).filter(Number.isFinite).sort((a,b)=>a-b);return a.length?a.map(x=>x+'\"').join(', '):'—';}
@@ -6107,7 +6317,7 @@ function FieldMapper({staffProfile}){
 
   function watermelonGreenhouseBatches(field){
     const cc=FIELD_CROPS_CFG.watermelon;if(field.crop!=='watermelon'||!field.latlngs?.length)return[];const plan=buildPolygonFieldPlan(cc,field.latlngs,field.orientation,field.bearingDeg,field.startSide,field.pumpkinPlan),mats=calcWatermelonMaterials(plan,field.watermelonPlan,null),groups={};
-    (mats.sections||[]).forEach(sec=>{const i=sec.section-1,m=sectionMetaAt(field.sectionMeta,i),cnt=watermelonSectionSeedCounts(sec),seedless=(field.varieties||[])[i]||'',poll=m.pollinatorVariety||'';[[seedless,'Seedless',cnt.seedless,+m.seedlessTraySize||98],[poll,'Pollinator',cnt.pollinator,+m.pollinatorTraySize||128]].forEach(([v,type,seeds,tray])=>{if(!v)return;const key=[v,type,tray,m.plannedSeedDate||'',m.plannedPlantWeek||''].join('|'),g=groups[key]||(groups[key]={variety:v,type,traySize:tray,seeds:0,plannedSeedDate:m.plannedSeedDate||'',plannedPlantWeek:m.plannedPlantWeek||'',seededDate:m.seededDate||'',fieldPlantedDate:m.fieldPlantedDate||''});g.seeds+=seeds;if(!g.seededDate&&m.seededDate)g.seededDate=m.seededDate;if(!g.fieldPlantedDate&&m.fieldPlantedDate)g.fieldPlantedDate=m.fieldPlantedDate;});});
+    (mats.sections||[]).forEach(sec=>{const i=sec.section-1,m=sectionMetaAt(field.sectionMeta,i),cnt=watermelonSectionSeedCounts(sec,m,field.watermelonPlan),seedless=(field.varieties||[])[i]||'',poll=m.pollinatorVariety||'';[[seedless,'Seedless',cnt.seedless,+m.seedlessTraySize||98],[poll,'Pollinator',cnt.pollinator,+m.pollinatorTraySize||128]].forEach(([v,type,seeds,tray])=>{if(!v)return;const key=[v,type,tray,m.plannedSeedDate||'',m.plannedPlantWeek||''].join('|'),g=groups[key]||(groups[key]={variety:v,type,traySize:tray,seeds:0,plannedSeedDate:m.plannedSeedDate||'',plannedPlantWeek:m.plannedPlantWeek||'',seededDate:m.seededDate||'',fieldPlantedDate:m.fieldPlantedDate||''});g.seeds+=seeds;if(!g.seededDate&&m.seededDate)g.seededDate=m.seededDate;if(!g.fieldPlantedDate&&m.fieldPlantedDate)g.fieldPlantedDate=m.fieldPlantedDate;});});
     return Object.values(groups).map(g=>({...g,...greenhouseRackPlan(g.seeds,g.traySize,true)}));
   }
   function sweetCornWeekSummary(){
@@ -6153,13 +6363,15 @@ function FieldMapper({staffProfile}){
     </div>`;
   }
 
+  if(mode==='soil')return html`<${SoilRecordsPanel} fields=${fields} fieldYear=${fieldYear} canEditFields=${canEditFields} onUpdateField=${updatePermanentField} onBack=${()=>switchFieldMode('overview')}/>`;
+
   if(mode==='overview')return html`<div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:9,flexWrap:'wrap'}}>
       <div><span style=${{fontWeight:800,fontSize:16}}>🗺 Farm Map</span><span style=${{fontSize:11,color:'#999',marginLeft:8}}>${fields.length} fields · ${fields.reduce((s,f)=>s+fieldDisplayAcres(f),0).toFixed(1)} ac</span><div style=${{display:'flex',alignItems:'center',gap:6,marginTop:5}}><span style=${{fontSize:10,fontWeight:800,color:'#68737d'}}>FARM YEAR</span><select value=${fieldYear} onChange=${e=>changeFieldYear(e.target.value)} style=${{padding:'5px 24px 5px 8px',border:'1.5px solid #2c3e50',borderRadius:7,background:'#fff',fontWeight:800,fontSize:12,color:'#2c3e50'}}>${knownYears.map(y=>html`<option value=${y}>${y}</option>`)}</select><span style=${{fontSize:9,color:'#999'}}>new years automatically start Not selected</span></div></div>
       <div style=${{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
         <span style=${{fontSize:10,fontWeight:700,color:syncColor}}>${syncBadge}</span>
         <button class="btn btn-sm btn-out" onClick=${syncFields} disabled=${syncSt==='syncing'}>↻ Sync</button>
-        <button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('emergency')}>🚑 Emergency</button><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('seed')}>🌱 Seed Plan</button>${!simpleMap&&canEditFields?html`<button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('list')}>☷ List</button>`:null}
+        <button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('soil')}>🧪 Soil</button><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('emergency')}>🚑 Emergency</button><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('seed')}>🌱 Seed Plan</button>${!simpleMap&&canEditFields?html`<button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('list')}>☷ List</button>`:null}
         ${!simpleMap&&canEditFields?html`<label style=${{padding:'7px 10px',border:'1.5px solid #2c3e50',borderRadius:8,color:'#2c3e50',fontWeight:700,fontSize:10,cursor:'pointer',background:'#fff'}}>↑ Import<input type="file" accept=".geojson,.json,.kml" style=${{display:'none'}} onChange=${e=>{importBoundaryFile(e.target.files?.[0],false);e.target.value='';}}/></label>`:null}
         ${!simpleMap&&canEditFields?html`<button onClick=${startNew} style=${{padding:'8px 12px',border:'none',borderRadius:8,background:'#2c3e50',color:'#fff',fontWeight:700,fontSize:11,cursor:'pointer'}}>+ Field</button>`:null}
       </div>
@@ -6283,7 +6495,7 @@ function FieldMapper({staffProfile}){
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <label class="fl" style=${{fontSize:11}}>Field Name</label><input class="ti" type="text" value=${draft.name} onInput=${e=>setDraft(d=>({...d,name:e.target.value}))} placeholder="e.g. Cox South East"/>
       <label class="fl" style=${{fontSize:11,marginTop:9}}>Crop</label><div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:6}}>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>{const cur=draftRef.current,nd={...cur,crop:k,varieties:[],sectionMeta:[],pumpkinPlan:isPumpkinPlanningCrop(k)?normalizePumpkinPlan(cur.pumpkinPlan):cur.pumpkinPlan,watermelonPlan:isWatermelonPlanningCrop(k)?normalizeWatermelonPlan(cur.watermelonPlan):cur.watermelonPlan,tunnelStrawberryPlan:isTunnelStrawberryPlanningCrop(k)?normalizeTunnelStrawberryPlan(cur.tunnelStrawberryPlan):cur.tunnelStrawberryPlan};applyDraft(nd);}} style=${{padding:'5px 10px',borderRadius:7,border:'1.5px solid '+(draft.crop===k?c.color:'#ddd'),background:draft.crop===k?c.color:'transparent',color:draft.crop===k?'#fff':'#888',fontWeight:600,fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>${c.icon} ${c.label}</button>`)}</div>
-      <div style=${{fontSize:11,color:'#888'}}>${!FIELD_CROPS_CFG[draft.crop]?'Choose a crop to assign this field.':isTunnelStrawberryPlanningCrop(draft.crop)?html`<strong>Mapped tunnel planner</strong> · 24 north + 24 south tunnels · assign each 30 ft tunnel to Zones 1–5 · variety, substrate and irrigation planning`:cfg.planningMode==='simple'?html`<strong>Simple acreage crop</strong> · boundary, acreage, year assignment, notes and rotation history only`:isPumpkinPlanningCrop(draft.crop)?html`<strong>3-row Monosem</strong> · 5 ft row centres · 15 ft/pass · default 2 swaths (6 rows) planted perpendicular at each headland`:isWatermelonPlanningCrop(draft.crop)?html`<strong>8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath</strong> · triploid 36" · diploid 108" (1 pollinator : 3 seedless)`:html`Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>${cfg.twinRow?html` · ${cfg.twinRowSpacing}" twin-row spacing`:null}${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:null}`}</div>
+      <div style=${{fontSize:11,color:'#888'}}>${!FIELD_CROPS_CFG[draft.crop]?'Choose a crop to assign this field.':isTunnelStrawberryPlanningCrop(draft.crop)?html`<strong>Mapped tunnel planner</strong> · 24 north + 24 south tunnels · assign each 30 ft tunnel to Zones 1–5 · variety, substrate and irrigation planning`:cfg.planningMode==='simple'?html`<strong>Simple acreage crop</strong> · boundary, acreage, year assignment, notes and rotation history only`:isPumpkinPlanningCrop(draft.crop)?html`<strong>3-row Monosem</strong> · 5 ft row centres · 15 ft/pass · default 2 swaths (6 rows) planted perpendicular at each headland`:isWatermelonPlanningCrop(draft.crop)?html`<strong>8 beds × 6.5 ft + 13 ft driveway = 65 ft GPS swath</strong> · seedless + pollinator spacing configurable by field/section · target 1 pollinator : 3 seedless`:html`Section = ${cfg.rowsPerSection} rows × ${cfg.rowSpacing}ft + ${cfg.driveWay}ft driveway = <strong>${sW}ft wide</strong>${cfg.twinRow?html` · ${cfg.twinRowSpacing}" twin-row spacing`:null}${cfg.pollinatorSpacing?html` · Pollinators every ${cfg.pollinatorSpacing}"`:null}`}</div>
       ${FIELD_CROPS_CFG[draft.crop]&&(cfg.planningMode!=='simple'||isTunnelStrawberryPlanningCrop(draft.crop))?html`<div style=${{marginTop:9,paddingTop:8,borderTop:'1px solid #eee'}}><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Variety library — ${cropVarieties.length} varieties</div><div style=${{display:'flex',gap:5}}><input class="ti" type="text" value=${newVariety} onInput=${e=>setNewVariety(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'){e.preventDefault();addCustomVariety();}}} placeholder="Add a new ${cfg.label} variety…" style=${{flex:1,fontSize:11,padding:'6px 8px'}}/><button onClick=${addCustomVariety} disabled=${!newVariety.trim()} class="btn btn-sm" style=${{padding:'6px 10px',opacity:newVariety.trim()?1:.45}}>+ Add</button></div><div style=${{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}}>${cropVarieties.map(v=>html`<span style=${{display:'inline-flex',alignItems:'center',gap:3,border:'1px solid #ddd',borderRadius:12,padding:'2px 5px 2px 7px',fontSize:9,background:'#fff'}}>${v}<button onClick=${()=>removeCustomVariety(v)} title="Remove variety" style=${{border:'none',background:'transparent',color:'#b42318',fontWeight:900,cursor:'pointer',padding:'0 2px'}}>×</button></span>`)}</div><div style=${{fontSize:9,color:'#999',marginTop:4}}>Add or remove varieties here. Changes sync to the other farm devices; existing saved plans are not silently rewritten.</div></div>`:html`<div style=${{fontSize:10,color:'#b36b00',marginTop:7}}>Assign a crop before building rows or varieties.</div>`}
     </div>
 
@@ -6380,6 +6592,11 @@ function FieldMapper({staffProfile}){
         <div><label class="fl">Drip lines / bed</label><input class="ti" type="number" min="1" step="1" style=${{fontSize:11,padding:'6px'}} value=${watermelonPP.dripLinesPerBed} onInput=${e=>patchWatermelonPlan({dripLinesPerBed:e.target.value})}/></div>
         <div><label class="fl">Order buffer</label><div style=${{display:'flex',alignItems:'center',gap:3}}><input class="ti" type="number" min="0" step="1" style=${{fontSize:11,padding:'6px'}} value=${watermelonPP.materialBufferPct} onInput=${e=>patchWatermelonPlan({materialBufferPct:e.target.value})}/><span style=${{fontSize:10}}>%</span></div></div>
       </div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1.3fr',gap:6,marginBottom:9,alignItems:'end'}}>
+        <label class="fl">Default seedless spacing<div style=${{display:'flex',alignItems:'center',gap:3}}><input class="ti" type="number" min="6" step="1" value=${watermelonPP.seedlessSpacingIn} onInput=${e=>patchWatermelonPlan({seedlessSpacingIn:e.target.value})}/><span>&quot;</span></div></label>
+        <label class="fl">Default pollinator spacing<div style=${{display:'flex',alignItems:'center',gap:3}}><input class="ti" type="number" min="6" step="1" value=${watermelonPP.pollinatorSpacingIn} onInput=${e=>patchWatermelonPlan({pollinatorSpacingIn:e.target.value})}/><span>&quot;</span></div></label>
+        <div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,background:Math.abs(watermelonPP.pollinatorSpacingIn/watermelonPP.seedlessSpacingIn-3)>.15?'#fff4e5':'#edf7ed',color:Math.abs(watermelonPP.pollinatorSpacingIn/watermelonPP.seedlessSpacingIn-3)>.15?'#8a5600':'#2e7d32'}}><strong>Plant ratio:</strong> 1 pollinator : ${(watermelonPP.pollinatorSpacingIn/watermelonPP.seedlessSpacingIn).toFixed(2)} seedless${Math.abs(watermelonPP.pollinatorSpacingIn/watermelonPP.seedlessSpacingIn-3)>.15?' ⚠ target is 1:3':' ✓'}</div>
+      </div>
       <div style=${{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:6,marginBottom:8}}>
         <div style=${{background:'#fff7f6',borderRadius:8,padding:'8px'}}><div style=${{fontSize:9,color:'#999'}}>ACTUAL BED ROW FOOTAGE</div><div style=${{fontSize:17,fontWeight:800}}>${Math.round(watermelonMaterials.totalBedFt).toLocaleString()} ft</div><div style=${{fontSize:9,color:'#777'}}>${(watermelonMaterials.totalBedFt/5280).toFixed(2)} miles</div></div>
         <div style=${{background:watermelonMaterials.rowsOverLimit?'#fff8e1':'#edf7ed',borderRadius:8,padding:'8px'}}><div style=${{fontSize:9,color:'#999'}}>LONGEST CONTINUOUS RUN</div><div style=${{fontSize:17,fontWeight:800,color:watermelonMaterials.rowsOverLimit?'#9a6800':'#2e7d32'}}>${watermelonMaterials.longestRunFt.toFixed(0)} ft</div><div style=${{fontSize:9,color:'#777'}}>limit ${watermelonMaterials.maxRunFt} ft</div></div>
@@ -6392,12 +6609,12 @@ function FieldMapper({staffProfile}){
       ${watermelonVarieties.length?html`<div style=${{marginTop:8,borderTop:'1px solid #eee',paddingTop:7}}><div style=${{fontSize:10,fontWeight:700,marginBottom:4}}>Assigned variety totals</div>${watermelonVarieties.map(x=>html`<div style=${{display:'flex',justifyContent:'space-between',gap:8,fontSize:10,padding:'2px 0'}}><span>${x.variety} · ${x.sections} section${x.sections===1?'':'s'}</span><span><strong>${x.acres.toFixed(2)} ac</strong> · ${Math.round(x.rowFt).toLocaleString()} row ft</span></div>`)}</div>`:null}
     </div>`:null}
 
-    ${stats&&!isTunnelStrawberryPlanningCrop(draft.crop)?html`<div style=${{background:'linear-gradient(135deg,#1a2b1a,#2d4a30)',borderRadius:12,padding:'14px 16px',marginBottom:8,color:'#fff'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><div style=${{fontSize:12,opacity:.75,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase'}}>Field Calculations</div><span style=${{fontSize:9,opacity:.6}}>${stats.source==='polygon'?'actual polygon rows · '+bearingLabel(draft):'manual rectangle'}</span></div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>${[['Acres',stats.acreage.toFixed(3)],['Sections',stats.numSections],['Rows',stats.numRows]].map(([lbl,val])=>html`<div style=${{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'8px',textAlign:'center'}}><div style=${{fontSize:17,fontWeight:700}}>${val}</div><div style=${{fontSize:10,opacity:.7}}>${lbl}</div></div>`)}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>${[['AVG ROW LENGTH',stats.rowLenFt.toFixed(0)+' ft'],['TOTAL ROW FT',Math.round(stats.totalRowFt).toLocaleString()+' ft'],['PLANTS / HILLS',displayPlants.toLocaleString()],['SEEDS (+ buffer)',displaySeeds.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>${l}</div><div style=${{fontWeight:700}}>${v}</div></div>`)}${cfg.twinRow?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>TWIN-ROW PLANTING LINE</div><div style=${{fontWeight:700}}>${Math.round(stats.plantingLineFt).toLocaleString()} ft</div></div>`:null}${stats.pollinators?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>POLLINATORS</div><div style=${{fontWeight:700}}>${stats.pollinators.toLocaleString()}</div></div>`:null}${stats.plasticFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>PLASTIC MULCH</div><div style=${{fontWeight:700}}>${(stats.plasticFt/5280).toFixed(2)} mi · ${Math.round(stats.plasticFt).toLocaleString()} ft</div></div>`:null}${stats.dripFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>DRIP TAPE</div><div style=${{fontWeight:700}}>${(stats.dripFt/5280).toFixed(2)} mi · ${Math.round(stats.dripFt).toLocaleString()} ft</div></div>`:null}<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>SECTION WIDTH</div><div style=${{fontWeight:700}}>${stats.sectionWidth.toFixed(1)} ft</div></div>${stats.unusedFt>1?html`<div style=${{background:'rgba(255,200,0,.15)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.7,fontSize:10}}>UNUSED EDGE</div><div style=${{fontWeight:700,color:'#ffd'}}>${stats.unusedFt.toFixed(1)} ft</div></div>`:null}</div></div>
+    ${stats&&!isTunnelStrawberryPlanningCrop(draft.crop)?html`<div style=${{background:'linear-gradient(135deg,#1a2b1a,#2d4a30)',borderRadius:12,padding:'14px 16px',marginBottom:8,color:'#fff'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><div style=${{fontSize:12,opacity:.75,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase'}}>Field Calculations</div><span style=${{fontSize:9,opacity:.6}}>${stats.source==='polygon'?'actual polygon rows · '+bearingLabel(draft):'manual rectangle'}</span></div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>${[['Acres',stats.acreage.toFixed(3)],['Sections',stats.numSections],['Rows',stats.numRows]].map(([lbl,val])=>html`<div style=${{background:'rgba(255,255,255,.12)',borderRadius:8,padding:'8px',textAlign:'center'}}><div style=${{fontSize:17,fontWeight:700}}>${val}</div><div style=${{fontSize:10,opacity:.7}}>${lbl}</div></div>`)}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>${[['AVG ROW LENGTH',stats.rowLenFt.toFixed(0)+' ft'],['TOTAL ROW FT',Math.round(stats.totalRowFt).toLocaleString()+' ft'],['PLANTS / HILLS',displayPlants.toLocaleString()],['SEEDS (+ buffer)',displaySeeds.toLocaleString()]].map(([l,v])=>html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>${l}</div><div style=${{fontWeight:700}}>${v}</div></div>`)}${cfg.twinRow?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>TWIN-ROW PLANTING LINE</div><div style=${{fontWeight:700}}>${Math.round(stats.plantingLineFt).toLocaleString()} ft</div></div>`:null}${stats.pollinators&&!isWatermelonPlanningCrop(draft.crop)?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>POLLINATORS</div><div style=${{fontWeight:700}}>${stats.pollinators.toLocaleString()}</div></div>`:null}${stats.plasticFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>PLASTIC MULCH</div><div style=${{fontWeight:700}}>${(stats.plasticFt/5280).toFixed(2)} mi · ${Math.round(stats.plasticFt).toLocaleString()} ft</div></div>`:null}${stats.dripFt?html`<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>DRIP TAPE</div><div style=${{fontWeight:700}}>${(stats.dripFt/5280).toFixed(2)} mi · ${Math.round(stats.dripFt).toLocaleString()} ft</div></div>`:null}<div style=${{background:'rgba(255,255,255,.08)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.6,fontSize:10}}>SECTION WIDTH</div><div style=${{fontWeight:700}}>${stats.sectionWidth.toFixed(1)} ft</div></div>${stats.unusedFt>1?html`<div style=${{background:'rgba(255,200,0,.15)',borderRadius:7,padding:'7px 10px'}}><div style=${{opacity:.7,fontSize:10}}>UNUSED EDGE</div><div style=${{fontWeight:700,color:'#ffd'}}>${stats.unusedFt.toFixed(1)} ft</div></div>`:null}</div></div>
       ${stats.numSections>0&&!isPumpkinPlanningCrop(draft.crop)?html`<div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <div style=${{fontWeight:700,fontSize:12,marginBottom:3}}>${isWatermelonPlanningCrop(draft.crop)?'🍉 Watermelon Section + Greenhouse Plan':isSweetCornPlanningCrop(draft.crop)?'🌽 Sweet Corn Staging Plan':'Variety Assignment by Section'}</div>
-      ${isWatermelonPlanningCrop(draft.crop)?html`<div style=${{fontSize:10,color:'#777',marginBottom:8}}>Each 65 ft section carries both a triploid seedless variety and a diploid pollinator. Counts use 36" triploid spacing and 108" pollinator spacing = 1:3.</div>`:isSweetCornPlanningCrop(draft.crop)?html`<div style=${{fontSize:10,color:'#777',marginBottom:8}}>Plan by week, then check off the actual planting. Grouping sections into roughly 2–5 acres per week helps stage market supply.</div>`:null}
-      <div style=${{display:'grid',gap:7}}>${Array.from({length:stats.numSections},(_,i)=>{const wm=watermelonMaterials?.sections?.find(x=>x.section===i+1),meta=sectionMetaAt(draft.sectionMeta,i),cnt=wm?watermelonSectionSeedCounts(wm):null;return html`<div key=${i} style=${{background:'#f8f8f5',border:'1px solid #e8e8e4',borderRadius:8,padding:'7px 8px'}}><div style=${{fontSize:10,fontWeight:800,marginBottom:5}}>Section ${i+1}${wm?` · ${wm.acres.toFixed(2)} ac · ${Math.round(wm.rowFt).toLocaleString()} row ft`:''}</div>
-        ${isWatermelonPlanningCrop(draft.crop)?html`<div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}}><label class="fl">Seedless<select class="ti" value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${WATERMELON_SEEDLESS.filter(v=>cropVarieties.includes(v)).map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Pollinator<select class="ti" value=${meta.pollinatorVariety||''} onChange=${e=>patchSectionMeta(i,{pollinatorVariety:e.target.value})}><option value="">Choose…</option>${WATERMELON_POLLINATORS.filter(v=>cropVarieties.includes(v)).map(v=>html`<option value=${v}>${v}</option>`)}</select></label></div><div style=${{fontSize:9,color:'#666',margin:'4px 0'}}>${cnt?`${cnt.seedless.toLocaleString()} seedless + ${cnt.pollinator.toLocaleString()} pollinator plants`:''}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:5}}><label class="fl">Seedless tray<select class="ti" value=${meta.seedlessTraySize||98} onChange=${e=>patchSectionMeta(i,{seedlessTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Pollinator tray<select class="ti" value=${meta.pollinatorTraySize||128} onChange=${e=>patchSectionMeta(i,{pollinatorTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Planned seed date<input class="ti" type="date" value=${meta.plannedSeedDate||''} onInput=${e=>patchSectionMeta(i,{plannedSeedDate:e.target.value})}/></label><label class="fl">Plant week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label></div><div style=${{display:'flex',gap:5,marginTop:5,flexWrap:'wrap'}}><button onClick=${()=>markSectionDate(i,'seededDate')} class="btn btn-sm btn-out" style=${{padding:'4px 7px',fontSize:9}}>${meta.seededDate?'✓ Seeded '+meta.seededDate:'Mark seeded today'}</button><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm" style=${{padding:'4px 7px',fontSize:9}}>${meta.fieldPlantedDate?'✓ Field planted '+meta.fieldPlantedDate:'Mark field planted today'}</button></div>`:html`<div style=${{display:'grid',gridTemplateColumns:'1.2fr .9fr .9fr 1.3fr',gap:5,alignItems:'end'}}><label class="fl">Variety<select class="ti" value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${cropVarieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></label>${isSweetCornPlanningCrop(draft.crop)?html`<label class="fl">Planned week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm btn-out" style=${{height:31,padding:'4px 6px',fontSize:9}}>${meta.fieldPlantedDate?'✓ '+meta.fieldPlantedDate:'Mark planted'}</button><label class="fl">Harvest result<select class="ti" value=${meta.harvestAssessment||''} onChange=${e=>patchSectionMeta(i,{harvestAssessment:e.target.value})}><option value="">Not rated</option><option value="perfect">Perfect amount staged</option><option value="too_much">Too much came on at once</option><option value="too_little">Planted too little</option></select></label>`:null}</div>`}
+      ${isWatermelonPlanningCrop(draft.crop)?html`<div style=${{fontSize:10,color:'#777',marginBottom:7}}>Each 65 ft section carries both a triploid seedless variety and a diploid pollinator. Seedless can be applied to every section at once; pollinator stays section-by-section. Spacing can be set for the whole field and overridden by section.</div><div style=${{display:'grid',gridTemplateColumns:'1fr auto auto',gap:6,alignItems:'end',padding:'8px',background:'#fff7f6',border:'1px solid #efd4d1',borderRadius:8,marginBottom:8}}><label class="fl">Seedless variety — all sections<select class="ti" value=${bulkSeedlessVariety||''} onChange=${e=>setBulkSeedlessVariety(e.target.value)}><option value="">Choose…</option>${wmSeedlessOptions.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><button class="btn btn-sm" onClick=${applyWatermelonSeedlessAll} disabled=${!(bulkSeedlessVariety||wmSeedlessOptions[0])}>Apply seedless to all</button><button class="btn btn-sm btn-out" onClick=${applyWatermelonSpacingAll}>Apply field spacing to all</button></div>`:isSweetCornPlanningCrop(draft.crop)?html`<div style=${{fontSize:10,color:'#777',marginBottom:8}}>Plan by week, then check off the actual planting. Grouping sections into roughly 2–5 acres per week helps stage market supply.</div>`:null}
+      <div style=${{display:'grid',gap:7}}>${Array.from({length:stats.numSections},(_,i)=>{const wm=watermelonMaterials?.sections?.find(x=>x.section===i+1),meta=sectionMetaAt(draft.sectionMeta,i),cnt=wm?watermelonSectionSeedCounts(wm,meta,watermelonPP):null;return html`<div key=${i} style=${{background:'#f8f8f5',border:'1px solid #e8e8e4',borderRadius:8,padding:'7px 8px'}}><div style=${{fontSize:10,fontWeight:800,marginBottom:5}}>Section ${i+1}${wm?` · ${wm.acres.toFixed(2)} ac · ${Math.round(wm.rowFt).toLocaleString()} row ft`:''}</div>
+        ${isWatermelonPlanningCrop(draft.crop)?html`<div style=${{display:'grid',gridTemplateColumns:'1.2fr 1.2fr .65fr .65fr',gap:5,alignItems:'end'}}><label class="fl">Seedless<select class="ti" value=${canonicalWatermelonVarietyName((draft.varieties||[])[i]||'')} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${wmSeedlessOptions.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Pollinator<select class="ti" value=${canonicalWatermelonVarietyName(meta.pollinatorVariety||'')} onChange=${e=>patchSectionMeta(i,{pollinatorVariety:e.target.value})}><option value="">Choose…</option>${wmPollinatorOptions.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Seedless spacing<div style=${{display:'flex',alignItems:'center',gap:2}}><input class="ti" type="number" min="6" step="1" value=${meta.seedlessSpacingIn||watermelonPP.seedlessSpacingIn} onInput=${e=>patchSectionMeta(i,{seedlessSpacingIn:e.target.value})}/><span>&quot;</span></div></label><label class="fl">Pollinator spacing<div style=${{display:'flex',alignItems:'center',gap:2}}><input class="ti" type="number" min="6" step="1" value=${meta.pollinatorSpacingIn||watermelonPP.pollinatorSpacingIn} onInput=${e=>patchSectionMeta(i,{pollinatorSpacingIn:e.target.value})}/><span>&quot;</span></div></label></div><div style=${{fontSize:9,color:cnt&&cnt.ratio&&Math.abs(cnt.ratio-3)>.15?'#a05a00':'#666',margin:'4px 0'}}>${cnt?`${cnt.seedless.toLocaleString()} seedless @ ${cnt.seedlessSpacingIn}" + ${cnt.pollinator.toLocaleString()} pollinator @ ${cnt.pollinatorSpacingIn}" · 1 pollinator : ${cnt.ratio?.toFixed(2)||'—'} seedless${cnt.ratio&&Math.abs(cnt.ratio-3)>.15?' ⚠ target 1:3':''}`:''}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:5}}><label class="fl">Seedless tray<select class="ti" value=${meta.seedlessTraySize||98} onChange=${e=>patchSectionMeta(i,{seedlessTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Pollinator tray<select class="ti" value=${meta.pollinatorTraySize||128} onChange=${e=>patchSectionMeta(i,{pollinatorTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Planned seed date<input class="ti" type="date" value=${meta.plannedSeedDate||''} onInput=${e=>patchSectionMeta(i,{plannedSeedDate:e.target.value})}/></label><label class="fl">Plant week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label></div><div style=${{display:'flex',gap:5,marginTop:5,flexWrap:'wrap'}}><button onClick=${()=>markSectionDate(i,'seededDate')} class="btn btn-sm btn-out" style=${{padding:'4px 7px',fontSize:9}}>${meta.seededDate?'✓ Seeded '+meta.seededDate:'Mark seeded today'}</button><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm" style=${{padding:'4px 7px',fontSize:9}}>${meta.fieldPlantedDate?'✓ Field planted '+meta.fieldPlantedDate:'Mark field planted today'}</button></div>`:html`<div style=${{display:'grid',gridTemplateColumns:'1.2fr .9fr .9fr 1.3fr',gap:5,alignItems:'end'}}><label class="fl">Variety<select class="ti" value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${cropVarieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></label>${isSweetCornPlanningCrop(draft.crop)?html`<label class="fl">Planned week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm btn-out" style=${{height:31,padding:'4px 6px',fontSize:9}}>${meta.fieldPlantedDate?'✓ '+meta.fieldPlantedDate:'Mark planted'}</button><label class="fl">Harvest result<select class="ti" value=${meta.harvestAssessment||''} onChange=${e=>patchSectionMeta(i,{harvestAssessment:e.target.value})}><option value="">Not rated</option><option value="perfect">Perfect amount staged</option><option value="too_much">Too much came on at once</option><option value="too_little">Planted too little</option></select></label>`:null}</div>`}
       </div>`;})}</div></div>`:null}`:null}
 
     <div class="card" style=${{padding:'10px 14px',marginBottom:8}}><label class="fl" style=${{fontSize:11}}>Notes</label><textarea value=${draft.notes} onInput=${e=>setDraft(d=>({...d,notes:e.target.value}))} placeholder="Soil type, drainage, access points, previous crop…" style=${{width:'100%',padding:'8px',border:'1.5px solid #ddd',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none',height:55,resize:'vertical',boxSizing:'border-box'}}/></div>
