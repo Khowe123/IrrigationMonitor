@@ -4093,9 +4093,21 @@ function normalizeSoilRecord(r={}){
 }
 function normalizeSoilRecords(v){return(Array.isArray(v)?v:[]).map(normalizeSoilRecord).sort((a,b)=>(b.year||0)-(a.year||0)||String(b.sampleDate).localeCompare(String(a.sampleDate)));}
 function soilNumericProps(fc){
-  const seen=new Map(),features=(fc?.features||[]).slice(0,750);
-  features.forEach(f=>Object.entries(f?.properties||{}).forEach(([k,v])=>{const n=typeof v==='number'?v:parseFloat(v);if(v!==''&&v!=null&&Number.isFinite(n)){const x=seen.get(k)||{count:0,min:Infinity,max:-Infinity};x.count++;x.min=Math.min(x.min,n);x.max=Math.max(x.max,n);seen.set(k,x);}}));
-  return Array.from(seen.entries()).filter(([,x])=>x.count>=Math.min(3,Math.max(1,features.length*.1))).map(([name,x])=>({name,min:x.min,max:x.max,count:x.count}));
+  // IMPORTANT: SoilOptix exports can contain thousands of mapped features.
+  // v52 inspected only the first 750 rows, which could badly understate the true
+  // min/max when DBF records are spatially ordered. Scan the complete layer so
+  // the legend and colour scale reflect the entire SoilOptix dataset.
+  const seen=new Map(),features=(fc?.features||[]);
+  features.forEach(f=>Object.entries(f?.properties||{}).forEach(([k,v])=>{
+    const n=typeof v==='number'?v:parseFloat(v);
+    if(v!==''&&v!=null&&Number.isFinite(n)){
+      const x=seen.get(k)||{count:0,min:Infinity,max:-Infinity};
+      x.count++;x.min=Math.min(x.min,n);x.max=Math.max(x.max,n);seen.set(k,x);
+    }
+  }));
+  return Array.from(seen.entries())
+    .filter(([,x])=>x.count>=Math.min(3,Math.max(1,features.length*.1)))
+    .map(([name,x])=>({name,min:x.min,max:x.max,count:x.count}));
 }
 function soilLayerInfoFromGeo(data){
   const arr=Array.isArray(data)?data:[data];
@@ -4105,8 +4117,12 @@ function soilLayerInfoFromGeo(data){
   }));
 }
 function soilRampColor(v,min,max){
-  if(!Number.isFinite(v))return'#bdbdbd';const t=max>min?Math.max(0,Math.min(1,(v-min)/(max-min))):.5;
-  const stops=['#a50026','#f46d43','#fee08b','#d9ef8b','#66bd63','#006837'];return stops[Math.min(stops.length-1,Math.floor(t*stops.length))];
+  if(!Number.isFinite(v))return'#bdbdbd';
+  const t=max>min?Math.max(0,Math.min(1,(v-min)/(max-min))):.5;
+  // SoilOptix PDF maps use a neutral light-to-dark classified appearance rather
+  // than a red/yellow/green agronomic warning ramp. Higher values render darker.
+  const stops=['#f5f3f2','#e9e5e4','#d8d0cf','#c5b7b5','#aa9491','#896b68','#63413f','#3f1715'];
+  return stops[Math.min(stops.length-1,Math.floor(t*stops.length))];
 }
 
 function SoilRecordsPanel({fields,fieldYear,canEditFields,onUpdateField,onBack}){
@@ -4176,7 +4192,7 @@ function SoilRecordsPanel({fields,fieldYear,canEditFields,onUpdateField,onBack})
 
   return html`<div><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}><div><button onClick=${()=>{setSelectedId(null);setEditRec(null);setGeoData(null);}} class="btn btn-sm btn-out" style=${{marginRight:8}}>← Soil fields</button><strong style=${{fontSize:15}}>🧪 ${selected.name}</strong><span style=${{fontSize:10,color:'#888',marginLeft:7}}>${fieldDisplayAcres(selected).toFixed(2)} ac</span></div><button onClick=${onBack} class="btn btn-sm btn-out">Farm Map</button></div>
     ${msg?html`<div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,marginBottom:8,background:msg.startsWith('⚠')?'#fff1f1':'#edf7ed',color:msg.startsWith('⚠')?'#b42318':'#2e7d32'}}>${msg}</div>`:null}
-    <div class="card" style=${{overflow:'hidden',marginBottom:9}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',borderBottom:'1px solid #eee'}}><div><strong>Soil map</strong><div style=${{fontSize:9,color:'#888'}}>Satellite + imported SoilOptix shapefile layer</div></div>${geoData?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><select value=${layerIdx} onChange=${e=>{setLayerIdx(+e.target.value);setProp('');}} style=${{fontSize:9,padding:'4px 6px'}}>${layerInfo.map((l,i)=>html`<option value=${i}>${l.name} (${l.featureCount.toLocaleString()})</option>`)}</select>${activeLayer?.numericProps?.length?html`<select value=${activePropInfo?.name||''} onChange=${e=>setProp(e.target.value)} style=${{fontSize:9,padding:'4px 6px'}}>${activeLayer.numericProps.map(p=>html`<option value=${p.name}>${p.name}</option>`)}</select>`:null}</div>`:null}</div><div ref=${mapEl} style=${{height:390,background:'#e0e8e0'}}></div>${activePropInfo?html`<div style=${{padding:'6px 10px',fontSize:9,color:'#666'}}>Showing <strong>${activePropInfo.name}</strong> · ${activePropInfo.min.toFixed(2)} → ${activePropInfo.max.toFixed(2)}${activeLayer.featureCount>12000?' · map display sampled for performance; original data remains complete':''}</div>`:null}</div>
+    <div class="card" style=${{overflow:'hidden',marginBottom:9}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',borderBottom:'1px solid #eee'}}><div><strong>Soil map</strong><div style=${{fontSize:9,color:'#888'}}>Satellite + imported SoilOptix shapefile layer</div></div>${geoData?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><select value=${layerIdx} onChange=${e=>{setLayerIdx(+e.target.value);setProp('');}} style=${{fontSize:9,padding:'4px 6px'}}>${layerInfo.map((l,i)=>html`<option value=${i}>${l.name} (${l.featureCount.toLocaleString()})</option>`)}</select>${activeLayer?.numericProps?.length?html`<select value=${activePropInfo?.name||''} onChange=${e=>setProp(e.target.value)} style=${{fontSize:9,padding:'4px 6px'}}>${activeLayer.numericProps.map(p=>html`<option value=${p.name}>${p.name}</option>`)}</select>`:null}</div>`:null}</div><div ref=${mapEl} style=${{height:390,background:'#e0e8e0'}}></div>${activePropInfo?html`<div style=${{padding:'6px 10px',fontSize:9,color:'#666'}}>Showing <strong>${activePropInfo.name}</strong> · full-layer range ${activePropInfo.min.toFixed(2)} → ${activePropInfo.max.toFixed(2)} · SoilOptix-style neutral scale${activeLayer.featureCount>12000?' · map display sampled for performance; original data remains complete':''}</div>`:null}</div>
     ${canEditFields&&!editRec?html`<button onClick=${()=>setEditRec(normalizeSoilRecord({year:fieldYear,provider:'SoilOptix',sampleDate:'',method:'SoilOptix high-resolution scan',status:'Results received'}))} class="btn" style=${{marginBottom:9}}>+ Soil Sampling Record</button>`:null}
     ${editRec?html`<div class="card" style=${{padding:'10px 12px',marginBottom:10,border:'2px solid #8fb78b'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><strong>${records.some(r=>r.id===editRec.id)?'Edit':'New'} soil sampling record</strong><button onClick=${()=>setEditRec(null)} class="btn btn-sm btn-out">Cancel</button></div><div style=${{display:'grid',gridTemplateColumns:'90px 1fr 1fr 1fr',gap:6,marginBottom:7}}><div><label class="fl">Year sampled</label><input class="ti" type="number" value=${editRec.year} onInput=${e=>setEditRec({...editRec,year:+e.target.value})}/></div><div><label class="fl">Provider</label><input class="ti" value=${editRec.provider} onInput=${e=>setEditRec({...editRec,provider:e.target.value})}/></div><div><label class="fl">Sample date</label><input class="ti" type="date" value=${editRec.sampleDate} onInput=${e=>setEditRec({...editRec,sampleDate:e.target.value})}/></div><div><label class="fl">Next due year</label><input class="ti" type="number" placeholder="optional" value=${editRec.nextDueYear||''} onInput=${e=>setEditRec({...editRec,nextDueYear:e.target.value?+e.target.value:''})}/></div></div>
       <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:7}}><div><label class="fl">Method</label><input class="ti" value=${editRec.method} onInput=${e=>setEditRec({...editRec,method:e.target.value})}/></div><div><label class="fl">Status</label><select class="ti" value=${editRec.status} onChange=${e=>setEditRec({...editRec,status:e.target.value})}><option>Planned</option><option>Collected</option><option>Sent to lab</option><option>Results received</option><option>Complete</option></select></div></div>
