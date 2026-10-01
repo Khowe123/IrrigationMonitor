@@ -1,5 +1,5 @@
-// hff-v52 — Soil sampling + SoilOptix shapefile viewer; network-first HTML, offline app shell
-const CACHE='hff-v52';
+// hff-v53 — Soil sampling + SoilOptix shapefile viewer; network-first HTML, offline app shell
+const CACHE='hff-v53';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
