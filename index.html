@@ -274,6 +274,7 @@ hr.divider{border:none;border-top:1px solid #f0f0f0;margin:12px 0}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://unpkg.com/shpjs@6.2.0/dist/shp.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
@@ -897,6 +898,19 @@ const FIELD_ZONES=[
   {id:'fcust',   label:'Custom Acres',       acres:null},
 ];
 
+function farmMapFieldsForYear(year){
+  const fs=LS.get('hff:fields',[]),yr=String(year);
+  return fs.map(f=>{const p=(f?.yearPlans&&f.yearPlans[yr])||{};const crop=p.crop||'';return{...f,_plan:p,_crop:crop,_acres:fieldDisplayAcres(f)};}).filter(f=>f._crop&&FIELD_CROPS_CFG[f._crop]);
+}
+function farmMapCropOptionsForYear(year){
+  const seen=new Set();return farmMapFieldsForYear(year).filter(f=>{if(seen.has(f._crop))return false;seen.add(f._crop);return true;}).map(f=>({id:f._crop,label:FIELD_CROPS_CFG[f._crop]?.label||f._crop,icon:FIELD_CROPS_CFG[f._crop]?.icon||'🌱'})).sort((a,b)=>a.label.localeCompare(b.label));
+}
+function farmMapFertZones(year,crop){
+  const ids=crop==='watermelon'?new Set(['watermelon']):new Set(['strawberry']);
+  return farmMapFieldsForYear(year).filter(f=>ids.has(f._crop)).map(f=>({id:'map_'+f.id,fieldId:f.id,name:f.name,acres:f._acres,crop,active:true}));
+}
+
+
 // 2026 seed data — all confirmed events with calculated rates
 const SPRAY_SEED=[
   {id:'ev-20260423',date:'2026-04-23',loc:'Field',gpa:40,acres:19,note:'',products:[
@@ -1264,7 +1278,10 @@ function FertBrain(){
     return phases.find(p=>mmdd>=p.mmddStart&&mmdd<p.mmddEnd)||phases[phases.length-1];
   })();
   const recipe=phase?.recipe;
-  const cropZones=zones.filter(z=>z.crop===fertCrop&&z.active);
+  const fertCalendarYear=new Date().getFullYear();
+  const mapLinkedFert=fertCalendarYear>=2027;
+  const mappedFertZones=mapLinkedFert?farmMapFertZones(fertCalendarYear,fertCrop):[];
+  const cropZones=mapLinkedFert?mappedFertZones:zones.filter(z=>z.crop===fertCrop&&z.active);
 
   const daysLeft=(()=>{
     if(!phase)return null;
@@ -1291,7 +1308,7 @@ function FertBrain(){
     const lpa=applyType==='blue'?(recipe?.bluePerAcre||0):(recipe?.caPerAcre||8);
     const entry={id:'ap_'+Date.now(),date:todayStr(),time:applyTime,type:applyType,
       phaseId:phase?.id,phaseName:phase?.shortName,crop:fertCrop,applicator:applyName||'Unknown',
-      zones:cropZones.filter(z=>applyChecked[z.id]).map(z=>({id:z.id,name:z.name,acres:z.acres,litres:Math.round(z.acres*lpa)}))};
+      zones:cropZones.filter(z=>applyChecked[z.id]).map(z=>({id:z.id,fieldId:z.fieldId||null,name:z.name,acres:z.acres,litres:Math.round(z.acres*lpa)}))};
     const upd=[entry,...applyLog].slice(0,120);setApplyLog(upd);LS.set('hff:fert:applylog',upd);
     setApplyChecked({});doFlash('apply');
   }
@@ -1313,6 +1330,7 @@ function FertBrain(){
       </button>`)}
     </div>
 
+    ${mapLinkedFert?html`<div style=${{background:'#eef6ff',border:'1px solid #b8d6f0',borderRadius:8,padding:'7px 9px',fontSize:10,color:'#24557a',marginBottom:8}}><strong>🗺 Farm Map linked:</strong> ${fertCalendarYear} ${fertCrop==='watermelon'?'Watermelon':'Field Strawberry'} field names and acreages come from Fields → Farm Map. ${cropZones.length} mapped field${cropZones.length===1?'':'s'} available.</div>`:html`<div style=${{background:'#f7f7f4',border:'1px solid #e5e5df',borderRadius:8,padding:'6px 9px',fontSize:9,color:'#777',marginBottom:8}}>2026 keeps the existing Fert zone list. From 2027 onward, Watermelon and Field Strawberry acreages automatically come from the Farm Map plan.</div>`}
     ${plantingAnchors.first?html`<div style=${{background:'#edf7ed',border:'1px solid #c8e6c9',borderRadius:8,padding:'7px 9px',fontSize:10,color:'#2e7d32',marginBottom:8}}><strong>🌱 Planting stage anchor:</strong> ${plantingAnchors.first.field} started ${plantingAnchors.first.date} · ${plantingAnchors.count} planted section record${plantingAnchors.count===1?'':'s'} from Farm Map (${plantingAnchors.year}). Use this as the crop-stage starting point when reviewing the fertilizer phase.</div>`:null}
     <!-- Sub-tabs -->
     <div class="fert-sub-tabs">
@@ -4075,21 +4093,81 @@ async function openFarmStoredFile(storagePath,fileName='farm-file'){
 function cleanStorageName(v='file'){return String(v).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,100)||'file';}
 
 // ── SOIL / SOILOPTIX HELPERS ───────────────────────────────────────────────
+const SOIL_DEFAULT_RESAMPLE_YEARS=5;
 function normalizeSoilRecord(r={}){
+  const year=parseInt(r.year)||new Date().getFullYear();
+  const interval=Math.max(1,parseInt(r.resampleIntervalYears)||SOIL_DEFAULT_RESAMPLE_YEARS);
   return{
     id:r.id||('soil_'+Date.now().toString(36)),
-    year:parseInt(r.year)||new Date().getFullYear(),
+    year,
     provider:String(r.provider||'SoilOptix'),
     sampleDate:String(r.sampleDate||''),
     method:String(r.method||'SoilOptix high-resolution scan'),
     status:String(r.status||'Results received'),
-    nextDueYear:r.nextDueYear?parseInt(r.nextDueYear):'',
+    resampleIntervalYears:interval,
+    nextDueYear:r.nextDueYear?parseInt(r.nextDueYear):(year+interval),
+    autoDetectedYear:!!r.autoDetectedYear,
+    autoDetectedDate:!!r.autoDetectedDate,
+    detectionNote:String(r.detectionNote||''),
     notes:String(r.notes||''),
+    samplePoints:Array.isArray(r.samplePoints)?r.samplePoints.filter(x=>x&&Number.isFinite(parseFloat(x.lat))&&Number.isFinite(parseFloat(x.lng))).map((x,i)=>({id:x.id||('sp_'+i),lat:+x.lat,lng:+x.lng,label:String(x.label||('Sample '+(i+1)))})):[],
     files:Array.isArray(r.files)?r.files:[],
     spatial:r.spatial||null,
     createdAt:r.createdAt||new Date().toISOString(),
     updatedAt:r.updatedAt||new Date().toISOString()
   };
+}
+function soilYearFromFileName(name=''){
+  const m=String(name).match(/(?:^|[^0-9])((?:19|20)\d{2})(?:[^0-9]|$)/);return m?parseInt(m[1]):null;
+}
+function soilDateToIso(raw=''){
+  const x=String(raw).trim().replace(/[,]/g,' ').replace(/\s+/g,' ');
+  let m=x.match(/\b((?:19|20)\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})\b/);
+  if(m){const y=+m[1],mo=+m[2],d=+m[3];if(mo>=1&&mo<=12&&d>=1&&d<=31)return`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+  const mons={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+  m=x.match(/\b(January|February|March|April|May|June|July|August|September|Sept|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})(?:st|nd|rd|th)?\s+((?:19|20)\d{2})\b/i);
+  if(m){const mo=mons[m[1].toLowerCase()],d=+m[2],y=+m[3];return`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+  m=x.match(/\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|Sept|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+((?:19|20)\d{2})\b/i);
+  if(m){const d=+m[1],mo=mons[m[2].toLowerCase()],y=+m[3];return`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+  return'';
+}
+async function soilPdfText(file){
+  if(!window.pdfjsLib)return'';
+  try{
+    if(window.pdfjsLib.GlobalWorkerOptions&&!window.pdfjsLib.GlobalWorkerOptions.workerSrc)window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const data=new Uint8Array(await file.arrayBuffer()),pdf=await window.pdfjsLib.getDocument({data}).promise;
+    let out='';const n=Math.min(pdf.numPages,6);
+    for(let i=1;i<=n;i++){const pg=await pdf.getPage(i),tc=await pg.getTextContent();out+='\n'+tc.items.map(x=>x.str||'').join(' ');}
+    return out.replace(/\s+/g,' ').trim();
+  }catch(e){console.warn('PDF metadata read failed',file?.name,e);return'';}
+}
+function soilDetectFromText(text='',fileName=''){
+  const t=String(text||''),low=t.toLowerCase(),name=String(fileName||'');
+  let kind='report';if(/soiloptix/i.test(name)||/soiloptix/i.test(t))kind='SoilOptix report';else if(/a\s*&\s*l|a and l|a&l canada|a&l laboratories/i.test(t)||/a.?&.?l/i.test(name))kind='A&L lab report';
+  let year=null,sampleDate='';
+  const ym=t.match(/\bYear\s*[:\-]?\s*((?:19|20)\d{2})\b/i);if(ym)year=+ym[1];
+  const dateLabels=['sample date','date sampled','sampling date','date collected','collected','collection date'];
+  for(const lbl of dateLabels){
+    const re=new RegExp(lbl+'\\s*[:\\-]?\\s*([^|]{0,40})','i'),m=t.match(re);if(!m)continue;
+    const iso=soilDateToIso(m[1]);if(iso){sampleDate=iso;year=+iso.slice(0,4);break;}
+    const y=m[1].match(/((?:19|20)\d{2})/);if(y&&!year)year=+y[1];
+  }
+  if(!year)year=soilYearFromFileName(name);
+  return{kind,year,sampleDate};
+}
+async function soilDetectFileMetadata(file){
+  let text='';if(/\.pdf$/i.test(file?.name||'')||file?.type==='application/pdf')text=await soilPdfText(file);
+  const d=soilDetectFromText(text,file?.name||'');return{...d,textFound:!!text};
+}
+function applySoilDetectedMeta(rec,detections=[]){
+  const r=normalizeSoilRecord(rec),years=detections.map(d=>d.year).filter(y=>Number.isFinite(y));
+  const unique=[...new Set(years)];let note='';
+  if(unique.length===1){r.year=unique[0];r.autoDetectedYear=true;r.nextDueYear=r.year+(r.resampleIntervalYears||SOIL_DEFAULT_RESAMPLE_YEARS);note=`Auto-detected sampling year ${r.year}; next sample due ${r.nextDueYear}.`;}
+  else if(unique.length>1){note='⚠ Uploaded reports disagree on sampling year: '+unique.join(', ')+'. Please confirm the correct year manually.';}
+  const dates=detections.map(d=>d.sampleDate).filter(Boolean);const ud=[...new Set(dates)];
+  if(ud.length===1){r.sampleDate=ud[0];r.autoDetectedDate=true;r.year=+ud[0].slice(0,4);r.autoDetectedYear=true;r.nextDueYear=r.year+(r.resampleIntervalYears||SOIL_DEFAULT_RESAMPLE_YEARS);note=`Auto-detected sample date ${r.sampleDate}; next sample due ${r.nextDueYear}.`;}
+  else if(ud.length>1){note=(note?note+' ':'')+'⚠ Uploaded reports disagree on sample date: '+ud.join(', ')+'.';}
+  r.detectionNote=note;return r;
 }
 function normalizeSoilRecords(v){return(Array.isArray(v)?v:[]).map(normalizeSoilRecord).sort((a,b)=>(b.year||0)-(a.year||0)||String(b.sampleDate).localeCompare(String(a.sampleDate)));}
 function soilNumericProps(fc){
@@ -4125,10 +4203,135 @@ function soilRampColor(v,min,max){
   return stops[Math.min(stops.length-1,Math.floor(t*stops.length))];
 }
 
+
+const FIELD_PREP_TYPES=[
+  {id:'disc_ripper',label:'Disc Ripper',icon:'🟫',rate:false},
+  {id:'subsoiler',label:'Subsoiler',icon:'⬇️',rate:false},
+  {id:'cultivator',label:'Cultivator',icon:'〰️',rate:false},
+  {id:'turbotill',label:'TurboTill',icon:'🟤',rate:false},
+  {id:'manure',label:'Spread Manure',icon:'🚜',rate:true,unit:'ton/ac'},
+  {id:'lime',label:'Spread Lime',icon:'⚪',rate:true,unit:'ton/ac'},
+  {id:'fertilizer',label:'Spread Fertilizer',icon:'🧂',rate:true,unit:'lb/ac'},
+  {id:'rye',label:'Spread Rye',icon:'🌾',rate:true,unit:'lb/ac'},
+  {id:'hybrid_rye',label:'Spread Hybrid Rye',icon:'🌾',rate:true,unit:'lb/ac'},
+  {id:'custom',label:'Custom Operation',icon:'🛠️',rate:false}
+];
+function fieldPrepType(id){return FIELD_PREP_TYPES.find(x=>x.id===id)||FIELD_PREP_TYPES[FIELD_PREP_TYPES.length-1];}
+function normalizeFieldPrepOps(v=[]){
+  return(Array.isArray(v)?v:[]).filter(Boolean).map(o=>({
+    id:o.id||('op_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6)),
+    type:o.type||'custom',customLabel:String(o.customLabel||''),status:o.status==='completed'?'completed':'planned',
+    plannedDate:String(o.plannedDate||''),completedDate:String(o.completedDate||''),product:String(o.product||''),
+    rate:o.rate===''||o.rate==null?'':Number(o.rate),unit:String(o.unit||fieldPrepType(o.type).unit||''),
+    notes:String(o.notes||''),files:Array.isArray(o.files)?o.files:[],batchId:String(o.batchId||''),assignedAt:o.assignedAt||null,createdAt:o.createdAt||new Date().toISOString(),updatedAt:o.updatedAt||new Date().toISOString()
+  }));
+}
+function fieldPlanForYear(f,year){return (f?.yearPlans&&f.yearPlans[String(year)])||{};}
+function fieldCropLabelForYear(f,year){
+  const p=fieldPlanForYear(f,year),c=FIELD_CROPS_CFG[p.crop];return c?`${c.icon||''} ${c.label}`.trim():'Not selected';
+}
+function operationTotalText(op,acres){
+  const rate=parseFloat(op.rate);if(!Number.isFinite(rate)||rate<=0)return'';
+  const total=rate*acres,u=String(op.unit||'');
+  const totalUnit=u.includes('/ac')?u.replace('/ac',''):u;
+  return `${total.toLocaleString(undefined,{maximumFractionDigits:1})} ${totalUnit}`.trim();
+}
+
+function SoilStatusMap({fields,onSelect}){
+  const el=useRef(null),mapRef=useRef(null),layerRef=useRef(null);
+  useEffect(()=>{
+    if(!el.current||!window.L)return;const L=window.L;
+    if(mapRef.current){mapRef.current.remove();mapRef.current=null;}
+    const map=L.map(el.current,{zoomControl:true,preferCanvas:true}).setView([42.74,-81.0],13);mapRef.current=map;
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri World Imagery',maxZoom:20}).addTo(map);
+    const layers=[],bounds=[],yr=new Date().getFullYear();
+    fields.forEach(f=>{
+      const pts=f.latlngs||[];if(pts.length<3)return;const recs=normalizeSoilRecords(f.soilRecords),last=recs[0];
+      let color='#c62828',status='No soil record';
+      if(last){const due=last.nextDueYear&&yr>=last.nextDueYear;color=due?'#ef8c00':(last.status==='Planned'||last.status==='Collected'||last.status==='Sent to lab')?'#6a45b8':'#2e7d32';status=due?`Due · ${last.year}`:`${last.provider} ${last.year}`;}
+      const p=L.polygon(pts.map(x=>[x.lat,x.lng]),{color,fillColor:color,fillOpacity:.28,weight:2});
+      p.bindTooltip(`<strong>${f.name}</strong><br>${status}`);p.on('click',()=>onSelect&&onSelect(f.id));layers.push(p);pts.forEach(x=>bounds.push([x.lat,x.lng]));
+    });
+    if(layers.length)layerRef.current=L.layerGroup(layers).addTo(map);
+    if(bounds.length)setTimeout(()=>map.fitBounds(L.latLngBounds(bounds),{padding:[15,15],maxZoom:15}),20);
+    return()=>{map.remove();mapRef.current=null;layerRef.current=null;};
+  },[fields]);
+  return html`<div><div ref=${el} style=${{height:330,background:'#e7ece5',borderRadius:9}}></div>
+    <div style=${{display:'flex',gap:10,flexWrap:'wrap',fontSize:9,color:'#666',padding:'6px 2px'}}>
+      <span>🟢 current</span><span>🟠 due</span><span>🟣 sampling in progress</span><span>🔴 no record</span>
+    </div></div>`;
+}
+
+function FieldPrepPanel({fields,fieldYear,canEditFields,onUpdateField,onBack}){
+  const[selectedId,setSelectedId]=useState(null),[draft,setDraft]=useState(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false);
+  const selected=fields.find(f=>f.id===selectedId)||null;
+  const plan=selected?fieldPlanForYear(selected,fieldYear):{};
+  const ops=normalizeFieldPrepOps(plan.fieldPrepOps||[]);
+  const acres=selected?fieldDisplayAcres(selected):0;
+  const cropLabel=selected?fieldCropLabelForYear(selected,fieldYear):'';
+  function newOp(type='disc_ripper'){
+    const t=fieldPrepType(type);setDraft({id:'op_'+Date.now().toString(36),type,customLabel:'',status:'planned',plannedDate:'',completedDate:'',product:'',rate:'',unit:t.unit||'',notes:'',files:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+  }
+  async function saveOps(nextOps,message='Field prep plan saved and shared.'){
+    if(!selected)return;const raw=selected,yp={...fieldPlanForYear(raw,fieldYear),fieldPrepOps:normalizeFieldPrepOps(nextOps)},yearPlans={...(raw.yearPlans||{}),[String(fieldYear)]:yp};
+    setBusy(true);await onUpdateField(raw.id,{yearPlans},message);setBusy(false);
+  }
+  async function saveDraft(){
+    if(!draft||!selected)return;const op={...draft,updatedAt:new Date().toISOString()};await saveOps([op,...ops.filter(x=>x.id!==op.id)]);setDraft(null);setMsg('✓ Operation saved.');
+  }
+  async function markComplete(op){
+    const next={...op,status:'completed',completedDate:op.completedDate||todayStr(),updatedAt:new Date().toISOString()};await saveOps([next,...ops.filter(x=>x.id!==op.id)],'Field operation marked complete and shared.');setMsg('✓ '+(fieldPrepType(op.type).label)+' completed.');
+  }
+  async function removeOp(op){
+    if(!confirm('Delete this field operation?'))return;await saveOps(ops.filter(x=>x.id!==op.id),'Field operation deleted and shared.');if(draft?.id===op.id)setDraft(null);
+  }
+  async function addOpFiles(fileList){
+    if(!draft||!selected||!fileList?.length)return;setBusy(true);const out=[...(draft.files||[])];
+    try{
+      for(const f of Array.from(fileList)){
+        const p='FieldOperations/'+cleanStorageName(selected.id+'_'+selected.name)+'/'+fieldYear+'/'+cleanStorageName(draft.id)+'/'+cleanStorageName(f.name);
+        const r=await uploadFarmFile(f,p,f.type||'application/octet-stream');if(!r.ok)throw new Error(r.error||'Upload failed');
+        out.push({name:f.name,path:p,type:f.type||'',uploadedAt:new Date().toISOString()});
+      }setDraft({...draft,files:out});setMsg('✓ Attachment uploaded. Save the operation to keep it.');
+    }catch(e){setMsg('⚠ '+e.message);}finally{setBusy(false);}
+  }
+  function journal(){
+    if(!selected)return[];const arr=[];
+    normalizeSoilRecords(selected.soilRecords).forEach(r=>arr.push({date:r.sampleDate||`${r.year}-01-01`,icon:'🧪',title:`Soil — ${r.provider} ${r.year}`,detail:`${r.method} · ${r.status}${r.nextDueYear?' · next due '+r.nextDueYear:''}`}));
+    Object.entries(selected.yearPlans||{}).forEach(([yr,p])=>{if(p?.crop)arr.push({date:`${yr}-01-01`,icon:FIELD_CROPS_CFG[p.crop]?.icon||'🌱',title:`${yr} crop — ${FIELD_CROPS_CFG[p.crop]?.label||p.crop}`,detail:`${fieldDisplayAcres(selected).toFixed(2)} ac`});normalizeFieldPrepOps(p?.fieldPrepOps||[]).forEach(o=>arr.push({date:o.completedDate||o.plannedDate||`${yr}-01-01`,icon:fieldPrepType(o.type).icon,title:(o.status==='completed'?'Completed: ':'Planned: ')+(o.customLabel||fieldPrepType(o.type).label),detail:[o.product,o.rate!==''?`${o.rate} ${o.unit}`:'',o.notes].filter(Boolean).join(' · ')}));});
+    (LS.get('hff:spray:events',[])||[]).filter(e=>Array.isArray(e.fieldIds)&&e.fieldIds.includes(selected.id)).forEach(e=>arr.push({date:e.date||'',icon:'🧴',title:`Spray — ${e.crop||'Field'}`,detail:`${(e.products||[]).map(p=>p.name).join(', ')} · ${e.acres||0} ac${e.applicator?' · '+e.applicator:''}`}));
+    (LS.get('hff:fert:applylog',[])||[]).forEach(e=>(e.zones||[]).filter(z=>z.fieldId===selected.id).forEach(z=>arr.push({date:e.date||'',icon:'🌱',title:`Fert — ${e.type==='calcium'?'Calcium':'Blue'} application`,detail:`${z.acres||0} ac · ${z.litres||0} L${e.applicator?' · '+e.applicator:''}`})));
+    return arr.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  }
+
+  if(!selected)return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10}}><div><div style=${{fontWeight:900,fontSize:16}}>🚜 Field Prep</div><div style=${{fontSize:10,color:'#777'}}>Plan and complete tillage, manure, lime, fertilizer and cover-crop operations for ${fieldYear}.</div></div><button onClick=${onBack} class="btn btn-sm btn-out">← Farm Map</button></div>
+    <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:7}}>
+      ${fields.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(f=>{const pp=fieldPlanForYear(f,fieldYear),oo=normalizeFieldPrepOps(pp.fieldPrepOps||[]),done=oo.filter(x=>x.status==='completed').length;return html`<button onClick=${()=>{setSelectedId(f.id);setDraft(null);setMsg('');}} class="card" style=${{padding:'10px 12px',textAlign:'left',cursor:'pointer',background:'#fff'}}><div style=${{display:'flex',justifyContent:'space-between',gap:8}}><strong>${f.name}</strong><span style=${{fontSize:9,color:'#888'}}>${fieldDisplayAcres(f).toFixed(2)} ac</span></div><div style=${{fontSize:9,color:'#666',marginTop:3}}>${fieldCropLabelForYear(f,fieldYear)}</div><div style=${{fontSize:9,color:oo.length&&done===oo.length?'#2e7d32':'#9a6b00',marginTop:5}}>${oo.length?`${done}/${oo.length} prep operations complete`:'No prep planned'}</div></button>`;})}
+    </div></div>`;
+
+  const j=journal();
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}><div><button onClick=${()=>{setSelectedId(null);setDraft(null);}} class="btn btn-sm btn-out" style=${{marginRight:7}}>← Fields</button><strong style=${{fontSize:15}}>🚜 ${selected.name}</strong><span style=${{fontSize:10,color:'#888',marginLeft:7}}>${acres.toFixed(2)} ac · ${cropLabel} · ${fieldYear}</span></div><button onClick=${onBack} class="btn btn-sm btn-out">Farm Map</button></div>
+    ${msg?html`<div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,marginBottom:8,background:msg.startsWith('⚠')?'#fff1f1':'#edf7ed',color:msg.startsWith('⚠')?'#b42318':'#2e7d32'}}>${msg}</div>`:null}
+    ${canEditFields?html`<div class="card" style=${{padding:'9px 10px',marginBottom:9}}><div style=${{fontWeight:800,fontSize:11,marginBottom:6}}>+ Plan operation</div><div style=${{display:'flex',gap:5,flexWrap:'wrap'}}>${FIELD_PREP_TYPES.map(t=>html`<button onClick=${()=>newOp(t.id)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'5px 7px'}}>${t.icon} ${t.label}</button>`)}</div></div>`:null}
+    ${draft?html`<div class="card" style=${{padding:'10px 12px',marginBottom:10,border:'2px solid #8a6b45'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><strong>${draft.id&&ops.some(x=>x.id===draft.id)?'Edit':'Plan'} ${fieldPrepType(draft.type).label}</strong><button onClick=${()=>setDraft(null)} class="btn btn-sm btn-out">Cancel</button></div>
+      <div style=${{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',gap:6,marginBottom:6}}><div><label class="fl">Operation</label><select class="ti" value=${draft.type} onChange=${e=>{const t=fieldPrepType(e.target.value);setDraft({...draft,type:e.target.value,unit:t.unit||draft.unit});}}>${FIELD_PREP_TYPES.map(t=>html`<option value=${t.id}>${t.label}</option>`)}</select></div><div><label class="fl">Planned date / target</label><input class="ti" type="date" value=${draft.plannedDate} onInput=${e=>setDraft({...draft,plannedDate:e.target.value})}/></div><div><label class="fl">Status</label><select class="ti" value=${draft.status} onChange=${e=>setDraft({...draft,status:e.target.value})}><option value="planned">Planned</option><option value="completed">Completed</option></select></div></div>
+      ${draft.type==='custom'?html`<label class="fl">Custom operation name</label><input class="ti" value=${draft.customLabel} onInput=${e=>setDraft({...draft,customLabel:e.target.value})} style=${{marginBottom:6}}/>`:null}
+      <div style=${{display:'grid',gridTemplateColumns:'1.5fr .7fr .8fr 1fr',gap:6,marginBottom:6}}><div><label class="fl">Product / material (optional)</label><input class="ti" value=${draft.product} onInput=${e=>setDraft({...draft,product:e.target.value})} placeholder="e.g. cattle manure, calcitic lime, rye seed"/></div><div><label class="fl">Rate / ac</label><input class="ti" type="number" step="0.1" value=${draft.rate} onInput=${e=>setDraft({...draft,rate:e.target.value})}/></div><div><label class="fl">Unit</label><input class="ti" value=${draft.unit} onInput=${e=>setDraft({...draft,unit:e.target.value})} placeholder="lb/ac"/></div><div><label class="fl">Total for ${acres.toFixed(1)} ac</label><div style=${{padding:'8px',border:'1px solid #ddd',borderRadius:7,fontWeight:800,fontSize:11,background:'#fafafa'}}>${operationTotalText(draft,acres)||'—'}</div></div></div>
+      <label class="fl">Notes</label><textarea value=${draft.notes} onInput=${e=>setDraft({...draft,notes:e.target.value})} style=${{width:'100%',height:52,border:'1px solid #ddd',borderRadius:7,padding:7,fontFamily:'inherit'}} placeholder="Depth, passes, contractor, field conditions, incorporation notes…"></textarea>
+      <div style=${{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginTop:7}}><label class="btn btn-sm btn-out" style=${{cursor:'pointer'}}>📎 Attach file<input type="file" multiple style=${{display:'none'}} onChange=${e=>{addOpFiles(e.target.files);e.target.value='';}}/></label>${(draft.files||[]).map(f=>html`<button class="btn btn-sm btn-out" onClick=${()=>openFarmStoredFile(f.path,f.name)}>📄 ${f.name}</button>`)}<div style=${{flex:1}}></div><button class="btn" disabled=${busy} onClick=${saveDraft}>${busy?'Saving…':'Save operation'}</button></div>
+    </div>`:null}
+    <div class="card" style=${{marginBottom:10}}><div style=${{padding:'9px 11px',fontWeight:900,borderBottom:'1px solid #eee'}}>Field Prep — ${fieldYear}</div>${ops.length?ops.map(o=>{const t=fieldPrepType(o.type);return html`<div style=${{padding:'9px 10px',borderTop:'1px solid #eee',background:o.status==='completed'?'#f3faf3':'#fff'}}><div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start'}}><div><strong>${t.icon} ${o.customLabel||t.label}</strong><div style=${{fontSize:9,color:'#666',marginTop:2}}>${o.plannedDate||'No target date'} · ${o.status==='completed'?'✓ completed '+(o.completedDate||''):'planned'} · ${acres.toFixed(2)} ac</div><div style=${{fontSize:10,marginTop:3}}>${[o.product,o.rate!==''?`${o.rate} ${o.unit}`:'',operationTotalText(o,acres)?`total ${operationTotalText(o,acres)}`:'',o.notes].filter(Boolean).join(' · ')}</div>${(o.files||[]).length?html`<div style=${{display:'flex',gap:4,flexWrap:'wrap',marginTop:4}}>${o.files.map(f=>html`<button class="btn btn-sm btn-out" onClick=${()=>openFarmStoredFile(f.path,f.name)}>📄 ${f.name}</button>`)}</div>`:null}</div>${canEditFields?html`<div style=${{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end'}}>${o.status!=='completed'?html`<button class="btn btn-sm" onClick=${()=>markComplete(o)}>✓ Complete</button>`:null}<button class="btn btn-sm btn-out" onClick=${()=>setDraft({...o})}>Edit</button><button class="btn btn-sm btn-danger" onClick=${()=>removeOp(o)}>×</button></div>`:null}</div></div>`;}):html`<div style=${{padding:12,fontSize:10,color:'#999'}}>No field prep operations planned yet.</div>`}</div>
+    <div class="card"><div style=${{padding:'9px 11px',fontWeight:900,borderBottom:'1px solid #eee'}}>📚 Field Journal / History</div>${j.length?j.map(x=>html`<div style=${{padding:'8px 10px',borderTop:'1px solid #eee',display:'grid',gridTemplateColumns:'85px 1fr',gap:8}}><div style=${{fontSize:9,color:'#777'}}>${x.date||'—'}</div><div><strong style=${{fontSize:10}}>${x.icon} ${x.title}</strong><div style=${{fontSize:9,color:'#666',marginTop:2}}>${x.detail||''}</div></div></div>`):html`<div style=${{padding:12,fontSize:10,color:'#999'}}>No history yet.</div>`}</div>
+  </div>`;
+}
+
 function SoilRecordsPanel({fields,fieldYear,canEditFields,onUpdateField,onBack}){
   const[selectedId,setSelectedId]=useState(null),[editRec,setEditRec]=useState(null),[msg,setMsg]=useState('');
-  const[geoData,setGeoData]=useState(null),[layerIdx,setLayerIdx]=useState(0),[prop,setProp]=useState(''),[loading,setLoading]=useState(false);
-  const mapEl=useRef(null),mapObj=useRef(null),soilLayer=useRef(null);
+  const[geoData,setGeoData]=useState(null),[layerIdx,setLayerIdx]=useState(0),[prop,setProp]=useState(''),[loading,setLoading]=useState(false),[samplePointMode,setSamplePointMode]=useState(false);
+  const mapEl=useRef(null),mapObj=useRef(null),soilLayer=useRef(null),samplePointLayer=useRef(null);
   const selected=fields.find(f=>f.id===selectedId)||null,records=selected?normalizeSoilRecords(selected.soilRecords):[];
   const currentRec=editRec?normalizeSoilRecord(editRec):null;
   const layerInfo=geoData?soilLayerInfoFromGeo(geoData):[];
@@ -4142,7 +4345,7 @@ function SoilRecordsPanel({fields,fieldYear,canEditFields,onUpdateField,onBack})
     const map=L.map(mapEl.current,{zoomControl:true,preferCanvas:true}).setView([42.74,-81.0],15);mapObj.current=map;
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri World Imagery',maxZoom:20}).addTo(map);
     const pts=selected.latlngs||[];if(pts.length>=3){L.polygon(pts.map(p=>[p.lat,p.lng]),{color:'#111',weight:2,fill:false,dashArray:'5,4'}).addTo(map);map.fitBounds(L.latLngBounds(pts.map(p=>[p.lat,p.lng])),{padding:[15,15],maxZoom:17});}
-    return()=>{map.remove();mapObj.current=null;soilLayer.current=null;};
+    return()=>{map.remove();mapObj.current=null;soilLayer.current=null;samplePointLayer.current=null;};
   },[selectedId]);
   useEffect(()=>{
     const map=mapObj.current,L=window.L;if(!map||!activeFc)return;if(soilLayer.current){soilLayer.current.remove();soilLayer.current=null;}
@@ -4156,6 +4359,21 @@ function SoilRecordsPanel({fields,fieldYear,canEditFields,onUpdateField,onBack})
     }).addTo(map);
     try{const b=soilLayer.current.getBounds();if(b?.isValid())map.fitBounds(b,{padding:[15,15],maxZoom:17});}catch{}
   },[geoData,layerIdx,prop]);
+
+  useEffect(()=>{
+    const map=mapObj.current,L=window.L;if(!map||!L)return;
+    if(samplePointLayer.current){samplePointLayer.current.remove();samplePointLayer.current=null;}
+    const pts=editRec?.samplePoints||[];if(!pts.length)return;
+    const ms=pts.map((p,i)=>{const m=L.circleMarker([p.lat,p.lng],{radius:6,color:'#5b3b9c',weight:2,fillColor:'#fff',fillOpacity:1});m.bindTooltip(p.label||('Sample '+(i+1)));return m;});
+    samplePointLayer.current=L.layerGroup(ms).addTo(map);
+  },[editRec?.samplePoints,selectedId]);
+  useEffect(()=>{
+    const map=mapObj.current;if(!map||!samplePointMode||!editRec)return;
+    const fn=e=>setEditRec(r=>{if(!r)return r;const a=[...(r.samplePoints||[])],i=a.length+1;a.push({id:'sp_'+Date.now().toString(36),lat:e.latlng.lat,lng:e.latlng.lng,label:'Sample '+i});return{...r,samplePoints:a};});
+    map.getContainer().style.cursor='crosshair';map.on('click',fn);
+    return()=>{map.off('click',fn);if(map.getContainer())map.getContainer().style.cursor='';};
+  },[samplePointMode,editRec?.id]);
+
 
   async function loadSpatial(r){
     if(!r?.spatial?.geojsonPath)return;setLoading(true);setMsg('Loading spatial soil layer…');
@@ -4177,8 +4395,20 @@ function SoilRecordsPanel({fields,fieldYear,canEditFields,onUpdateField,onBack})
     }catch(e){setMsg('⚠ '+e.message);}finally{setLoading(false);}
   }
   async function addAttachments(files){
-    if(!files?.length||!selected||!editRec)return;setLoading(true);const rec=normalizeSoilRecord(editRec),out=[...(rec.files||[])];
-    try{for(const f of Array.from(files)){const path='Soil/'+cleanStorageName(selected.id+'_'+selected.name)+'/'+rec.year+'_'+cleanStorageName(rec.id)+'/docs/'+cleanStorageName(f.name),r=await uploadFarmFile(f,path,f.type||'application/octet-stream');if(!r.ok)throw new Error(f.name+': '+r.error);out.push({name:f.name,type:f.type||'',path,uploadedAt:new Date().toISOString()});}setEditRec({...rec,files:out,updatedAt:new Date().toISOString()});setMsg('✓ Soil report attachment uploaded.');}catch(e){setMsg('⚠ '+e.message);}finally{setLoading(false);}
+    if(!files?.length||!selected||!editRec)return;setLoading(true);
+    try{
+      const list=Array.from(files),detections=[];
+      setMsg('Reading soil report metadata…');
+      for(const f of list){const d=await soilDetectFileMetadata(f);detections.push({...d,fileName:f.name});}
+      const rec=applySoilDetectedMeta(editRec,detections),out=[...(rec.files||[])];
+      for(let i=0;i<list.length;i++){
+        const f=list[i],d=detections[i],path='Soil/'+cleanStorageName(selected.id+'_'+selected.name)+'/'+rec.year+'_'+cleanStorageName(rec.id)+'/docs/'+cleanStorageName(f.name),r=await uploadFarmFile(f,path,f.type||'application/octet-stream');
+        if(!r.ok)throw new Error(f.name+': '+r.error);
+        out.push({name:f.name,type:f.type||'',path,uploadedAt:new Date().toISOString(),reportKind:d.kind||'',detectedYear:d.year||null,detectedSampleDate:d.sampleDate||''});
+      }
+      const next={...rec,files:out,updatedAt:new Date().toISOString()};setEditRec(next);
+      const auto=rec.detectionNote?(' '+rec.detectionNote):'';setMsg('✓ Soil report attachment'+(list.length===1?'':'s')+' uploaded.'+auto);
+    }catch(e){setMsg('⚠ '+e.message);}finally{setLoading(false);}
   }
   async function saveRecord(){
     if(!selected||!editRec)return;const rec=normalizeSoilRecord(editRec),existing=normalizeSoilRecords(selected.soilRecords),next=[rec,...existing.filter(x=>x.id!==rec.id)];await onUpdateField(selected.id,{soilRecords:next},'Soil sampling record saved and shared.');setEditRec(null);setMsg('✓ Soil sampling record saved.');
@@ -4188,20 +4418,23 @@ function SoilRecordsPanel({fields,fieldYear,canEditFields,onUpdateField,onBack})
   const yearNow=new Date().getFullYear();
   if(!selected)return html`<div><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10}}><div><div style=${{fontWeight:900,fontSize:16}}>🧪 Soil Sampling + Records</div><div style=${{fontSize:10,color:'#777'}}>Permanent field history · SoilOptix spatial layers, PDFs/CSV and next-sample tracking</div></div><button onClick=${onBack} class="btn btn-sm btn-out">← Farm Map</button></div>
     <div class="card" style=${{padding:'10px 12px',marginBottom:9,background:'#f8fbf5'}}><strong>Soil sampling status</strong><div style=${{fontSize:10,color:'#666',marginTop:3}}>Select a field. Soil records stay attached to the physical field even when the crop changes in later years.</div></div>
+    <div class="card" style=${{padding:8,marginBottom:9}}><${SoilStatusMap} fields=${fields} onSelect=${id=>{setSelectedId(id);setEditRec(null);setGeoData(null);setMsg('');}}/></div>
     ${fields.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(f=>{const rr=normalizeSoilRecords(f.soilRecords),last=rr[0],due=last?.nextDueYear?yearNow>=last.nextDueYear:false;return html`<button onClick=${()=>{setSelectedId(f.id);setEditRec(null);setGeoData(null);setMsg('');}} class="card" style=${{width:'100%',padding:'9px 12px',marginBottom:6,textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fff',cursor:'pointer'}}><span><strong>${f.name}</strong><span style=${{fontSize:10,color:'#888',marginLeft:7}}>${fieldDisplayAcres(f).toFixed(2)} ac</span></span><span style=${{fontSize:10,fontWeight:800,color:!last?'#b42318':due?'#b36b00':'#2e7d32'}}>${!last?'No soil record':`${last.provider} ${last.year}${due?' · DUE':''}`}</span></button>`;})}</div>`;
 
   return html`<div><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}><div><button onClick=${()=>{setSelectedId(null);setEditRec(null);setGeoData(null);}} class="btn btn-sm btn-out" style=${{marginRight:8}}>← Soil fields</button><strong style=${{fontSize:15}}>🧪 ${selected.name}</strong><span style=${{fontSize:10,color:'#888',marginLeft:7}}>${fieldDisplayAcres(selected).toFixed(2)} ac</span></div><button onClick=${onBack} class="btn btn-sm btn-out">Farm Map</button></div>
     ${msg?html`<div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,marginBottom:8,background:msg.startsWith('⚠')?'#fff1f1':'#edf7ed',color:msg.startsWith('⚠')?'#b42318':'#2e7d32'}}>${msg}</div>`:null}
     <div class="card" style=${{overflow:'hidden',marginBottom:9}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',borderBottom:'1px solid #eee'}}><div><strong>Soil map</strong><div style=${{fontSize:9,color:'#888'}}>Satellite + imported SoilOptix shapefile layer</div></div>${geoData?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><select value=${layerIdx} onChange=${e=>{setLayerIdx(+e.target.value);setProp('');}} style=${{fontSize:9,padding:'4px 6px'}}>${layerInfo.map((l,i)=>html`<option value=${i}>${l.name} (${l.featureCount.toLocaleString()})</option>`)}</select>${activeLayer?.numericProps?.length?html`<select value=${activePropInfo?.name||''} onChange=${e=>setProp(e.target.value)} style=${{fontSize:9,padding:'4px 6px'}}>${activeLayer.numericProps.map(p=>html`<option value=${p.name}>${p.name}</option>`)}</select>`:null}</div>`:null}</div><div ref=${mapEl} style=${{height:390,background:'#e0e8e0'}}></div>${activePropInfo?html`<div style=${{padding:'6px 10px',fontSize:9,color:'#666'}}>Showing <strong>${activePropInfo.name}</strong> · full-layer range ${activePropInfo.min.toFixed(2)} → ${activePropInfo.max.toFixed(2)} · SoilOptix-style neutral scale${activeLayer.featureCount>12000?' · map display sampled for performance; original data remains complete':''}</div>`:null}</div>
-    ${canEditFields&&!editRec?html`<button onClick=${()=>setEditRec(normalizeSoilRecord({year:fieldYear,provider:'SoilOptix',sampleDate:'',method:'SoilOptix high-resolution scan',status:'Results received'}))} class="btn" style=${{marginBottom:9}}>+ Soil Sampling Record</button>`:null}
-    ${editRec?html`<div class="card" style=${{padding:'10px 12px',marginBottom:10,border:'2px solid #8fb78b'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><strong>${records.some(r=>r.id===editRec.id)?'Edit':'New'} soil sampling record</strong><button onClick=${()=>setEditRec(null)} class="btn btn-sm btn-out">Cancel</button></div><div style=${{display:'grid',gridTemplateColumns:'90px 1fr 1fr 1fr',gap:6,marginBottom:7}}><div><label class="fl">Year sampled</label><input class="ti" type="number" value=${editRec.year} onInput=${e=>setEditRec({...editRec,year:+e.target.value})}/></div><div><label class="fl">Provider</label><input class="ti" value=${editRec.provider} onInput=${e=>setEditRec({...editRec,provider:e.target.value})}/></div><div><label class="fl">Sample date</label><input class="ti" type="date" value=${editRec.sampleDate} onInput=${e=>setEditRec({...editRec,sampleDate:e.target.value})}/></div><div><label class="fl">Next due year</label><input class="ti" type="number" placeholder="optional" value=${editRec.nextDueYear||''} onInput=${e=>setEditRec({...editRec,nextDueYear:e.target.value?+e.target.value:''})}/></div></div>
+    ${canEditFields&&!editRec?html`<button onClick=${()=>setEditRec(normalizeSoilRecord({year:fieldYear,provider:'SoilOptix',sampleDate:'',method:'SoilOptix high-resolution scan',status:'Results received',resampleIntervalYears:SOIL_DEFAULT_RESAMPLE_YEARS,nextDueYear:(parseInt(fieldYear)||new Date().getFullYear())+SOIL_DEFAULT_RESAMPLE_YEARS}))} class="btn" style=${{marginBottom:9}}>+ Soil Sampling Record</button>`:null}
+    ${editRec?html`<div class="card" style=${{padding:'10px 12px',marginBottom:10,border:'2px solid #8fb78b'}}><div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><strong>${records.some(r=>r.id===editRec.id)?'Edit':'New'} soil sampling record</strong><button onClick=${()=>setEditRec(null)} class="btn btn-sm btn-out">Cancel</button></div><div style=${{display:'grid',gridTemplateColumns:'90px 1fr 1fr 105px 105px',gap:6,marginBottom:7}}><div><label class="fl">Year sampled</label><input class="ti" type="number" value=${editRec.year} onInput=${e=>{const y=+e.target.value,iv=parseInt(editRec.resampleIntervalYears)||SOIL_DEFAULT_RESAMPLE_YEARS;setEditRec({...editRec,year:y,nextDueYear:y?y+iv:'',autoDetectedYear:false,detectionNote:''});}}/></div><div><label class="fl">Provider</label><input class="ti" value=${editRec.provider} onInput=${e=>setEditRec({...editRec,provider:e.target.value})}/></div><div><label class="fl">Sample date</label><input class="ti" type="date" value=${editRec.sampleDate} onInput=${e=>{const d=e.target.value,y=d?+d.slice(0,4):editRec.year,iv=parseInt(editRec.resampleIntervalYears)||SOIL_DEFAULT_RESAMPLE_YEARS;setEditRec({...editRec,sampleDate:d,year:y,nextDueYear:y?y+iv:'',autoDetectedDate:false,detectionNote:''});}}/></div><div><label class="fl">Resample interval</label><div style=${{display:'flex',alignItems:'center',gap:4}}><input class="ti" type="number" min="1" max="20" value=${editRec.resampleIntervalYears||SOIL_DEFAULT_RESAMPLE_YEARS} onInput=${e=>{const iv=Math.max(1,+e.target.value||SOIL_DEFAULT_RESAMPLE_YEARS),y=parseInt(editRec.year)||new Date().getFullYear();setEditRec({...editRec,resampleIntervalYears:iv,nextDueYear:y+iv});}}/><span style=${{fontSize:9,color:'#777'}}>yr</span></div></div><div><label class="fl">Next due year</label><input class="ti" type="number" value=${editRec.nextDueYear||''} onInput=${e=>setEditRec({...editRec,nextDueYear:e.target.value?+e.target.value:''})}/></div></div>
+      <div style=${{fontSize:9,color:'#5f6f5a',background:'#f3f8f1',border:'1px solid #d8e7d3',borderRadius:7,padding:'6px 8px',marginBottom:7}}><strong>5-year farm rule:</strong> uploaded SoilOptix/A&L PDFs are scanned for the sampling year/date. When detected, Next due is automatically set to <strong>sampling year + ${editRec.resampleIntervalYears||SOIL_DEFAULT_RESAMPLE_YEARS}</strong>. ${editRec.detectionNote?html`<span style=${{display:'block',marginTop:3,fontWeight:700,color:editRec.detectionNote.startsWith('⚠')?'#b42318':'#2e7d32'}}>${editRec.detectionNote}</span>`:null}</div>
       <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:7}}><div><label class="fl">Method</label><input class="ti" value=${editRec.method} onInput=${e=>setEditRec({...editRec,method:e.target.value})}/></div><div><label class="fl">Status</label><select class="ti" value=${editRec.status} onChange=${e=>setEditRec({...editRec,status:e.target.value})}><option>Planned</option><option>Collected</option><option>Sent to lab</option><option>Results received</option><option>Complete</option></select></div></div>
       <label class="fl">Notes / recommendations</label><textarea value=${editRec.notes} onInput=${e=>setEditRec({...editRec,notes:e.target.value})} placeholder="Sampling depth, lab, agronomist notes, lime/fertility recommendations…" style=${{width:'100%',height:58,padding:8,border:'1px solid #ddd',borderRadius:7,fontFamily:'inherit',marginBottom:8}}></textarea>
-      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}><label style=${{border:'1.5px dashed #7b9d78',borderRadius:8,padding:'10px',cursor:'pointer',background:'#f7fbf6'}}><strong>🗺 Import SoilOptix Shapefile ZIP</strong><div style=${{fontSize:9,color:'#777',marginTop:3}}>Upload the original .zip containing .shp + .dbf + .prj. It is preserved in Storage and converted to a web map layer.</div><input type="file" accept=".zip,application/zip" style=${{display:'none'}} onChange=${e=>{importSoilOptix(e.target.files?.[0]);e.target.value='';}}/></label><label style=${{border:'1.5px dashed #8da4bb',borderRadius:8,padding:'10px',cursor:'pointer',background:'#f7f9fb'}}><strong>📎 Attach reports / CSV</strong><div style=${{fontSize:9,color:'#777',marginTop:3}}>PDF lab report, SoilOptix PDF, CSV, recommendation or other supporting file.</div><input type="file" multiple accept=".pdf,.csv,.xlsx,.xls,.json,.geojson" style=${{display:'none'}} onChange=${e=>{addAttachments(e.target.files);e.target.value='';}}/></label></div>
+      <div class="card" style=${{padding:'8px 9px',marginBottom:8,background:'#faf8ff'}}><div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',flexWrap:'wrap'}}><div><strong style=${{fontSize:10}}>📍 Planned sample points</strong><div style=${{fontSize:9,color:'#777',marginTop:2}}>Use for conventional composite/grid sampling. SoilOptix zones continue to come from the imported shapefile.</div></div><div style=${{display:'flex',gap:5}}><button class=${'btn btn-sm '+(samplePointMode?'':'btn-out')} onClick=${()=>setSamplePointMode(v=>!v)}>${samplePointMode?'Tap map to add…':'Add points on map'}</button>${(editRec.samplePoints||[]).length?html`<button class="btn btn-sm btn-danger" onClick=${()=>setEditRec({...editRec,samplePoints:[]})}>Clear</button>`:null}</div></div>${(editRec.samplePoints||[]).length?html`<div style=${{fontSize:9,color:'#5b3b9c',marginTop:5,fontWeight:700}}>${editRec.samplePoints.length} sample point${editRec.samplePoints.length===1?'':'s'} planned</div>`:null}</div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}><label style=${{border:'1.5px dashed #7b9d78',borderRadius:8,padding:'10px',cursor:'pointer',background:'#f7fbf6'}}><strong>🗺 Import SoilOptix Shapefile ZIP</strong><div style=${{fontSize:9,color:'#777',marginTop:3}}>Upload the original .zip containing .shp + .dbf + .prj. It is preserved in Storage and converted to a web map layer.</div><input type="file" accept=".zip,application/zip" style=${{display:'none'}} onChange=${e=>{importSoilOptix(e.target.files?.[0]);e.target.value='';}}/></label><label style=${{border:'1.5px dashed #8da4bb',borderRadius:8,padding:'10px',cursor:'pointer',background:'#f7f9fb'}}><strong>📎 Attach SoilOptix / A&L reports</strong><div style=${{fontSize:9,color:'#777',marginTop:3}}>Upload the SoilOptix PDF, A&L lab report, CSV or recommendations. PDFs are scanned automatically for sampling year/date and the 5-year next-sample reminder.</div><input type="file" multiple accept=".pdf,.csv,.xlsx,.xls,.json,.geojson" style=${{display:'none'}} onChange=${e=>{addAttachments(e.target.files);e.target.value='';}}/></label></div>
       ${editRec.spatial?html`<div style=${{fontSize:9,color:'#2e7d32',marginBottom:6}}>✓ Spatial file: ${editRec.spatial.sourceName} · ${(editRec.spatial.layers||[]).map(x=>`${x.name} (${x.featureCount})`).join(', ')}</div>`:null}
-      ${(editRec.files||[]).length?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:7}}>${editRec.files.map(f=>html`<button onClick=${()=>openFarmStoredFile(f.path,f.name)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>📄 ${f.name}</button>`)}</div>`:null}
+      ${(editRec.files||[]).length?html`<div style=${{display:'flex',gap:5,flexWrap:'wrap',marginBottom:7}}>${editRec.files.map(f=>html`<button onClick=${()=>openFarmStoredFile(f.path,f.name)} class="btn btn-sm btn-out" title=${[f.reportKind,f.detectedYear?('detected '+f.detectedYear):'',f.detectedSampleDate||''].filter(Boolean).join(' · ')} style=${{fontSize:9,padding:'4px 7px'}}>📄 ${f.name}${f.detectedYear?` · ${f.detectedYear}`:''}</button>`)}</div>`:null}
       <div style=${{display:'flex',justifyContent:'flex-end',gap:6}}><button onClick=${saveRecord} disabled=${loading} class="btn">${loading?'Working…':'Save soil record'}</button></div></div>`:null}
-    <div class="card"><div style=${{padding:'8px 10px',fontWeight:900,borderBottom:'1px solid #eee'}}>Sampling history</div>${records.length?records.map(r=>html`<div style=${{padding:'9px 10px',borderTop:'1px solid #eee'}}><div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start'}}><div><strong>${r.year} · ${r.provider}</strong><div style=${{fontSize:9,color:'#777',marginTop:2}}>${r.sampleDate||'Date not recorded'} · ${r.method} · ${r.status}${r.nextDueYear?' · next due '+r.nextDueYear:''}</div>${r.notes?html`<div style=${{fontSize:10,color:'#555',marginTop:3}}>${r.notes}</div>`:null}</div><div style=${{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end'}}>${r.spatial?html`<button onClick=${()=>loadSpatial(r)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>🗺 View layer</button><button onClick=${()=>openFarmStoredFile(r.spatial.originalPath,r.spatial.sourceName)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>↓ Original ZIP</button>`:null}${(r.files||[]).map(f=>html`<button onClick=${()=>openFarmStoredFile(f.path,f.name)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>📄 ${f.name}</button>`)}${canEditFields?html`<button onClick=${()=>{setEditRec(r);if(r.spatial)loadSpatial(r);}} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>Edit</button><button onClick=${()=>deleteRecord(r.id)} class="btn btn-sm btn-danger" style=${{fontSize:9,padding:'4px 7px'}}>×</button>`:null}</div></div></div>`):html`<div style=${{padding:12,fontSize:10,color:'#999'}}>No soil sampling records saved for this field yet.</div>`}</div>
+    <div class="card"><div style=${{padding:'8px 10px',fontWeight:900,borderBottom:'1px solid #eee'}}>Sampling history</div>${records.length?records.map(r=>html`<div style=${{padding:'9px 10px',borderTop:'1px solid #eee'}}><div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start'}}><div><strong>${r.year} · ${r.provider}</strong><div style=${{fontSize:9,color:'#777',marginTop:2}}>${r.sampleDate||'Date not recorded'} · ${r.method} · ${r.status}${r.nextDueYear?' · next due '+r.nextDueYear:''}${r.resampleIntervalYears?' · '+r.resampleIntervalYears+'-yr interval':''}</div>${r.notes?html`<div style=${{fontSize:10,color:'#555',marginTop:3}}>${r.notes}</div>`:null}</div><div style=${{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end'}}>${r.spatial?html`<button onClick=${()=>loadSpatial(r)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>🗺 View layer</button><button onClick=${()=>openFarmStoredFile(r.spatial.originalPath,r.spatial.sourceName)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>↓ Original ZIP</button>`:null}${(r.files||[]).map(f=>html`<button onClick=${()=>openFarmStoredFile(f.path,f.name)} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>📄 ${f.name}</button>`)}${canEditFields?html`<button onClick=${()=>{setEditRec(r);if(r.spatial)loadSpatial(r);}} class="btn btn-sm btn-out" style=${{fontSize:9,padding:'4px 7px'}}>Edit</button><button onClick=${()=>deleteRecord(r.id)} class="btn btn-sm btn-danger" style=${{fontSize:9,padding:'4px 7px'}}>×</button>`:null}</div></div></div>`):html`<div style=${{padding:12,fontSize:10,color:'#999'}}>No soil sampling records saved for this field yet.</div>`}</div>
   </div>`;
 }
 
@@ -5410,7 +5643,7 @@ function FieldMapper({staffProfile}){
     return saved||new Date().getFullYear()+1;
   });
   const[activeFid,setActiveFid]=useState(null);
-  const[mode,setMode]=useState(()=>LS.get('hff:field_mode','overview')); // overview | list | edit | view | emergency | seed | soil
+  const[mode,setMode]=useState(()=>LS.get('hff:field_mode','overview')); // overview | list | edit | view | emergency | seed | soil | prep
   const[draft,setDraft]=useState({name:'',crop:'sweetcorn',orientation:'NS',bearingDeg:0,startSide:'min',abLine:[],startEdgePoint:null,varieties:[],sectionMeta:[],pumpkinPlan:newPumpkinPlan(),watermelonPlan:newWatermelonPlan(),tunnelStrawberryPlan:newTunnelStrawberryPlan(),latlngs:[],notes:'',emergency:normalizeEmergency({},'')});
   const[stats,setStats]=useState(null);
   const[mapTool,setMapTool]=useState(null); // draw | abA | abB | start | addVertex
@@ -5460,6 +5693,16 @@ function FieldMapper({staffProfile}){
   const[farmLocations,setFarmLocations]=useState(()=>{const saved=normalizeFarmLocations(LS.get('hff:farm_locations',[]));return saved.length?mergeFarmLocations(defaultFarmLocations(),saved):defaultFarmLocations();});
   const[emergencyEditLoc,setEmergencyEditLoc]=useState(null);
   const[tunnelAssignZone,setTunnelAssignZone]=useState(null); // z1..z5 or '' for unassigned; select then tap tunnel on map
+  // Multi-field prep tasks live directly on the Farm Map. Pick an operation, then tap fields to assign it.
+  const[showFieldTasks,setShowFieldTasks]=useState(false);
+  const[fieldTaskSelected,setFieldTaskSelected]=useState([]);
+  const[fieldTaskType,setFieldTaskType]=useState('disc_ripper');
+  const[fieldTaskDate,setFieldTaskDate]=useState('');
+  const[fieldTaskProduct,setFieldTaskProduct]=useState('');
+  const[fieldTaskRate,setFieldTaskRate]=useState('');
+  const[fieldTaskUnit,setFieldTaskUnit]=useState('');
+  const[fieldTaskNotes,setFieldTaskNotes]=useState('');
+  const[fieldTaskBusy,setFieldTaskBusy]=useState(false);
 
   const mapRef=useRef(null);
   const leafletRef=useRef(null);
@@ -5475,7 +5718,7 @@ function FieldMapper({staffProfile}){
   const wmSeedlessOptions=watermelonSeedlessOptions(cropVarieties);
   const wmPollinatorOptions=watermelonPollinatorOptions(cropVarieties);
   const allVisibilityKeys=[...Object.keys(FIELD_CROPS_CFG),'unassigned'];
-  function switchFieldMode(v){LS.set('hff:field_mode',v);setMode(v);setMapSelectedId(null);}
+  function switchFieldMode(v){LS.set('hff:field_mode',v);setMode(v);setMapSelectedId(null);if(v!=='overview'){setShowFieldTasks(false);setFieldTaskSelected([]);}}
   useEffect(()=>{toolRef.current=mapTool;},[mapTool]);
   useEffect(()=>{abARef.current=abA;},[abA]);
   useEffect(()=>{draftRef.current=draft;},[draft]);
@@ -5599,6 +5842,27 @@ function FieldMapper({staffProfile}){
     const raw=fields.find(f=>f.id===id),pts=raw?.latlngs||[],map=leafletRef.current,L=window.L;
     if(map&&L&&pts.length>=3)setTimeout(()=>map.fitBounds(L.latLngBounds(pts.map(p=>[p.lat,p.lng])),{padding:[35,35],maxZoom:18}),20);
   }
+  function toggleFieldTaskSelection(id){setFieldTaskSelected(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);}
+  function overviewFieldPrepOps(raw){return normalizeFieldPrepOps(migratedField(raw).fieldPrepOps||[]);}
+  function pendingFieldTaskCount(raw){return overviewFieldPrepOps(raw).filter(o=>o.status!=='completed').length;}
+  async function assignMapFieldTask(){
+    if(!canEditFields||!fieldTaskSelected.length)return;
+    const type=fieldPrepType(fieldTaskType),now=new Date().toISOString(),batchId='batch_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),rate=fieldTaskRate===''?'':parseFloat(fieldTaskRate),changed=[];
+    const nextFields=fields.map(raw=>{
+      if(!fieldTaskSelected.includes(raw.id))return raw;
+      const yearPlans=ensureYearPlans(raw),oldPlan=yearPlans[String(fieldYear)]||{},ops=normalizeFieldPrepOps(oldPlan.fieldPrepOps||[]);
+      const op={id:'op_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),batchId,type:fieldTaskType,customLabel:'',status:'planned',plannedDate:fieldTaskDate,completedDate:'',product:fieldTaskProduct,rate:Number.isFinite(rate)?rate:'',unit:fieldTaskUnit||type.unit||'',notes:fieldTaskNotes,files:[],assignedAt:now,createdAt:now,updatedAt:now};
+      const next={...raw,yearPlans:{...yearPlans,[String(fieldYear)]:{...oldPlan,fieldPrepOps:[op,...ops]}},updatedAt:now};changed.push(next);return next;
+    });
+    setFields(nextFields);LS.set('hff:fields',nextFields);setFieldTaskBusy(true);setSyncSt('syncing');
+    const results=await Promise.all(changed.map(f=>sbFieldPush(f).catch(e=>({ok:false,msg:e.message}))));const failed=results.filter(r=>!r?.ok);
+    setFieldTaskBusy(false);setSyncSt(failed.length?'err':'ok');setCloudMsg(failed.length?`⚠ ${changed.length-failed.length}/${changed.length} field task records synced. ${failed.length} remain safe locally and will retry with Sync.`:`☁ ${type.label} assigned to ${changed.length} field${changed.length===1?'':'s'} for ${fieldYear}.`);if(!failed.length)setFieldTaskSelected([]);
+  }
+  async function updateMapFieldTask(fieldId,opId,action){
+    const raw=fields.find(f=>f.id===fieldId);if(!raw)return;const now=new Date().toISOString(),yearPlans=ensureYearPlans(raw),oldPlan=yearPlans[String(fieldYear)]||{},ops=normalizeFieldPrepOps(oldPlan.fieldPrepOps||[]);let nextOps;
+    if(action==='complete')nextOps=ops.map(o=>o.id===opId?{...o,status:'completed',completedDate:todayStr(),updatedAt:now}:o);else if(action==='reopen')nextOps=ops.map(o=>o.id===opId?{...o,status:'planned',completedDate:'',updatedAt:now}:o);else if(action==='delete')nextOps=ops.filter(o=>o.id!==opId);else return;
+    const next={...raw,yearPlans:{...yearPlans,[String(fieldYear)]:{...oldPlan,fieldPrepOps:nextOps}},updatedAt:now},nextFields=fields.map(f=>f.id===fieldId?next:f);setFields(nextFields);LS.set('hff:fields',nextFields);setSyncSt('syncing');const r=await sbFieldPush(next);setSyncSt(r.ok?'ok':'err');setCloudMsg(r.ok?'☁ Field task updated and shared.':'⚠ Field task updated locally; cloud sync failed'+(r.msg?' — '+r.msg:'')+'.');
+  }
 
   function renderOverviewMap(doFit=false){
     const map=leafletRef.current,L=window.L;if(!map||!L||mode!=='overview')return;
@@ -5607,13 +5871,13 @@ function FieldMapper({staffProfile}){
     fields.forEach(raw=>{
       const f=migratedField(raw),pts=f.latlngs||[],key=fieldCropKey(raw);
       if(pts.length<3||!visibleCrops.includes(key))return;
-      const c=FIELD_CROPS_CFG[f.crop],co=c?.color||'#77828c',selected=raw.id===mapSelectedId;
-      const poly=L.polygon(pts,{color:selected?'#10283d':co,fillColor:co,fillOpacity:selected?.34:.20,weight:selected?4:2.2});
-      poly.on('click',e=>{L.DomEvent.stopPropagation(e);focusOverviewField(raw.id);});
-      poly.bindTooltip((raw.name||'Field')+' · '+fieldDisplayAcres(raw).toFixed(2)+' ac',{sticky:true,direction:'top'});
+      const c=FIELD_CROPS_CFG[f.crop],co=c?.color||'#77828c',selected=raw.id===mapSelectedId,taskSel=showFieldTasks&&fieldTaskSelected.includes(raw.id),pending=pendingFieldTaskCount(raw),outline=taskSel?'#f6a700':(selected?'#10283d':co);
+      const poly=L.polygon(pts,{color:outline,fillColor:taskSel?'#ffd54f':co,fillOpacity:taskSel?.38:(selected?.34:.20),weight:taskSel?4:(selected?4:2.2)});
+      poly.on('click',e=>{L.DomEvent.stopPropagation(e);showFieldTasks?toggleFieldTaskSelection(raw.id):focusOverviewField(raw.id);});
+      poly.bindTooltip((raw.name||'Field')+' · '+fieldDisplayAcres(raw).toFixed(2)+' ac'+(pending?' · '+pending+' prep task'+(pending===1?'':'s'):''),{sticky:true,direction:'top'});
       layers.push(poly);pts.forEach(p=>boundsPts.push([p.lat,p.lng]));
       const center=poly.getBounds().getCenter();
-      const label=(raw.name||'Field')+'<br><span style="font-weight:500">'+fieldDisplayAcres(raw).toFixed(1)+' ac</span>';
+      const label=(raw.name||'Field')+'<br><span style="font-weight:500">'+fieldDisplayAcres(raw).toFixed(1)+' ac'+(pending?' · 🚜'+pending:'')+'</span>';
       layers.push(L.marker(center,{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:rgba(255,255,255,.88);border:1px solid '+co+';color:#25313a;border-radius:5px;padding:2px 4px;font:700 9px system-ui;text-align:center;white-space:nowrap;line-height:1.15">'+label+'</div>',iconSize:[84,30],iconAnchor:[42,15]})}));
     });
     if(layers.length)layoutLayerRef.current=L.layerGroup(layers).addTo(map);
@@ -6025,7 +6289,7 @@ function FieldMapper({staffProfile}){
 
   useEffect(()=>{
     if(mode==='overview'&&leafletRef.current)renderOverviewMap(false);
-  },[fields,visibleCrops,mapSelectedId,mode,fieldYear]);
+  },[fields,visibleCrops,mapSelectedId,mode,fieldYear,showFieldTasks,fieldTaskSelected]);
   useEffect(()=>{if(mode==='emergency'&&leafletRef.current)renderEmergencyMap(false);},[fields,farmLocations,mode,fieldYear]);
 
   useEffect(()=>{
@@ -6057,8 +6321,8 @@ function FieldMapper({staffProfile}){
     return hasLegacy?{[String(fieldYear)]:fieldPlanSnapshot(f)}:{};
   }
   function storedFieldWithActiveYear(active,existing,now){
-    const base=existing||{};
-    const yearPlans={...ensureYearPlans(base),[String(fieldYear)]:fieldPlanSnapshot(active)};
+    const base=existing||{},existingPlans=ensureYearPlans(base),priorPlan=existingPlans[String(fieldYear)]||{};
+    const yearPlans={...existingPlans,[String(fieldYear)]:{...priorPlan,...fieldPlanSnapshot(active)}};
     // Keep the active plan mirrored at top level for backwards compatibility
     // with older app builds, while v28 reads from yearPlans.
     return{...base,...active,yearPlans,updatedAt:now,savedAt:base.savedAt||active.savedAt||now.slice(0,10)};
@@ -6266,6 +6530,9 @@ function FieldMapper({staffProfile}){
   const cropGroups=cropTotals.map(g=>({
     ...g,fields:activeYearFields.filter(f=>fieldCropKey(f)===g.key&&(!fieldSearch.trim()||(f.name||'').toLowerCase().includes(fieldSearch.trim().toLowerCase()))).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
   }));
+  const fieldTaskSelectedFields=activeYearFields.filter(f=>fieldTaskSelected.includes(f.id));
+  const fieldTaskSelectedAcres=fieldTaskSelectedFields.reduce((sum,f)=>sum+fieldDisplayAcres(f),0);
+  const overviewTaskGroups=(()=>{const m={};activeYearFields.forEach(f=>normalizeFieldPrepOps(f.fieldPrepOps||[]).forEach(o=>{const key=o.batchId||('single_'+f.id+'_'+o.id),g=m[key]||(m[key]={key,type:o.type,label:o.customLabel||fieldPrepType(o.type).label,icon:fieldPrepType(o.type).icon,plannedDate:o.plannedDate,product:o.product,rate:o.rate,unit:o.unit,notes:o.notes,fields:[]});g.fields.push({field:f,op:o});}));return Object.values(m).sort((a,b)=>String(b.plannedDate||'').localeCompare(String(a.plannedDate||''))||a.label.localeCompare(b.label));})();
 
   function farmSeedOrderSummary(){
     const sum={watermelon:{},pumpkin:{},sweetcorn:{}};
@@ -6380,20 +6647,36 @@ function FieldMapper({staffProfile}){
   }
 
   if(mode==='soil')return html`<${SoilRecordsPanel} fields=${fields} fieldYear=${fieldYear} canEditFields=${canEditFields} onUpdateField=${updatePermanentField} onBack=${()=>switchFieldMode('overview')}/>`;
+  if(mode==='prep')return html`<${FieldPrepPanel} fields=${fields} fieldYear=${fieldYear} canEditFields=${canEditFields} onUpdateField=${updatePermanentField} onBack=${()=>switchFieldMode('overview')}/>`;
 
   if(mode==='overview')return html`<div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:9,flexWrap:'wrap'}}>
-      <div><span style=${{fontWeight:800,fontSize:16}}>🗺 Farm Map</span><span style=${{fontSize:11,color:'#999',marginLeft:8}}>${fields.length} fields · ${fields.reduce((s,f)=>s+fieldDisplayAcres(f),0).toFixed(1)} ac</span><div style=${{display:'flex',alignItems:'center',gap:6,marginTop:5}}><span style=${{fontSize:10,fontWeight:800,color:'#68737d'}}>FARM YEAR</span><select value=${fieldYear} onChange=${e=>changeFieldYear(e.target.value)} style=${{padding:'5px 24px 5px 8px',border:'1.5px solid #2c3e50',borderRadius:7,background:'#fff',fontWeight:800,fontSize:12,color:'#2c3e50'}}>${knownYears.map(y=>html`<option value=${y}>${y}</option>`)}</select><span style=${{fontSize:9,color:'#999'}}>new years automatically start Not selected</span></div></div>
+      <div><span style=${{fontWeight:800,fontSize:16}}>🗺 Farm Map</span><span style=${{display:'inline-block',marginLeft:7,padding:'2px 5px',borderRadius:5,background:'#2c3e50',color:'#fff',fontSize:8,fontWeight:900,verticalAlign:'middle'}}>v57</span><span style=${{fontSize:11,color:'#999',marginLeft:8}}>${fields.length} fields · ${fields.reduce((s,f)=>s+fieldDisplayAcres(f),0).toFixed(1)} ac</span><div style=${{display:'flex',alignItems:'center',gap:6,marginTop:5}}><span style=${{fontSize:10,fontWeight:800,color:'#68737d'}}>FARM YEAR</span><select value=${fieldYear} onChange=${e=>changeFieldYear(e.target.value)} style=${{padding:'5px 24px 5px 8px',border:'1.5px solid #2c3e50',borderRadius:7,background:'#fff',fontWeight:800,fontSize:12,color:'#2c3e50'}}>${knownYears.map(y=>html`<option value=${y}>${y}</option>`)}</select><span style=${{fontSize:9,color:'#999'}}>new years automatically start Not selected</span></div></div>
       <div style=${{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
         <span style=${{fontSize:10,fontWeight:700,color:syncColor}}>${syncBadge}</span>
         <button class="btn btn-sm btn-out" onClick=${syncFields} disabled=${syncSt==='syncing'}>↻ Sync</button>
-        <button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('soil')}>🧪 Soil</button><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('emergency')}>🚑 Emergency</button><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('seed')}>🌱 Seed Plan</button>${!simpleMap&&canEditFields?html`<button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('list')}>☷ List</button>`:null}
+        <button class="btn btn-sm" style=${{background:showFieldTasks?'#5a3518':'#8b5a2b',color:'#fff',borderColor:'#8b5a2b'}} onClick=${()=>{const next=!showFieldTasks;setShowFieldTasks(next);setMapSelectedId(null);if(!next)setFieldTaskSelected([]);}}>🚜 Field Tasks</button><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('soil')}>🧪 Soil</button><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('emergency')}>🚑 Emergency</button><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('seed')}>🌱 Seed Plan</button>${!simpleMap&&canEditFields?html`<button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('list')}>☷ List</button>`:null}
         ${!simpleMap&&canEditFields?html`<label style=${{padding:'7px 10px',border:'1.5px solid #2c3e50',borderRadius:8,color:'#2c3e50',fontWeight:700,fontSize:10,cursor:'pointer',background:'#fff'}}>↑ Import<input type="file" accept=".geojson,.json,.kml" style=${{display:'none'}} onChange=${e=>{importBoundaryFile(e.target.files?.[0],false);e.target.value='';}}/></label>`:null}
         ${!simpleMap&&canEditFields?html`<button onClick=${startNew} style=${{padding:'8px 12px',border:'none',borderRadius:8,background:'#2c3e50',color:'#fff',fontWeight:700,fontSize:11,cursor:'pointer'}}>+ Field</button>`:null}
       </div>
     </div>
     ${cloudMsg?html`<div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,marginBottom:8,background:cloudMsg.startsWith('⚠')?'#fff1f1':'#edf7ed',color:cloudMsg.startsWith('⚠')?'#b42318':'#2e7d32'}}>${cloudMsg}</div>`:null}
     ${importMsg?html`<div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,marginBottom:8,background:importMsg.startsWith('⚠')?'#fff1f1':'#edf7ed',color:importMsg.startsWith('⚠')?'#b42318':'#2e7d32'}}>${importMsg}</div>`:null}
+
+    ${showFieldTasks&&!simpleMap?html`<div class="card" style=${{padding:'11px 12px',marginBottom:8,border:'2px solid #d8b35b',background:'#fffdf6'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap',marginBottom:8}}><div><strong style=${{fontSize:14}}>🚜 Field Tasks · ${fieldYear}</strong><div style=${{fontSize:10,color:'#777',marginTop:2}}>Choose an operation, then tap every field on the map or sidebar that should receive it. Each field gets its own completion check-off.</div></div><div style=${{display:'flex',gap:5}}><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('prep')}>📚 Prep history</button><button class="btn btn-sm btn-out" onClick=${()=>{setShowFieldTasks(false);setFieldTaskSelected([]);}}>Close</button></div></div>
+      <div style=${{display:'grid',gridTemplateColumns:'minmax(150px,1.25fr) 135px minmax(140px,1fr) 90px 90px',gap:6,alignItems:'end'}}>
+        <div><label class="fl">Task / operation</label><select class="ti" value=${fieldTaskType} onChange=${e=>{const id=e.target.value,t=fieldPrepType(id);setFieldTaskType(id);setFieldTaskUnit(t.unit||'');}}>${FIELD_PREP_TYPES.map(t=>html`<option value=${t.id}>${t.icon} ${t.label}</option>`)}</select></div>
+        <div><label class="fl">Target date</label><input class="ti" type="date" value=${fieldTaskDate} onInput=${e=>setFieldTaskDate(e.target.value)}/></div>
+        <div><label class="fl">Product / material</label><input class="ti" value=${fieldTaskProduct} onInput=${e=>setFieldTaskProduct(e.target.value)} placeholder="optional"/></div>
+        <div><label class="fl">Rate / ac</label><input class="ti" type="number" step="0.1" value=${fieldTaskRate} onInput=${e=>setFieldTaskRate(e.target.value)}/></div>
+        <div><label class="fl">Unit</label><input class="ti" value=${fieldTaskUnit} onInput=${e=>setFieldTaskUnit(e.target.value)} placeholder=${fieldPrepType(fieldTaskType).unit||'optional'}/></div>
+      </div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr auto',gap:7,alignItems:'end',marginTop:7}}><div><label class="fl">Notes / purpose</label><input class="ti" value=${fieldTaskNotes} onInput=${e=>setFieldTaskNotes(e.target.value)} placeholder="e.g. rip compacted headlands before rye"/></div><button class="btn" disabled=${fieldTaskBusy||!fieldTaskSelected.length} onClick=${assignMapFieldTask}>${fieldTaskBusy?'Saving…':`Assign to ${fieldTaskSelected.length||0} field${fieldTaskSelected.length===1?'':'s'}`}</button></div>
+      <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:8,padding:'7px 8px',borderRadius:7,background:'#fff8df'}}><div style=${{fontSize:10}}><strong>${fieldTaskSelected.length} selected</strong> · ${fieldTaskSelectedAcres.toFixed(2)} ac${fieldTaskRate!==''&&Number.isFinite(parseFloat(fieldTaskRate))?` · total ${operationTotalText({rate:fieldTaskRate,unit:fieldTaskUnit||fieldPrepType(fieldTaskType).unit},fieldTaskSelectedAcres)}`:''}</div><div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button class="btn btn-sm btn-out" onClick=${()=>setFieldTaskSelected(activeYearFields.filter(f=>visibleCrops.includes(fieldCropKey(f))).map(f=>f.id))}>Select visible</button><button class="btn btn-sm btn-out" onClick=${()=>setFieldTaskSelected([])}>Clear</button></div></div>
+      ${fieldTaskSelectedFields.length?html`<div style=${{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}}>${fieldTaskSelectedFields.map(f=>html`<button onClick=${()=>toggleFieldTaskSelection(f.id)} title="Remove from selection" style=${{border:'1px solid #e0b84e',background:'#fff3bd',borderRadius:12,padding:'3px 7px',fontSize:9,cursor:'pointer'}}>${f.name} · ${fieldDisplayAcres(f).toFixed(1)} ac ×</button>`)}</div>`:null}
+      ${overviewTaskGroups.length?html`<div style=${{marginTop:10,borderTop:'1px solid #ead9a8',paddingTop:8}}><div style=${{fontSize:10,fontWeight:900,marginBottom:5}}>Current ${fieldYear} field tasks</div>${overviewTaskGroups.map(g=>{const done=g.fields.filter(x=>x.op.status==='completed').length,ac=g.fields.reduce((a,x)=>a+fieldDisplayAcres(x.field),0);return html`<div style=${{border:'1px solid #ece5cf',borderRadius:7,marginBottom:5,background:'#fff'}}><div style=${{padding:'6px 8px',display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',background:done===g.fields.length?'#eff8ef':'#faf8f0'}}><div><strong style=${{fontSize:10}}>${g.icon} ${g.label}</strong><span style=${{fontSize:9,color:'#777',marginLeft:6}}>${g.plannedDate||'No target date'} · ${ac.toFixed(1)} ac · ${done}/${g.fields.length} complete</span></div></div><div style=${{display:'flex',gap:4,flexWrap:'wrap',padding:'6px 8px'}}>${g.fields.sort((a,b)=>a.field.name.localeCompare(b.field.name)).map(x=>html`<span style=${{display:'inline-flex',gap:4,alignItems:'center',border:'1px solid '+(x.op.status==='completed'?'#9ccc9c':'#d5d5cf'),background:x.op.status==='completed'?'#eef8ee':'#fff',borderRadius:12,padding:'3px 5px 3px 7px',fontSize:9}}>${x.op.status==='completed'?'✓':'○'} ${x.field.name}${canEditFields?html`<button title=${x.op.status==='completed'?'Reopen':'Mark complete'} onClick=${()=>updateMapFieldTask(x.field.id,x.op.id,x.op.status==='completed'?'reopen':'complete')} style=${{border:'none',background:'transparent',cursor:'pointer',fontWeight:900,color:x.op.status==='completed'?'#7a7a7a':'#2e7d32',padding:'0 2px'}}>${x.op.status==='completed'?'↶':'✓'}</button>`:null}</span>`)}</div></div>`;})}</div>`:null}
+    </div>`:null}
 
     <div class="card" style=${{padding:'10px 11px',marginBottom:8,borderColor:'#c9d7e3'}}>
       <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:6}}>
@@ -6415,7 +6698,7 @@ function FieldMapper({staffProfile}){
       <div class="field-map-sidebar">
         <div style=${{padding:'9px 9px 8px',borderBottom:'1px solid #eceee9'}}>
           <input class="field-map-search" type="text" placeholder="Search fields…" value=${fieldSearch} onInput=${e=>setFieldSearch(e.target.value)}/>
-          <div style=${{fontSize:9,color:'#999',marginTop:5}}>Grouped by ${fieldYear} crop · click a field to zoom and assign</div>
+          <div style=${{fontSize:9,color:showFieldTasks?'#9a6b00':'#999',marginTop:5}}>${showFieldTasks?'Field Task mode: click fields to select/unselect them':'Grouped by '+fieldYear+' crop · click a field to zoom and assign'}</div>
         </div>
         <div class="field-map-sidebar-scroll">
           ${cropGroups.map(g=>{const c=FIELD_CROPS_CFG[g.key],co=c?.color||'#77828c',open=openCropGroups[g.key]!==false,visible=visibleCrops.includes(g.key);return html`
@@ -6426,7 +6709,7 @@ function FieldMapper({staffProfile}){
                 <span style=${{fontSize:9,fontWeight:700,color:'#6f7780'}}>${g.acres.toFixed(1)} ac</span>
                 <button onClick=${()=>toggleCropGroup(g.key)} style=${{border:'none',background:'transparent',fontSize:11,cursor:'pointer',padding:'2px'}}> ${open?'▾':'▸'} </button>
               </div>
-              ${open?html`<div class="field-crop-fields">${g.fields.length?g.fields.map(f=>html`<button key=${f.id} class=${'field-side-field'+(mapSelectedId===f.id?' selected':'')} onClick=${()=>focusOverviewField(f.id)}><span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.name}</span><span style=${{fontSize:9,color:'#8a9299',whiteSpace:'nowrap'}}>${fieldDisplayAcres(f).toFixed(2)} ac ›</span></button>`):html`<div style=${{padding:'7px',fontSize:9,color:'#aaa'}}>No matching fields</div>`}</div>`:null}
+              ${open?html`<div class="field-crop-fields">${g.fields.length?g.fields.map(f=>{const taskSel=showFieldTasks&&fieldTaskSelected.includes(f.id),pending=pendingFieldTaskCount(fields.find(x=>x.id===f.id)||f);return html`<button key=${f.id} class=${'field-side-field'+((mapSelectedId===f.id||taskSel)?' selected':'')} onClick=${()=>showFieldTasks?toggleFieldTaskSelection(f.id):focusOverviewField(f.id)} style=${taskSel?{background:'#fff3bd',borderLeft:'4px solid #f6a700'}:{}}><span style=${{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.name}${pending?html`<span style=${{fontSize:8,color:'#8a6b00',marginLeft:4}}>🚜${pending}</span>`:null}</span><span style=${{fontSize:9,color:'#8a9299',whiteSpace:'nowrap'}}>${fieldDisplayAcres(f).toFixed(2)} ac ${showFieldTasks?(taskSel?'✓':''):'›'}</span></button>`;}):html`<div style=${{padding:'7px',fontSize:9,color:'#aaa'}}>No matching fields</div>`}</div>`:null}
             </div>`;})}
         </div>
       </div>
@@ -6437,8 +6720,8 @@ function FieldMapper({staffProfile}){
         </div>
         ${selectedMapField?html`<div class="card" style=${{padding:'10px 12px',marginBottom:8,border:'2px solid #cfd8dc'}}>
           <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start',marginBottom:7}}><div><div style=${{fontSize:14,fontWeight:800}}>${selectedMapField.name}</div><div style=${{fontSize:10,color:'#777'}}>${fieldDisplayAcres(selectedMapField).toFixed(2)} ac · ${FIELD_CROPS_CFG[selectedMapField.crop]?.label||'Not selected'}</div></div>${!simpleMap?html`<div style=${{display:'flex',gap:4,flexWrap:'wrap'}}><button onClick=${()=>viewField(selectedMapField)} class="btn btn-sm btn-out">Plan</button><button onClick=${()=>editField(selectedMapField)} class="btn btn-sm">Edit</button>${canEditFields?html`<button onClick=${()=>deleteField(selectedMapField.id)} class="btn btn-sm btn-danger">Delete</button>`:null}</div>`:null}</div>
-          ${!simpleMap&&canEditFields?html`<div><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Assign crop for ${fieldYear}</div><div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button onClick=${()=>assignFieldCrop(selectedMapField.id,'')} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid #999',background:!FIELD_CROPS_CFG[selectedMapField.crop]?'#eceff1':'#fff',fontSize:9,fontWeight:700}}>⬜ Not selected</button>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>assignFieldCrop(selectedMapField.id,k)} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid '+c.color,background:selectedMapField.crop===k?c.color:c.color+'12',color:selectedMapField.crop===k?'#fff':c.color,fontSize:9,fontWeight:700}}>${c.icon} ${c.label}</button>`)}</div></div>`:html`<div style=${{fontSize:10,color:'#777'}}>Simple Map is view-only. Use Ask Farm Map or the crop visibility controls above.</div>`}
-        </div>`:html`<div style=${{fontSize:10,color:'#888',textAlign:'center',padding:'4px 0 10px'}}>Tap a field on the map or sidebar to assign its crop or open its planting plan.</div>`}
+          ${!simpleMap&&canEditFields?html`<div><div style=${{fontSize:10,fontWeight:700,color:'#666',marginBottom:5}}>Assign crop for ${fieldYear}</div><div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button onClick=${()=>assignFieldCrop(selectedMapField.id,'')} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid #999',background:!FIELD_CROPS_CFG[selectedMapField.crop]?'#eceff1':'#fff',fontSize:9,fontWeight:700}}>⬜ Not selected</button>${Object.entries(FIELD_CROPS_CFG).map(([k,c])=>html`<button key=${k} onClick=${()=>assignFieldCrop(selectedMapField.id,k)} style=${{padding:'5px 8px',borderRadius:7,border:'1px solid '+c.color,background:selectedMapField.crop===k?c.color:c.color+'12',color:selectedMapField.crop===k?'#fff':c.color,fontSize:9,fontWeight:700}}>${c.icon} ${c.label}</button>`)}</div>${normalizeFieldPrepOps(selectedMapField.fieldPrepOps||[]).length?html`<div style=${{marginTop:8,paddingTop:7,borderTop:'1px solid #eee'}}><div style=${{fontSize:10,fontWeight:800,color:'#666',marginBottom:4}}>🚜 Field tasks · ${fieldYear}</div><div style=${{display:'flex',gap:4,flexWrap:'wrap'}}>${normalizeFieldPrepOps(selectedMapField.fieldPrepOps||[]).map(o=>html`<span style=${{display:'inline-flex',alignItems:'center',gap:4,border:'1px solid '+(o.status==='completed'?'#9ccc9c':'#ddd'),background:o.status==='completed'?'#eff8ef':'#fff',borderRadius:12,padding:'3px 6px',fontSize:9}}>${o.status==='completed'?'✓':'○'} ${o.customLabel||fieldPrepType(o.type).label}${o.plannedDate?' · '+o.plannedDate:''}${o.status!=='completed'?html`<button onClick=${()=>updateMapFieldTask(selectedMapField.id,o.id,'complete')} title="Mark complete" style=${{border:'none',background:'transparent',color:'#2e7d32',fontWeight:900,cursor:'pointer'}}>✓</button>`:null}</span>`)}</div></div>`:null}</div>`:html`<div style=${{fontSize:10,color:'#777'}}>Simple Map is view-only. Use Ask Farm Map or the crop visibility controls above.</div>`}
+        </div>`:html`<div style=${{fontSize:10,color:'#888',textAlign:'center',padding:'4px 0 10px'}}>${showFieldTasks?'Tap fields on the map/sidebar to assign the Field Task above.':'Tap a field on the map or sidebar to assign its crop or open its planting plan.'}</div>`}
       </div>
     </div>
   </div>`;
@@ -6739,7 +7022,7 @@ function SprayProdRow({p, apt, acres, isTunnels, bZones, onUpdate, onRemove}){
   </div>`;
 }
 
-function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,bDate,setBD,bTime,setBT}){
+function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,bDate,setBD,bTime,setBT,useFarmMapFields,sprayYear,sprayCropOptions,bPlanCrop,setBPlanCrop,sprayCropFields,bFieldIds,setBFieldIds,setBCrop}){
   if(isTunnels){
     return html`<div>
       <div style=${{marginBottom:9}}>
@@ -6771,6 +7054,15 @@ function SprayZonePicker({isTunnels,bZones,setBZ,bFieldZone,setBFZ,bAcres,setBA,
         <div><label class="sp-lbl">Time</label>
           <input type="time" class="sp-sel" value=${bTime} onInput=${e=>setBT(e.target.value)}/></div>
       </div>
+    </div>`;
+  }
+  if(useFarmMapFields){
+    const cropMeta=FIELD_CROPS_CFG[bPlanCrop]||{};
+    return html`<div>
+      <div style=${{background:'#eef6ff',border:'1px solid #b8d6f0',borderRadius:8,padding:'7px 9px',fontSize:10,color:'#24557a',marginBottom:8}}><strong>🗺 ${sprayYear} Farm Map plan</strong> — select the crop, then one or more mapped fields. Acreage is calculated automatically from the saved field boundaries.</div>
+      <div style=${{marginBottom:8}}><label class="sp-lbl">Crop</label><select class="sp-sel" value=${bPlanCrop} onChange=${e=>{const c=e.target.value;setBPlanCrop(c);setBFieldIds([]);setBCrop(FIELD_CROPS_CFG[c]?.label||c);}}>${sprayCropOptions.length?sprayCropOptions.map(c=>html`<option value=${c.id}>${c.icon} ${c.label}</option>`):html`<option value="">No crops planned for ${sprayYear}</option>`}</select></div>
+      <div style=${{marginBottom:9}}><label class="sp-lbl">${cropMeta.icon||'🌱'} ${cropMeta.label||'Fields'} — select field(s)</label><div style=${{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>${sprayCropFields.map(f=>{const sel=bFieldIds.includes(f.id);return html`<label style=${{display:'flex',alignItems:'center',gap:4,fontSize:11,background:sel?'#e3f2fd':'#f5f5f3',border:'1.5px solid '+(sel?'#90caf9':'#ddd'),borderRadius:7,padding:'5px 8px',cursor:'pointer'}}><input type="checkbox" checked=${sel} onChange=${e=>setBFieldIds(prev=>e.target.checked?[...prev,f.id]:prev.filter(id=>id!==f.id))}/><strong>${f.name}</strong> ${f._acres.toFixed(2)} ac</label>`;})}</div><div style=${{display:'flex',gap:5,marginTop:5}}><button class="sp-addp" style=${{margin:0,padding:'4px 9px',fontSize:10,width:'auto'}} onClick=${()=>setBFieldIds(sprayCropFields.map(f=>f.id))}>All ${cropMeta.label||'fields'}</button><button class="sp-addp" style=${{margin:0,padding:'4px 9px',fontSize:10,width:'auto'}} onClick=${()=>setBFieldIds([])}>Clear</button></div></div>
+      <div class="sp-form-row" style=${{marginBottom:9}}><div><label class="sp-lbl">Date</label><input type="text" class="sp-sel" value=${bDate} onInput=${e=>setBD(e.target.value)}/></div><div><label class="sp-lbl">Time</label><input type="time" class="sp-sel" value=${bTime} onInput=${e=>setBT(e.target.value)}/></div></div>
     </div>`;
   }
   return html`<div>
@@ -6848,6 +7140,8 @@ function SprayBrain(){
   const[spSync,setSync]=useState('idle');
   const[bZones,setBZ]=useState(()=>TUNNEL_ZONES.map(z=>z.id));
   const[bFieldZone,setBFZ]=useState('melon');
+  const[bPlanCrop,setBPlanCrop]=useState('watermelon');
+  const[bFieldIds,setBFieldIds]=useState([]);
   const[bLoc,setBL]=useState('Tunnels — Hagie 400 gal (Julio)');
   const[bGpa,setBG]=useState('100');
   const[bTankVol,setBTankVol]=useState(()=>SPRAY_TANK_VOL.hagie);
@@ -6893,14 +7187,27 @@ function SprayBrain(){
     });
   },[]);
 
+  useEffect(()=>{
+    const yr=parseInt(String(bDate||todayStr()).slice(0,4))||new Date().getFullYear();
+    if(yr<2027)return;const opts=farmMapCropOptionsForYear(yr);if(!opts.length)return;
+    if(!opts.some(x=>x.id===bPlanCrop)){setBPlanCrop(opts[0].id);setBCrop(FIELD_CROPS_CFG[opts[0].id]?.label||opts[0].id);setBFieldIds([]);}
+  },[bDate,bLoc]);
   const isTunnels=bLoc.includes('Hagie');
   const tvol=bTankVol||tvolForLoc(bLoc);
   const gpa=parseFloat(bGpa)||100;
   const apt=tvol/gpa;
   const fieldZoneObj=FIELD_ZONES.find(z=>z.id===bFieldZone)||FIELD_ZONES[0];
-  const fieldAcres=fieldZoneObj.acres!==null?fieldZoneObj.acres:parseFloat(bAcres)||19.5;
+  const sprayYear=parseInt(String(bDate||todayStr()).slice(0,4))||new Date().getFullYear();
+  const useFarmMapFields=!isTunnels&&sprayYear>=2027;
+  const sprayMapFields=useFarmMapFields?farmMapFieldsForYear(sprayYear):[];
+  const sprayCropOptions=useFarmMapFields?farmMapCropOptionsForYear(sprayYear):[];
+  const sprayCropFields=sprayMapFields.filter(f=>f._crop===bPlanCrop);
+  const selectedSprayFields=sprayCropFields.filter(f=>bFieldIds.includes(f.id));
+  const mappedFieldAcres=selectedSprayFields.reduce((s,f)=>s+(f._acres||0),0);
+  const fieldAcres=useFarmMapFields?mappedFieldAcres:(fieldZoneObj.acres!==null?fieldZoneObj.acres:parseFloat(bAcres)||19.5);
   const tunnelAcres=bZones.length===TUNNEL_ZONES.length?TUNNEL_TOTAL:TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).reduce((s,z)=>s+z.acres,0);
   const acres=isTunnels?(tunnelAcres||TUNNEL_TOTAL):fieldAcres;
+  const mappedFieldLabel=useFarmMapFields?(selectedSprayFields.map(f=>f.name).join(', ')||'No mapped fields selected'):fieldZoneObj.label;
 
   function chkWarn(prods){
     const sel=prods.map(p=>p.name).filter(Boolean);
@@ -7033,7 +7340,7 @@ function SprayBrain(){
     lines.push('Tanks needed: '+tanksStr+' for '+acres.toFixed(2)+' ac at '+gpa+' GPA');
     setBJ(lines.join('\n'));
     const safeApt=isFinite(apt)&&apt>0?apt:0;const safeTot=isFinite(totalTanks)&&totalTanks>0?totalTanks:0;setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+safeApt.toFixed(2)+'ac/tank · '+safeTot.toFixed(1)+' tanks · '+acres.toFixed(2)+'ac');
-    const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):fieldZoneObj.label;
+    const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):mappedFieldLabel;
     const gapRows=vp.filter(p=>sprayInfo(p.name).type!=='N').map(p=>{
       const info=sprayInfo(p.name)||{};
       const fill=tankAmountFromRateLabelForApt(p.name, apt);
@@ -7052,16 +7359,16 @@ function SprayBrain(){
     const id=editId||('ev-'+Date.now());
     const zoneNote=isTunnels
       ?(bZones.length<TUNNEL_ZONES.length?'Zones: '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'')
-      :(fieldZoneObj.label!=='All field'?fieldZoneObj.label:'');
+      :(useFarmMapFields?mappedFieldLabel:(fieldZoneObj.label!=='All field'?fieldZoneObj.label:''));
     LS.set('hff:spray:applicator',bApplicator);
-    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',tankVol:bTankVol||tvol,crop:bCrop||undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
+    const event={id,date:bDate,time:bTime,loc:isTunnels?'Tunnels':'Field',tankVol:bTankVol||tvol,crop:bCrop||undefined,fieldYear:useFarmMapFields?sprayYear:undefined,fieldIds:useFarmMapFields?[...bFieldIds]:undefined,fieldNames:useFarmMapFields?selectedSprayFields.map(f=>f.name):undefined,targetPest:bTargetPest||undefined,bloomStatus:bBloomStatus||undefined,gpa,acres,note:zoneNote,applicator:bApplicator,
       products:vp.map(p=>{const fill=tankAmountFromRateLabelForApt(p.name, apt);const tankAmt=fill?fill.amt:p.amt;const tankUnit=fill?fill.unit:p.unit;const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);const info=sprayInfo(p.name)||{type:'N',frac:null,irac:null,pcp:null,phi:0};
         return{name:p.name,rate:+(n/apt).toFixed(1),unit:d,type:info.type,frac:info.frac||null,irac:info.irac||null,pcp:info.pcp||null,phi:info.phi??0,rei:info.rei||null,eahd:calcEAHD(bDate,info.phi)};})};
     const upd=[event,...spEvents.filter(e=>e.id!==id)].sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     setSE(upd);
     const url=LS.get('hff:sb_url',''),key=LS.get('hff:sb_key','');
     if(url&&key){setSync('syncing');sbSprayPush(event).then(r=>setSync(r.ok?'ok':'err'));}
-    setBJ(null);setBR(null);setBGap([]);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');setEditId(null);setBCrop('');setBTargetPest('');setBBloomStatus('No');
+    setBJ(null);setBR(null);setBGap([]);setBP([{id:1,name:'',amt:'',unit:'g'}]);setBC(1);setBW('');setEditId(null);setBCrop('');setBFieldIds([]);setBTargetPest('');setBBloomStatus('No');
     setSV('season');
   }
 
@@ -7082,10 +7389,14 @@ function SprayBrain(){
     setBG(String(eventGpa));
     // ── Restore field zone (fixes the audit bug where zone reverted to Watermelon) ──
     if(!locIsTunnels){
-      const savedFZ=FIELD_ZONES.find(z=>z.label===ev.note||(ev.crop&&z.label.toLowerCase().includes(ev.crop)));
-      const inferredFZ=FIELD_ZONES.find(z=>Math.abs((z.acres||0)-parseFloat(ev.acres))<1.0);
-      const fzId=(savedFZ||inferredFZ)?.id||'fcust';
-      setBFZ(fzId);
+      if((ev.fieldYear||parseInt(String(ev.date||'').slice(0,4)))>=2027&&Array.isArray(ev.fieldIds)){
+        const yr=ev.fieldYear||parseInt(String(ev.date).slice(0,4)),fs=farmMapFieldsForYear(yr),first=fs.find(f=>ev.fieldIds.includes(f.id));
+        setBPlanCrop(first?._crop||'watermelon');setBFieldIds(ev.fieldIds||[]);
+      }else{
+        const savedFZ=FIELD_ZONES.find(z=>z.label===ev.note||(ev.crop&&z.label.toLowerCase().includes(ev.crop)));
+        const inferredFZ=FIELD_ZONES.find(z=>Math.abs((z.acres||0)-parseFloat(ev.acres))<1.0);
+        const fzId=(savedFZ||inferredFZ)?.id||'fcust';setBFZ(fzId);
+      }
     }
     setBCrop(ev.crop||'');
     setBTargetPest(ev.targetPest||'');
@@ -7343,7 +7654,10 @@ function SprayBrain(){
         bFieldZone=${bFieldZone} setBFZ=${setBFZ}
         bAcres=${bAcres} setBA=${setBA}
         bDate=${bDate} setBD=${setBD}
-        bTime=${bTime} setBT=${setBT}/>
+        bTime=${bTime} setBT=${setBT}
+        useFarmMapFields=${useFarmMapFields} sprayYear=${sprayYear}
+        sprayCropOptions=${sprayCropOptions} bPlanCrop=${bPlanCrop} setBPlanCrop=${setBPlanCrop}
+        sprayCropFields=${sprayCropFields} bFieldIds=${bFieldIds} setBFieldIds=${setBFieldIds} setBCrop=${setBCrop}/>
       <p class="sp-tinfo">${bLoc.split(' — ')[0]||''} · ${bTankVol} gal · ${apt.toFixed(2)} ac/tank · ${(acres/apt).toFixed(1)} tanks for ${acres.toFixed(2)} ac</p>
       <div class="sp-form-row" style=${{marginBottom:9}}>
         <div><label class="sp-lbl">Target pest / disease</label>
