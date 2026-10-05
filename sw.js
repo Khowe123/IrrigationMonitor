@@ -1,5 +1,5 @@
-// hff-v57 — Farm Map multi-field prep tasks + completion tracking; network-first HTML, offline app shell
-const CACHE='hff-v57';
+// hff-v58 — Farm Map multi-field prep tasks + completion tracking; network-first HTML, offline app shell
+const CACHE='hff-v58';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
