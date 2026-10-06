@@ -1,6 +1,5 @@
-// deployment retry 2026-10-06
-// hff-v58 — Farm Map multi-field prep tasks + completion tracking; network-first HTML, offline app shell
-const CACHE='hff-v58';
+// hff-v60 — Farm Map multi-field prep tasks + completion tracking; network-first HTML, offline app shell
+const CACHE='hff-v60';
 const SHELL=['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install',e=>{
