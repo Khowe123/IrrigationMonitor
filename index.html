@@ -1868,6 +1868,92 @@ const ORDER_SKUS = {
   ]
 };
 
+
+// ── PUMPKIN DEMAND / CROP PLANNER ───────────────────────────────────────────
+// Orders tell us what customers requested; availability adjustments let the
+// planner distinguish shipped sales from demand suppressed by a stockout or
+// crop failure. Acreage targets then feed the existing Farm Map pumpkin layout.
+const PUMPKIN_PLAN_TYPES={
+  kratos:{label:'Kratos Halloween',variety:'Kratos',yieldBinsAc:60,spacingIn:36,earlyPct:55,color:'#e65100',seasonEnd:'halloween'},
+  mixed:{label:'Mixed Varietal',variety:'Mixed Varietal',yieldBinsAc:40,spacingIn:32,earlyPct:75,color:'#7b4db3',seasonEnd:'thanksgiving'},
+  mischief:{label:'Mischief Pie',variety:'Mischief',yieldBinsAc:45,spacingIn:22,earlyPct:50,color:'#d38b00',seasonEnd:'halloween'},
+  white:{label:'Crystal Star White',variety:'Crystal Star 6a',yieldBinsAc:35,spacingIn:28,earlyPct:80,color:'#78909c',seasonEnd:'thanksgiving'}
+};
+const PUMPKIN_PLAN_SKUS=[
+  {id:'kr_1820',type:'kratos',label:'18/20',ids:['std_1820']},
+  {id:'kr_25',type:'kratos',label:'25ct',ids:['std_25lbl','std_25nl']},
+  {id:'kr_3035',type:'kratos',label:'30/35',ids:['std_30lbl','std_3035']},
+  {id:'kr_4045',type:'kratos',label:'40/45',ids:['std_40','std_4045']},
+  {id:'kr_5055',type:'kratos',label:'50/55',ids:['std_50']},
+  {id:'kr_other',type:'kratos',label:'Other standard / 60+',ids:['std_6070','std_60p']},
+  {id:'mix_3635',type:'mixed',label:'Varietal 36" 35ct',ids:['spc_v3635']},
+  {id:'mix_2440',type:'mixed',label:'Varietal 24" 40–45ct',ids:['spc_v2440']},
+  {id:'mix_2460',type:'mixed',label:'Varietal 24" 60ct',ids:['spc_v2460']},
+  {id:'mix_other',type:'mixed',label:'Other varietal',ids:['spc_v2430']},
+  {id:'pie',type:'mischief',label:'Pie Pumpkin',ids:['spc_pie']},
+  {id:'white_40',type:'white',label:'White 24" 40ct',ids:['spc_w40']},
+  {id:'white_60',type:'white',label:'White 24" 60ct',ids:['spc_w60']},
+  {id:'white_lg',type:'white',label:'White 36" large',ids:['spc_wlg']}
+];
+function pumpkinPlanOrderQty(order,row){return(row.ids||[]).reduce((s,id)=>s+(parseInt(order?.skus?.[id])||0),0);}
+function pumpkinPlanSourceOrders(orders,year){return(orders||[]).filter(o=>String(o.shipDate||'').startsWith(String(year)+'-'));}
+function pumpkinPlanThanksgiving(year){
+  const d=new Date(year,9,1),firstMon=1+((8-d.getDay())%7),day=firstMon+7;
+  return `${year}-10-${String(day).padStart(2,'0')}`;
+}
+function pumpkinPlanSeasonEnd(type,year){return PUMPKIN_PLAN_TYPES[type]?.seasonEnd==='thanksgiving'?pumpkinPlanThanksgiving(year):`${year}-10-31`;}
+function pumpkinPlanWeekStart(dateStr){
+  const d=new Date(dateStr+'T12:00:00'),dow=d.getDay(),delta=dow===0?-6:1-dow;d.setDate(d.getDate()+delta);
+  return d.toISOString().slice(0,10);
+}
+function pumpkinPlanDefault(){
+  const sourceYear=new Date().getFullYear(),planYear=sourceYear+1;
+  return{
+    sourceYear,planYear,bufferPct:0,earlyFieldId:'',lateFieldId:'',
+    earlyPlantDate:`${planYear}-05-22`,latePlantDate:`${planYear}-06-02`,
+    yieldTargets:Object.fromEntries(Object.entries(PUMPKIN_PLAN_TYPES).map(([k,v])=>[k,v.yieldBinsAc])),
+    spacing:Object.fromEntries(Object.entries(PUMPKIN_PLAN_TYPES).map(([k,v])=>[k,v.spacingIn])),
+    earlyPct:Object.fromEntries(Object.entries(PUMPKIN_PLAN_TYPES).map(([k,v])=>[k,v.earlyPct])),
+    skuAdjustments:{},lockedActuals:null,lockedAt:'',notes:''
+  };
+}
+function pumpkinPlanNormalize(p){
+  const d=pumpkinPlanDefault(),x=p||{},sourceYear=parseInt(x.sourceYear)||d.sourceYear,planYear=parseInt(x.planYear)||sourceYear+1;
+  return{
+    ...d,...x,sourceYear,planYear,
+    earlyPlantDate:x.earlyPlantDate||`${planYear}-05-22`,latePlantDate:x.latePlantDate||`${planYear}-06-02`,
+    yieldTargets:{...d.yieldTargets,...(x.yieldTargets||{})},
+    spacing:{...d.spacing,...(x.spacing||{})},
+    earlyPct:{...d.earlyPct,...(x.earlyPct||{})},
+    skuAdjustments:{...(x.skuAdjustments||{})},
+    lockedActuals:x.lockedActuals||null
+  };
+}
+function pumpkinPlanSkuActual(orders,year,row,lockedActuals){
+  if(lockedActuals&&lockedActuals[row.id]!=null)return Math.max(0,parseFloat(lockedActuals[row.id])||0);
+  return pumpkinPlanSourceOrders(orders,year).reduce((s,o)=>s+pumpkinPlanOrderQty(o,row),0);
+}
+function pumpkinPlanRecentDailyRate(orders,year,row,soldOutDate){
+  if(!soldOutDate)return 0;
+  const end=new Date(soldOutDate+'T12:00:00'),start=new Date(end);start.setDate(start.getDate()-14);
+  const total=pumpkinPlanSourceOrders(orders,year).filter(o=>{const d=new Date(o.shipDate+'T12:00:00');return d>=start&&d<end;}).reduce((s,o)=>s+pumpkinPlanOrderQty(o,row),0);
+  return total/14;
+}
+function pumpkinPlanSkuDemand(orders,plan,row){
+  const actual=pumpkinPlanSkuActual(orders,plan.sourceYear,row,plan.lockedActuals),a=plan.skuAdjustments?.[row.id]||{},mode=a.mode||'normal';
+  let suggested=actual,reason='Actual ordered';
+  if(mode==='limited'){
+    const pct=Math.max(0,parseFloat(a.adjustPct)||0);suggested=actual*(1+pct/100);reason=`Limited supply +${pct}%`;
+  }else if(mode==='soldout'){
+    const rate=pumpkinPlanRecentDailyRate(orders,plan.sourceYear,row,a.soldOutDate),end=pumpkinPlanSeasonEnd(row.type,plan.sourceYear);
+    const d0=a.soldOutDate?new Date(a.soldOutDate+'T12:00:00'):null,d1=new Date(end+'T12:00:00');
+    const days=d0&&d1>d0?Math.ceil((d1-d0)/86400000):0;suggested=actual+rate*days;reason=a.soldOutDate?`Stockout estimate through ${end}`:'Enter stockout date';
+  }else if(mode==='crop_failure'){reason='Crop failure — enter planning demand';}
+  else if(mode==='manual'){reason='Manual planning demand';}
+  const manual=a.manualDemand===''||a.manualDemand==null?null:Math.max(0,parseFloat(a.manualDemand)||0);
+  const planning=manual!=null?manual:suggested;
+  return{actual,planning:Math.max(0,Math.round(planning)),suggested:Math.max(0,Math.round(suggested)),mode,reason,manual};
+}
 const ORDER_CUSTOMERS_DEFAULT = [
   'Heemans','Aaron','Wonderland','Oakridge','Annas Flowers','Baseline Nurseries',
   'Frank Sleus Listowel','Canadale','Markets','Clovermead','Benjamin Tree Farm',
@@ -2321,7 +2407,7 @@ function FarmInventoryBrain(){
 
 function OrderBrain(){
   const[crop,setCrop]=useState(()=>LS.get('hff:ord:crop','pumpkin'));
-  const[view,setView]=useState(()=>{const v=LS.get('hff:ord:view','orders');return ['orders','picklist','inventory','customers'].includes(v)?v:'orders';});
+  const[view,setView]=useState(()=>{const v=LS.get('hff:ord:view','orders');return ['orders','picklist','planner','inventory','customers'].includes(v)?v:'orders';});
   const[orders,setOrders]=useState(()=>LS.get('hff:ord:list',[]));
   const[inventory,setInventory]=useState(()=>LS.get('hff:ord:inv',{}));
   const[customers,setCustomers]=useState(()=>LS.get('hff:ord:customers',ORDER_CUSTOMERS_DEFAULT));
@@ -2337,6 +2423,9 @@ function OrderBrain(){
   const defaultPickPlan=()=>({crews:[{id:'crew1',name:'Crew 1'},{id:'crew2',name:'Crew 2'},{id:'crew3',name:'Crew 3'}],allocations:{},locations:{},notes:''});
   const[pickPlan,setPickPlan]=useState(()=>{const saved=LS.get('hff:ord:pick_plan',null)||{};return{...defaultPickPlan(),...saved,allocations:saved.allocations||{}};});
   const[pickPlanSync,setPickPlanSync]=useState('idle');
+  const[pumpkinPlanner,setPumpkinPlanner]=useState(()=>pumpkinPlanNormalize(LS.get('hff:ord:pumpkin_planner',null)));
+  const[pumpkinPlannerSync,setPumpkinPlannerSync]=useState('idle');
+  const[pumpkinApplySt,setPumpkinApplySt]=useState('');
 
   // Add/edit state
   const[adding,setAdding]=useState(false);
@@ -2368,6 +2457,7 @@ function OrderBrain(){
     if(remInv&&remInv._type==='inventory'){
       const{_type,savedAt,...inv}=remInv;setInventory(inv);LS.set('hff:ord:inv',inv);
       if(inv._pickPlan){setPickPlan(inv._pickPlan);LS.set('hff:ord:pick_plan',inv._pickPlan);}
+      if(inv._pumpkinPlanner){const pp=pumpkinPlanNormalize(inv._pumpkinPlanner);setPumpkinPlanner(pp);LS.set('hff:ord:pumpkin_planner',pp);}
     }
   }
   // Orders refresh on open, when this browser regains focus, and periodically.
@@ -2526,6 +2616,78 @@ function OrderBrain(){
     const nextInv={...inventory,_pickPlan:pickPlan};setInventory(nextInv);LS.set('hff:ord:inv',nextInv);LS.set('hff:ord:pick_plan',pickPlan);
     const r=await sbInventoryPush(nextInv);setPickPlanSync(r.ok?'ok':'err');setTimeout(()=>setPickPlanSync('idle'),3000);
   }
+
+  function patchPumpkinPlanner(patch){
+    setPumpkinPlanner(prev=>{const next=pumpkinPlanNormalize({...prev,...patch});LS.set('hff:ord:pumpkin_planner',next);return next;});
+  }
+  function patchPumpkinSku(id,patch){
+    setPumpkinPlanner(prev=>{const next=pumpkinPlanNormalize({...prev,skuAdjustments:{...(prev.skuAdjustments||{}),[id]:{...(prev.skuAdjustments?.[id]||{}),...patch}}});LS.set('hff:ord:pumpkin_planner',next);return next;});
+  }
+  async function savePumpkinPlanner(){
+    setPumpkinPlannerSync('saving');
+    const nextInv={...inventory,_pickPlan:pickPlan,_pumpkinPlanner:pumpkinPlanner};setInventory(nextInv);LS.set('hff:ord:inv',nextInv);LS.set('hff:ord:pumpkin_planner',pumpkinPlanner);
+    const r=await sbInventoryPush(nextInv);setPumpkinPlannerSync(r.ok?'ok':'err');setTimeout(()=>setPumpkinPlannerSync('idle'),3000);
+  }
+  function lockPumpkinDemand(){
+    if(pumpkinPlanner.lockedActuals){
+      if(confirm('Unlock the source-year sales snapshot so later orders can change the actual-demand totals?'))patchPumpkinPlanner({lockedActuals:null,lockedAt:''});
+      return;
+    }
+    if(!confirm(`Freeze ${pumpkinPlanner.sourceYear} actual pumpkin-order totals as the planning baseline? Availability adjustments can still be edited afterward.`))return;
+    const locked={};PUMPKIN_PLAN_SKUS.forEach(r=>locked[r.id]=pumpkinPlanSkuActual(orders,pumpkinPlanner.sourceYear,r,null));
+    patchPumpkinPlanner({lockedActuals:locked,lockedAt:new Date().toISOString()});
+  }
+  function pumpkinPlannerFields(){
+    const fs=LS.get('hff:fields',[]),yr=String(pumpkinPlanner.planYear);
+    return fs.map(f=>{const yp=f?.yearPlans?.[yr]||{};return{id:f.id,name:f.name||'Field',acres:fieldDisplayAcres(f),crop:yp.crop||''};}).sort((a,b)=>a.name.localeCompare(b.name));
+  }
+  function pumpkinPlannerTypeRows(){
+    const out={};Object.keys(PUMPKIN_PLAN_TYPES).forEach(k=>out[k]={type:k,demand:0});
+    PUMPKIN_PLAN_SKUS.forEach(r=>{const d=pumpkinPlanSkuDemand(orders,pumpkinPlanner,r);out[r.type].demand+=d.planning;});
+    Object.values(out).forEach(x=>{
+      const yieldTarget=Math.max(1,parseFloat(pumpkinPlanner.yieldTargets?.[x.type])||PUMPKIN_PLAN_TYPES[x.type].yieldBinsAc),buf=Math.max(0,parseFloat(pumpkinPlanner.bufferPct)||0);
+      x.yieldTarget=yieldTarget;x.acres=x.demand/yieldTarget*(1+buf/100);
+      x.earlyPct=Math.max(0,Math.min(100,parseFloat(pumpkinPlanner.earlyPct?.[x.type])||0));
+      x.earlyAcres=x.acres*x.earlyPct/100;x.lateAcres=x.acres-x.earlyAcres;x.spacing=parseFloat(pumpkinPlanner.spacing?.[x.type])||PUMPKIN_PLAN_TYPES[x.type].spacingIn;
+    });
+    return out;
+  }
+  function pumpkinPlannerWeekly(){
+    const yr=pumpkinPlanner.sourceYear,rows={};
+    pumpkinPlanSourceOrders(orders,yr).forEach(o=>{
+      const week=pumpkinPlanWeekStart(o.shipDate),w=rows[week]||(rows[week]={week,kratos:0,mixed:0,mischief:0,white:0,total:0});
+      PUMPKIN_PLAN_SKUS.forEach(r=>{const q=pumpkinPlanOrderQty(o,r);w[r.type]+=q;w.total+=q;});
+    });
+    return Object.values(rows).sort((a,b)=>a.week.localeCompare(b.week));
+  }
+  async function applyPumpkinPlannerToFields(){
+    const pp=pumpkinPlanner,types=pumpkinPlannerTypeRows(),earlyId=pp.earlyFieldId,lateId=pp.lateFieldId;
+    if(!earlyId||!lateId){setPumpkinApplySt('⚠ Select both an Early and Late field first.');return;}
+    if(earlyId===lateId){setPumpkinApplySt('⚠ Early and Late fields must be different.');return;}
+    if(!confirm(`Apply the ${pp.planYear} pumpkin acreage targets to the two Farm Map fields? This replaces the MAIN pumpkin planting blocks in those two fields, but keeps their boundaries, A–B lines and headland settings.`))return;
+    const fs=LS.get('hff:fields',[]),now=new Date().toISOString(),changed=[];
+    const makeBlocks=(side)=>Object.keys(PUMPKIN_PLAN_TYPES).map((type,i)=>{
+      const meta=PUMPKIN_PLAN_TYPES[type],x=types[type],ac=side==='early'?x.earlyAcres:x.lateAcres;
+      return{id:'pb_plan_'+side+'_'+type,variety:meta.variety,targetAcres:+ac.toFixed(2),spacingIn:x.spacing};
+    }).filter(b=>b.targetAcres>.01);
+    const next=fs.map(raw=>{
+      if(raw.id!==earlyId&&raw.id!==lateId)return raw;
+      const yp={...(raw.yearPlans?.[String(pp.planYear)]||{})},oldP=normalizePumpkinPlan(yp.pumpkinPlan||newPumpkinPlan()),side=raw.id===earlyId?'early':'late';
+      const planDate=side==='early'?pp.earlyPlantDate:pp.latePlantDate;
+      const nextYp={...yp,crop:'pumpkin',pumpkinPlan:{...oldP,blocks:makeBlocks(side)},pumpkinPlannerRole:side,pumpkinPlannerPlantDate:planDate};
+      const updated={...raw,yearPlans:{...(raw.yearPlans||{}),[String(pp.planYear)]:nextYp},updatedAt:now};changed.push(updated);return updated;
+    });
+    LS.set('hff:fields',next);
+    const lib=normalizeFieldVarietyLibrary(LS.get('hff:field_varieties',{}));
+    lib.pumpkin=[...new Set([...(lib.pumpkin||[]),'Kratos','Mixed Varietal','Mischief','Crystal Star 6a'])];
+    LS.set('hff:field_varieties',lib);
+    setPumpkinApplySt('Saving field plans…');
+    const rs=await Promise.all(changed.map(f=>sbFieldPush(f).catch(e=>({ok:false,msg:e.message}))));
+    const vr=await sbFieldVarietiesPush(lib).catch(e=>({ok:false,msg:e.message}));
+    const fail=rs.filter(r=>!r?.ok).length+(vr?.ok===false?1:0);
+    setPumpkinApplySt(fail?`⚠ Plan saved locally, but ${fail} cloud update${fail===1?'':'s'} failed. Open Fields → Sync to retry.`:`✓ ${pp.planYear} Early/Late pumpkin blocks were pushed into the two Farm Map fields.`);
+  }
+
   function pumpkinFieldSuggestions(){
     const yr=String(parseInt(LS.get('hff:field_year',new Date().getFullYear()+1))),fs=LS.get('hff:fields',[]);
     return fs.filter(f=>{const yp=f?.yearPlans?.[yr]||{};return (yp.crop||f.crop)==='pumpkin';}).map(f=>f.name).filter(Boolean).sort();
@@ -2657,7 +2819,7 @@ function OrderBrain(){
 
   // ── RENDER ────────────────────────────────────────────────────────────
   const shipDates=getShipDates(pickHorizon);
-  const ORD_TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'inventory',lbl:'🏬 Barn Inventory'},{id:'customers',lbl:'👥 Customers'}];
+  const ORD_TABS=[{id:'orders',lbl:'📋 Orders'},{id:'picklist',lbl:'🏋️ Pick List'},{id:'planner',lbl:'🎃 Crop Planner'},{id:'inventory',lbl:'🏬 Barn Inventory'},{id:'customers',lbl:'👥 Customers'}];
 
   // Add/Edit form
   if(adding) return html`<div>
@@ -2978,6 +3140,66 @@ function OrderBrain(){
         Red = must pick · ✓ = inventory covers orders · Update barn counts in Inventory tab
       </p>
       
+    </div>`:null}
+
+
+    <!-- ── PUMPKIN CROP PLANNER ── -->
+    ${view==='planner'?html`<div>
+      ${(()=>{
+        const pp=pumpkinPlanner,sourceRows=PUMPKIN_PLAN_SKUS.map(r=>({...r,...pumpkinPlanSkuDemand(orders,pp,r)}));
+        const typeRows=pumpkinPlannerTypeRows(),weekly=pumpkinPlannerWeekly(),fields=pumpkinPlannerFields();
+        const ef=fields.find(f=>f.id===pp.earlyFieldId),lf=fields.find(f=>f.id===pp.lateFieldId);
+        const earlyNeed=Object.values(typeRows).reduce((s,x)=>s+x.earlyAcres,0),lateNeed=Object.values(typeRows).reduce((s,x)=>s+x.lateAcres,0),totalAc=earlyNeed+lateNeed;
+        const sourceActual=sourceRows.reduce((s,x)=>s+x.actual,0),planningTotal=sourceRows.reduce((s,x)=>s+x.planning,0);
+        return html`
+        <div class="card" style=${{padding:'11px 13px',marginBottom:9,border:'2px solid #e6a15a',background:'#fffaf4'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap'}}>
+            <div><div style=${{fontWeight:900,fontSize:16}}>🎃 Pumpkin Crop Planner <span style=${{fontSize:8,verticalAlign:'middle',background:'#7d3a08',color:'#fff',borderRadius:5,padding:'2px 5px'}}>v61</span></div><div style=${{fontSize:10,color:'#777',marginTop:2}}>Turn ${pp.sourceYear} customer demand into ${pp.planYear} acreage targets, correct for stockouts/crop failures, then push the accepted Early/Late plan into Fields.</div></div>
+            <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button class="btn btn-sm btn-out" onClick=${lockPumpkinDemand}>${pp.lockedActuals?'🔒 Sales snapshot locked':'🔓 Lock sales snapshot'}</button><button class=${'btn btn-sm '+(pumpkinPlannerSync==='ok'?'saved':'')} onClick=${savePumpkinPlanner}>${pumpkinPlannerSync==='saving'?'Saving…':pumpkinPlannerSync==='ok'?'✓ Saved & synced':'☁ Save & Sync Plan'}</button></div>
+          </div>
+          <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:6,marginTop:9}}>
+            <div><label class="fl">Demand source year</label><input class="ti" type="number" value=${pp.sourceYear} onInput=${e=>patchPumpkinPlanner({sourceYear:parseInt(e.target.value)||pp.sourceYear})}/></div>
+            <div><label class="fl">Crop plan year</label><input class="ti" type="number" value=${pp.planYear} onInput=${e=>{const y=parseInt(e.target.value)||pp.planYear;patchPumpkinPlanner({planYear:y,earlyPlantDate:`${y}-05-22`,latePlantDate:`${y}-06-02`});}}/></div>
+            <div><label class="fl">Planning buffer %</label><input class="ti" type="number" min="0" step="1" value=${pp.bufferPct||0} onInput=${e=>patchPumpkinPlanner({bufferPct:e.target.value})}/></div>
+            <div style=${{padding:'7px 9px',borderRadius:8,background:'#fff',border:'1px solid #eee'}}><div style=${{fontSize:8,color:'#888'}}>Recorded orders</div><div style=${{fontWeight:900,fontSize:16}}>${Math.round(sourceActual).toLocaleString()} bins</div></div>
+            <div style=${{padding:'7px 9px',borderRadius:8,background:'#fff',border:'1px solid #eee'}}><div style=${{fontSize:8,color:'#888'}}>Adjusted planning demand</div><div style=${{fontWeight:900,fontSize:16,color:'#b75a00'}}>${Math.round(planningTotal).toLocaleString()} bins</div></div>
+            <div style=${{padding:'7px 9px',borderRadius:8,background:'#fff',border:'1px solid #eee'}}><div style=${{fontSize:8,color:'#888'}}>Calculated pumpkin acres</div><div style=${{fontWeight:900,fontSize:16}}>${totalAc.toFixed(1)} ac</div></div>
+          </div>
+          ${pp.lockedActuals?html`<div style=${{fontSize:9,color:'#6b5c37',marginTop:6}}>🔒 Actual order totals frozen ${pp.lockedAt?new Date(pp.lockedAt).toLocaleString():''}. New POs will not change the baseline until unlocked.</div>`:html`<div style=${{fontSize:9,color:'#777',marginTop:6}}>Actual demand remains live while harvest finishes. Lock it once the ${pp.sourceYear} pumpkin season is complete.</div>`}
+        </div>
+
+        <div class="card" style=${{marginBottom:9}}>
+          <div style=${{padding:'9px 11px',fontWeight:900,borderBottom:'1px solid #eee'}}>1 · Demand corrections by SKU</div>
+          <div style=${{padding:'7px 10px',fontSize:9,color:'#777'}}>Use <b>Sold out</b> for SKUs such as 40/45 or 50/55 when orders were suppressed by lack of product. The suggestion uses the previous 14-day order rate through the normal selling-season end. Use <b>Crop failure / Manual</b> when actual sales are not representative, such as white pumpkins this year.</div>
+          <div style=${{overflowX:'auto'}}><table style=${{width:'100%',borderCollapse:'collapse',fontSize:9,minWidth:980}}><thead><tr style=${{background:'#f4f1ec'}}><th style=${{textAlign:'left',padding:6}}>Type / SKU</th><th>Actual bins</th><th>Availability</th><th>Stockout date / +%</th><th>Suggested</th><th>Planning demand</th><th style=${{textAlign:'left'}}>Basis</th></tr></thead><tbody>
+            ${sourceRows.map(r=>{const a=pp.skuAdjustments?.[r.id]||{};return html`<tr style=${{borderTop:'1px solid #eee'}}><td style=${{padding:6}}><strong style=${{color:PUMPKIN_PLAN_TYPES[r.type].color}}>${PUMPKIN_PLAN_TYPES[r.type].label}</strong><div>${r.label}</div></td><td style=${{textAlign:'center',fontWeight:800}}>${Math.round(r.actual).toLocaleString()}</td><td style=${{padding:4}}><select class="ti" style=${{fontSize:9,padding:5}} value=${a.mode||'normal'} onChange=${e=>patchPumpkinSku(r.id,{mode:e.target.value})}><option value="normal">Normal</option><option value="limited">Limited supply</option><option value="soldout">Sold out</option><option value="crop_failure">Crop failure</option><option value="manual">Manual</option></select></td><td style=${{padding:4}}>${(a.mode||'normal')==='soldout'?html`<input class="ti" type="date" style=${{fontSize:9,padding:5}} value=${a.soldOutDate||''} onInput=${e=>patchPumpkinSku(r.id,{soldOutDate:e.target.value})}/>`:(a.mode||'normal')==='limited'?html`<div style=${{display:'flex',alignItems:'center',gap:3}}><input class="ti" type="number" min="0" style=${{fontSize:9,padding:5,width:70}} value=${a.adjustPct||''} onInput=${e=>patchPumpkinSku(r.id,{adjustPct:e.target.value})}/><span>%</span></div>`:html`<span style=${{color:'#bbb'}}>—</span>`}</td><td style=${{textAlign:'center',fontWeight:700}}>${r.suggested.toLocaleString()}</td><td style=${{padding:4}}><input class="ti" type="number" min="0" placeholder=${String(r.suggested)} value=${a.manualDemand??''} onInput=${e=>patchPumpkinSku(r.id,{manualDemand:e.target.value})} style=${{fontSize:10,padding:5,textAlign:'right',fontWeight:800,borderColor:(a.mode==='crop_failure'&&!a.manualDemand)?'#d33':'#ddd'}}/></td><td style=${{padding:6,color:a.mode==='crop_failure'&&!a.manualDemand?'#b42318':'#777'}}>${r.reason}${a.manualDemand!==''&&a.manualDemand!=null?' · manual override':''}</td></tr>`;})}
+          </tbody></table></div>
+        </div>
+
+        <div class="card" style=${{marginBottom:9}}>
+          <div style=${{padding:'9px 11px',fontWeight:900,borderBottom:'1px solid #eee'}}>2 · Weekly ${pp.sourceYear} demand curve</div>
+          <div style=${{padding:'6px 10px',fontSize:9,color:'#777'}}>This shows when each pumpkin type was requested. Mixed Varietal and White normally finish after Thanksgiving; Kratos and Pie continue later.</div>
+          <div style=${{overflowX:'auto'}}><table style=${{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:600}}><thead><tr style=${{background:'#f4f1ec'}}><th style=${{textAlign:'left',padding:6}}>Week starting</th><th>Kratos</th><th>Mixed</th><th>Pie</th><th>White</th><th>Total</th></tr></thead><tbody>${weekly.length?weekly.map(w=>html`<tr style=${{borderTop:'1px solid #eee'}}><td style=${{padding:6,fontWeight:700}}>${new Date(w.week+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric'})}</td><td style=${{textAlign:'center'}}>${w.kratos||'—'}</td><td style=${{textAlign:'center'}}>${w.mixed||'—'}</td><td style=${{textAlign:'center'}}>${w.mischief||'—'}</td><td style=${{textAlign:'center'}}>${w.white||'—'}</td><td style=${{textAlign:'center',fontWeight:900}}>${w.total}</td></tr>`):html`<tr><td colspan="6" style=${{padding:15,textAlign:'center',color:'#999'}}>No pumpkin orders found for ${pp.sourceYear}.</td></tr>`}</tbody></table></div>
+        </div>
+
+        <div class="card" style=${{marginBottom:9}}>
+          <div style=${{padding:'9px 11px',fontWeight:900,borderBottom:'1px solid #eee'}}>3 · Acreage + spacing targets</div>
+          <div style=${{overflowX:'auto'}}><table style=${{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:800}}><thead><tr style=${{background:'#f4f1ec'}}><th style=${{textAlign:'left',padding:6}}>Pumpkin type</th><th>Planning bins</th><th>Yield target<br/>bins/ac</th><th>Total acres</th><th>Spacing</th><th>Early %</th><th>Early ac</th><th>Late ac</th></tr></thead><tbody>${Object.entries(typeRows).map(([k,x])=>html`<tr style=${{borderTop:'1px solid #eee'}}><td style=${{padding:6,fontWeight:800,color:PUMPKIN_PLAN_TYPES[k].color}}>${PUMPKIN_PLAN_TYPES[k].label}</td><td style=${{textAlign:'center'}}>${Math.round(x.demand).toLocaleString()}</td><td style=${{padding:4}}><input class="ti" type="number" min="1" step="1" value=${pp.yieldTargets[k]} onInput=${e=>patchPumpkinPlanner({yieldTargets:{...pp.yieldTargets,[k]:e.target.value}})} style=${{fontSize:10,padding:5,textAlign:'center',width:80}}/></td><td style=${{textAlign:'center',fontWeight:900}}>${x.acres.toFixed(1)}</td><td style=${{padding:4}}><div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:2}}><input class="ti" type="number" step="1" value=${pp.spacing[k]} onInput=${e=>patchPumpkinPlanner({spacing:{...pp.spacing,[k]:e.target.value}})} style=${{fontSize:10,padding:5,textAlign:'center',width:64}}/><span>"</span></div></td><td style=${{padding:4}}><div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:2}}><input class="ti" type="number" min="0" max="100" step="1" value=${pp.earlyPct[k]} onInput=${e=>patchPumpkinPlanner({earlyPct:{...pp.earlyPct,[k]:e.target.value}})} style=${{fontSize:10,padding:5,textAlign:'center',width:64}}/><span>%</span></div></td><td style=${{textAlign:'center',fontWeight:800}}>${x.earlyAcres.toFixed(1)}</td><td style=${{textAlign:'center',fontWeight:800}}>${x.lateAcres.toFixed(1)}</td></tr>`)}</tbody></table></div>
+          <div style=${{padding:'7px 10px',fontSize:9,color:'#777'}}>Spacing is pushed into the existing 3-row Monosem field-layout engine. The planner does not invent a precise Kratos size-distribution curve yet; your 2027 spacing + harvested SKU results can be used to calibrate that later.</div>
+        </div>
+
+        <div class="card" style=${{padding:'10px 12px',marginBottom:9,border:'2px solid #9fb58d'}}>
+          <div style=${{fontWeight:900,marginBottom:7}}>4 · Assign the two ${pp.planYear} pumpkin fields</div>
+          <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            <div style=${{border:'1px solid #ddd',borderRadius:8,padding:8,background:'#f7fbf4'}}><strong>EARLY FIELD</strong><div style=${{fontSize:9,color:'#777',margin:'2px 0 6px'}}>Target planting May 22 — avoid going earlier while rye is still immature.</div><select class="ti" value=${pp.earlyFieldId} onChange=${e=>patchPumpkinPlanner({earlyFieldId:e.target.value})}><option value="">Choose field…</option>${fields.map(f=>html`<option value=${f.id}>${f.name} — ${f.acres.toFixed(1)} ac</option>`)}</select><label class="fl" style=${{marginTop:5}}>Planned planting date</label><input class="ti" type="date" value=${pp.earlyPlantDate} onInput=${e=>patchPumpkinPlanner({earlyPlantDate:e.target.value})}/><div style=${{marginTop:6,fontSize:10,fontWeight:800,color:ef&&earlyNeed>ef.acres?'#b42318':'#2e7d32'}}>Plan ${earlyNeed.toFixed(1)} ac ${ef?`/ ${ef.acres.toFixed(1)} field ac`:''}</div></div>
+            <div style=${{border:'1px solid #ddd',borderRadius:8,padding:8,background:'#fff9f0'}}><strong>LATE FIELD</strong><div style=${{fontSize:9,color:'#777',margin:'2px 0 6px'}}>June 2 is the usual latest window; use this planting to stagger harvest while protecting maturity.</div><select class="ti" value=${pp.lateFieldId} onChange=${e=>patchPumpkinPlanner({lateFieldId:e.target.value})}><option value="">Choose field…</option>${fields.map(f=>html`<option value=${f.id}>${f.name} — ${f.acres.toFixed(1)} ac</option>`)}</select><label class="fl" style=${{marginTop:5}}>Planned planting date</label><input class="ti" type="date" value=${pp.latePlantDate} onInput=${e=>patchPumpkinPlanner({latePlantDate:e.target.value})}/><div style=${{marginTop:6,fontSize:10,fontWeight:800,color:lf&&lateNeed>lf.acres?'#b42318':'#2e7d32'}}>Plan ${lateNeed.toFixed(1)} ac ${lf?`/ ${lf.acres.toFixed(1)} field ac`:''}</div></div>
+          </div>
+          ${(pp.earlyPlantDate&&pp.earlyPlantDate<`${pp.planYear}-05-22`)?html`<div style=${{marginTop:6,padding:6,background:'#fff4e5',color:'#8a4b00',borderRadius:6,fontSize:9}}>⚠ Early planting is before May 22; rye maturity/residue longevity may be less desirable.</div>`:null}
+          ${(pp.latePlantDate&&pp.latePlantDate>`${pp.planYear}-06-02`)?html`<div style=${{marginTop:6,padding:6,background:'#fff0f0',color:'#a42828',borderRadius:6,fontSize:9}}>⚠ Late planting is after June 2; maturity and hardening-off risk increases.</div>`:null}
+          <label class="fl" style=${{marginTop:7}}>Planning notes</label><textarea value=${pp.notes||''} onInput=${e=>patchPumpkinPlanner({notes:e.target.value})} style=${{width:'100%',height:48,border:'1px solid #ddd',borderRadius:7,padding:7,fontFamily:'inherit'}} placeholder="Weather/weed concerns, buyer changes, spacing rationale…"></textarea>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginTop:8,flexWrap:'wrap'}}><span style=${{fontSize:9,color:pumpkinApplySt.startsWith('⚠')?'#b42318':'#2e7d32'}}>${pumpkinApplySt}</span><button class="btn" onClick=${applyPumpkinPlannerToFields}>🗺 Apply acreage + spacing to Fields</button></div>
+        </div>`;
+      })()}
     </div>`:null}
 
     <!-- ── INVENTORY VIEW ── -->
@@ -5888,6 +6110,8 @@ function FieldMapper({staffProfile}){
   const[fieldTaskUnit,setFieldTaskUnit]=useState('');
   const[fieldTaskNotes,setFieldTaskNotes]=useState('');
   const[fieldTaskBusy,setFieldTaskBusy]=useState(false);
+  const[fieldTaskDetailBatch,setFieldTaskDetailBatch]=useState('');
+  const[fieldTaskCompleteDates,setFieldTaskCompleteDates]=useState({});
 
   const mapRef=useRef(null);
   const leafletRef=useRef(null);
@@ -6043,10 +6267,26 @@ function FieldMapper({staffProfile}){
     const results=await Promise.all(changed.map(f=>sbFieldPush(f).catch(e=>({ok:false,msg:e.message}))));const failed=results.filter(r=>!r?.ok);
     setFieldTaskBusy(false);setSyncSt(failed.length?'err':'ok');setCloudMsg(failed.length?`⚠ ${changed.length-failed.length}/${changed.length} field task records synced. ${failed.length} remain safe locally and will retry with Sync.`:`☁ ${type.label} assigned to ${changed.length} field${changed.length===1?'':'s'} for ${fieldYear}.`);if(!failed.length)setFieldTaskSelected([]);
   }
-  async function updateMapFieldTask(fieldId,opId,action){
+  async function updateMapFieldTask(fieldId,opId,action,completeDate=''){
     const raw=fields.find(f=>f.id===fieldId);if(!raw)return;const now=new Date().toISOString(),yearPlans=ensureYearPlans(raw),oldPlan=yearPlans[String(fieldYear)]||{},ops=normalizeFieldPrepOps(oldPlan.fieldPrepOps||[]);let nextOps;
-    if(action==='complete')nextOps=ops.map(o=>o.id===opId?{...o,status:'completed',completedDate:todayStr(),updatedAt:now}:o);else if(action==='reopen')nextOps=ops.map(o=>o.id===opId?{...o,status:'planned',completedDate:'',updatedAt:now}:o);else if(action==='delete')nextOps=ops.filter(o=>o.id!==opId);else return;
+    if(action==='complete')nextOps=ops.map(o=>o.id===opId?{...o,status:'completed',completedDate:completeDate||todayStr(),updatedAt:now}:o);else if(action==='reopen')nextOps=ops.map(o=>o.id===opId?{...o,status:'planned',completedDate:'',updatedAt:now}:o);else if(action==='delete')nextOps=ops.filter(o=>o.id!==opId);else return;
     const next={...raw,yearPlans:{...yearPlans,[String(fieldYear)]:{...oldPlan,fieldPrepOps:nextOps}},updatedAt:now},nextFields=fields.map(f=>f.id===fieldId?next:f);setFields(nextFields);LS.set('hff:fields',nextFields);setSyncSt('syncing');const r=await sbFieldPush(next);setSyncSt(r.ok?'ok':'err');setCloudMsg(r.ok?'☁ Field task updated and shared.':'⚠ Field task updated locally; cloud sync failed'+(r.msg?' — '+r.msg:'')+'.');
+  }
+  async function completeFieldTaskGroup(group,date=todayStr()){
+    if(!group)return;const remaining=group.fields.filter(x=>x.op.status!=='completed');if(!remaining.length)return;
+    if(!confirm(`Mark all ${remaining.length} remaining ${group.label} field${remaining.length===1?'':'s'} complete on ${date}?`))return;
+    for(const x of remaining)await updateMapFieldTask(x.field.id,x.op.id,'complete',date);
+  }
+  function printFieldTaskMap(group){
+    if(!group||!group.fields?.length)return;
+    const assigned=group.fields.map(x=>({id:x.field.id,name:x.field.name,acres:fieldDisplayAcres(x.field),latlngs:x.field.latlngs||[],status:x.op.status,completedDate:x.op.completedDate||''})).filter(x=>x.latlngs.length>=3);
+    const totalAc=group.fields.reduce((s,x)=>s+fieldDisplayAcres(x.field),0),done=group.fields.filter(x=>x.op.status==='completed').length;
+    const rate=parseFloat(group.rate),totalMaterial=Number.isFinite(rate)?rate*totalAc:null;
+    const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const w=window.open('','_blank','width=1100,height=850');if(!w){alert('Allow pop-ups to print the field work map.');return;}
+    const payload=JSON.stringify(assigned).replace(/</g,'\\u003c');
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(group.label)} Field Work Map</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><style>@page{size:landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#111}.head{display:flex;justify-content:space-between;gap:15px;margin-bottom:7px}.title{font-size:22px;font-weight:800}.meta{font-size:12px;line-height:1.5}.wrap{display:grid;grid-template-columns:2.15fr 1fr;gap:10px}#map{height:165mm;border:1px solid #333}.side{font-size:11px}.side table{width:100%;border-collapse:collapse}.side th,.side td{border:1px solid #777;padding:4px;text-align:left}.side th{background:#eee}.done{color:#287a2e;font-weight:700}.open{font-weight:700}.notes{border:1px solid #777;padding:6px;min-height:22mm;margin-top:8px}.foot{font-size:9px;color:#666;margin-top:5px}@media print{.noprint{display:none}}</style></head><body><div class="head"><div><div class="title">${esc(group.icon)} ${esc(group.label)} — Field Work Order</div><div class="meta"><b>Farm year:</b> ${fieldYear} · <b>Target:</b> ${esc(group.plannedDate||'—')} · <b>Fields:</b> ${group.fields.length} · <b>Total area:</b> ${totalAc.toFixed(1)} ac · <b>Completed:</b> ${done}/${group.fields.length}</div><div class="meta"><b>Product/material:</b> ${esc(group.product||'—')}${Number.isFinite(rate)?` · <b>Rate:</b> ${rate} ${esc(group.unit||'')}${totalMaterial!=null?` · <b>Estimated total:</b> ${totalMaterial.toFixed(1)} ${esc(String(group.unit||'').replace('/ac',''))}`:''}`:''}</div></div><button class="noprint" onclick="window.print()">Print</button></div><div class="wrap"><div id="map"></div><div class="side"><table><thead><tr><th>Field</th><th>Acres</th><th>Status</th></tr></thead><tbody>${assigned.map(f=>`<tr><td>${esc(f.name)}</td><td>${f.acres.toFixed(1)}</td><td class="${f.status==='completed'?'done':'open'}">${f.status==='completed'?'✓ '+esc(f.completedDate):'TO DO'}</td></tr>`).join('')}</tbody></table><div class="notes"><b>Task notes / purpose</b><br>${esc(group.notes||'')}</div><div class="notes"><b>Applicator notes</b><br><br><br></div></div></div><div class="foot">Howe Family Farms · generated ${new Date().toLocaleString()}</div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script><script>const fs=${payload};const map=L.map('map',{zoomControl:true});L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Esri World Imagery'}).addTo(map);const b=[];fs.forEach(f=>{const pts=f.latlngs.map(p=>[p.lat,p.lng]);const c=f.status==='completed'?'#2e7d32':'#f39c12';L.polygon(pts,{color:c,weight:4,fillColor:c,fillOpacity:.28}).addTo(map).bindTooltip('<b>'+f.name+'</b><br>'+f.acres.toFixed(1)+' ac',{permanent:true,direction:'center'});pts.forEach(p=>b.push(p));});if(b.length)map.fitBounds(b,{padding:[20,20]});setTimeout(()=>map.invalidateSize(),300);<\/script></body></html>`);
+    w.document.close();
   }
 
   function renderOverviewMap(doFit=false){
@@ -6055,9 +6295,10 @@ function FieldMapper({staffProfile}){
     const layers=[],boundsPts=[];
     fields.forEach(raw=>{
       const f=migratedField(raw),pts=f.latlngs||[],key=fieldCropKey(raw);
-      if(pts.length<3||!visibleCrops.includes(key))return;
-      const c=FIELD_CROPS_CFG[f.crop],co=c?.color||'#77828c',selected=raw.id===mapSelectedId,taskSel=showFieldTasks&&fieldTaskSelected.includes(raw.id),pending=pendingFieldTaskCount(raw),outline=taskSel?'#f6a700':(selected?'#10283d':co);
-      const poly=L.polygon(pts,{color:outline,fillColor:taskSel?'#ffd54f':co,fillOpacity:taskSel?.38:(selected?.34:.20),weight:taskSel?4:(selected?4:2.2)});
+      if(pts.length<3)return;
+      if(activeFieldTaskGroup){if(!activeFieldTaskIds.has(raw.id))return;}else if(!visibleCrops.includes(key))return;
+      const c=FIELD_CROPS_CFG[f.crop],co=c?.color||'#77828c',selected=raw.id===mapSelectedId,taskSel=showFieldTasks&&fieldTaskSelected.includes(raw.id),taskDetail=!!activeFieldTaskGroup&&activeFieldTaskIds.has(raw.id),pending=pendingFieldTaskCount(raw),outline=taskDetail?'#f39c12':(taskSel?'#f6a700':(selected?'#10283d':co));
+      const poly=L.polygon(pts,{color:outline,fillColor:taskDetail?'#f39c12':(taskSel?'#ffd54f':co),fillOpacity:taskDetail?.30:(taskSel?.38:(selected?.34:.20)),weight:taskDetail?4:(taskSel?4:(selected?4:2.2))});
       poly.on('click',e=>{L.DomEvent.stopPropagation(e);showFieldTasks?toggleFieldTaskSelection(raw.id):focusOverviewField(raw.id);});
       poly.bindTooltip((raw.name||'Field')+' · '+fieldDisplayAcres(raw).toFixed(2)+' ac'+(pending?' · '+pending+' prep task'+(pending===1?'':'s'):''),{sticky:true,direction:'top'});
       layers.push(poly);pts.forEach(p=>boundsPts.push([p.lat,p.lng]));
@@ -6474,7 +6715,7 @@ function FieldMapper({staffProfile}){
 
   useEffect(()=>{
     if(mode==='overview'&&leafletRef.current)renderOverviewMap(false);
-  },[fields,visibleCrops,mapSelectedId,mode,fieldYear,showFieldTasks,fieldTaskSelected]);
+  },[fields,visibleCrops,mapSelectedId,mode,fieldYear,showFieldTasks,fieldTaskSelected,fieldTaskDetailBatch]);
   useEffect(()=>{if(mode==='emergency'&&leafletRef.current)renderEmergencyMap(false);},[fields,farmLocations,mode,fieldYear]);
 
   useEffect(()=>{
@@ -6718,6 +6959,8 @@ function FieldMapper({staffProfile}){
   const fieldTaskSelectedFields=activeYearFields.filter(f=>fieldTaskSelected.includes(f.id));
   const fieldTaskSelectedAcres=fieldTaskSelectedFields.reduce((sum,f)=>sum+fieldDisplayAcres(f),0);
   const overviewTaskGroups=(()=>{const m={};activeYearFields.forEach(f=>normalizeFieldPrepOps(f.fieldPrepOps||[]).forEach(o=>{const key=o.batchId||('single_'+f.id+'_'+o.id),g=m[key]||(m[key]={key,type:o.type,label:o.customLabel||fieldPrepType(o.type).label,icon:fieldPrepType(o.type).icon,plannedDate:o.plannedDate,product:o.product,rate:o.rate,unit:o.unit,notes:o.notes,fields:[]});g.fields.push({field:f,op:o});}));return Object.values(m).sort((a,b)=>String(b.plannedDate||'').localeCompare(String(a.plannedDate||''))||a.label.localeCompare(b.label));})();
+  const activeFieldTaskGroup=fieldTaskDetailBatch?overviewTaskGroups.find(g=>g.key===fieldTaskDetailBatch):null;
+  const activeFieldTaskIds=new Set((activeFieldTaskGroup?.fields||[]).map(x=>x.field.id));
 
   function farmSeedOrderSummary(){
     const sum={watermelon:{},pumpkin:{},sweetcorn:{}};
@@ -6849,7 +7092,7 @@ function FieldMapper({staffProfile}){
     ${importMsg?html`<div style=${{fontSize:10,padding:'7px 9px',borderRadius:7,marginBottom:8,background:importMsg.startsWith('⚠')?'#fff1f1':'#edf7ed',color:importMsg.startsWith('⚠')?'#b42318':'#2e7d32'}}>${importMsg}</div>`:null}
 
     ${showFieldTasks&&!simpleMap?html`<div class="card" style=${{padding:'11px 12px',marginBottom:8,border:'2px solid #d8b35b',background:'#fffdf6'}}>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap',marginBottom:8}}><div><strong style=${{fontSize:14}}>🚜 Field Tasks · ${fieldYear}</strong><div style=${{fontSize:10,color:'#777',marginTop:2}}>Choose an operation, then tap every field on the map or sidebar that should receive it. Each field gets its own completion check-off.</div></div><div style=${{display:'flex',gap:5}}><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('prep')}>📚 Prep history</button><button class="btn btn-sm btn-out" onClick=${()=>{setShowFieldTasks(false);setFieldTaskSelected([]);}}>Close</button></div></div>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap',marginBottom:8}}><div><strong style=${{fontSize:14}}>🚜 Field Tasks · ${fieldYear}</strong><div style=${{fontSize:10,color:'#777',marginTop:2}}>Choose an operation, then tap every field on the map or sidebar that should receive it. Each field gets its own completion check-off.</div></div><div style=${{display:'flex',gap:5}}><button class="btn btn-sm btn-out" onClick=${()=>switchFieldMode('prep')}>📚 Prep history</button><button class="btn btn-sm btn-out" onClick=${()=>{setShowFieldTasks(false);setFieldTaskSelected([]);setFieldTaskDetailBatch('');}}>Close</button></div></div>
       <div style=${{display:'grid',gridTemplateColumns:'minmax(150px,1.25fr) 135px minmax(140px,1fr) 90px 90px',gap:6,alignItems:'end'}}>
         <div><label class="fl">Task / operation</label><select class="ti" value=${fieldTaskType} onChange=${e=>{const id=e.target.value,t=fieldPrepType(id);setFieldTaskType(id);setFieldTaskUnit(t.unit||'');}}>${FIELD_PREP_TYPES.map(t=>html`<option value=${t.id}>${t.icon} ${t.label}</option>`)}</select></div>
         <div><label class="fl">Target date</label><input class="ti" type="date" value=${fieldTaskDate} onInput=${e=>setFieldTaskDate(e.target.value)}/></div>
@@ -6860,7 +7103,13 @@ function FieldMapper({staffProfile}){
       <div style=${{display:'grid',gridTemplateColumns:'1fr auto',gap:7,alignItems:'end',marginTop:7}}><div><label class="fl">Notes / purpose</label><input class="ti" value=${fieldTaskNotes} onInput=${e=>setFieldTaskNotes(e.target.value)} placeholder="e.g. rip compacted headlands before rye"/></div><button class="btn" disabled=${fieldTaskBusy||!fieldTaskSelected.length} onClick=${assignMapFieldTask}>${fieldTaskBusy?'Saving…':`Assign to ${fieldTaskSelected.length||0} field${fieldTaskSelected.length===1?'':'s'}`}</button></div>
       <div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:8,padding:'7px 8px',borderRadius:7,background:'#fff8df'}}><div style=${{fontSize:10}}><strong>${fieldTaskSelected.length} selected</strong> · ${fieldTaskSelectedAcres.toFixed(2)} ac${fieldTaskRate!==''&&Number.isFinite(parseFloat(fieldTaskRate))?` · total ${operationTotalText({rate:fieldTaskRate,unit:fieldTaskUnit||fieldPrepType(fieldTaskType).unit},fieldTaskSelectedAcres)}`:''}</div><div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button class="btn btn-sm btn-out" onClick=${()=>setFieldTaskSelected(activeYearFields.filter(f=>visibleCrops.includes(fieldCropKey(f))).map(f=>f.id))}>Select visible</button><button class="btn btn-sm btn-out" onClick=${()=>setFieldTaskSelected([])}>Clear</button></div></div>
       ${fieldTaskSelectedFields.length?html`<div style=${{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}}>${fieldTaskSelectedFields.map(f=>html`<button onClick=${()=>toggleFieldTaskSelection(f.id)} title="Remove from selection" style=${{border:'1px solid #e0b84e',background:'#fff3bd',borderRadius:12,padding:'3px 7px',fontSize:9,cursor:'pointer'}}>${f.name} · ${fieldDisplayAcres(f).toFixed(1)} ac ×</button>`)}</div>`:null}
-      ${overviewTaskGroups.length?html`<div style=${{marginTop:10,borderTop:'1px solid #ead9a8',paddingTop:8}}><div style=${{fontSize:10,fontWeight:900,marginBottom:5}}>Current ${fieldYear} field tasks</div>${overviewTaskGroups.map(g=>{const done=g.fields.filter(x=>x.op.status==='completed').length,ac=g.fields.reduce((a,x)=>a+fieldDisplayAcres(x.field),0);return html`<div style=${{border:'1px solid #ece5cf',borderRadius:7,marginBottom:5,background:'#fff'}}><div style=${{padding:'6px 8px',display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',background:done===g.fields.length?'#eff8ef':'#faf8f0'}}><div><strong style=${{fontSize:10}}>${g.icon} ${g.label}</strong><span style=${{fontSize:9,color:'#777',marginLeft:6}}>${g.plannedDate||'No target date'} · ${ac.toFixed(1)} ac · ${done}/${g.fields.length} complete</span></div></div><div style=${{display:'flex',gap:4,flexWrap:'wrap',padding:'6px 8px'}}>${g.fields.sort((a,b)=>a.field.name.localeCompare(b.field.name)).map(x=>html`<span style=${{display:'inline-flex',gap:4,alignItems:'center',border:'1px solid '+(x.op.status==='completed'?'#9ccc9c':'#d5d5cf'),background:x.op.status==='completed'?'#eef8ee':'#fff',borderRadius:12,padding:'3px 5px 3px 7px',fontSize:9}}>${x.op.status==='completed'?'✓':'○'} ${x.field.name}${canEditFields?html`<button title=${x.op.status==='completed'?'Reopen':'Mark complete'} onClick=${()=>updateMapFieldTask(x.field.id,x.op.id,x.op.status==='completed'?'reopen':'complete')} style=${{border:'none',background:'transparent',cursor:'pointer',fontWeight:900,color:x.op.status==='completed'?'#7a7a7a':'#2e7d32',padding:'0 2px'}}>${x.op.status==='completed'?'↶':'✓'}</button>`:null}</span>`)}</div></div>`;})}</div>`:null}
+      ${overviewTaskGroups.length?html`<div style=${{marginTop:10,borderTop:'1px solid #ead9a8',paddingTop:8}}><div style=${{fontSize:10,fontWeight:900,marginBottom:5}}>Current ${fieldYear} field tasks</div>${overviewTaskGroups.map(g=>{const done=g.fields.filter(x=>x.op.status==='completed').length,ac=g.fields.reduce((a,x)=>a+fieldDisplayAcres(x.field),0),open=fieldTaskDetailBatch===g.key;return html`<div style=${{border:'1px solid '+(open?'#d49a2d':'#ece5cf'),borderRadius:7,marginBottom:6,background:'#fff',overflow:'hidden'}}><button onClick=${()=>{const next=open?'':g.key;setFieldTaskDetailBatch(next);if(next)setTimeout(()=>renderOverviewMap(true),80);}} style=${{width:'100%',border:'none',cursor:'pointer',padding:'7px 8px',display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',background:done===g.fields.length?'#eff8ef':(open?'#fff2cf':'#faf8f0'),fontFamily:'inherit',textAlign:'left'}}><div><strong style=${{fontSize:10}}>${g.icon} ${g.label}</strong><span style=${{fontSize:9,color:'#777',marginLeft:6}}>${g.plannedDate||'No target date'} · ${ac.toFixed(1)} ac · ${done}/${g.fields.length} complete</span></div><span style=${{fontSize:9,color:'#777'}}>${open?'▲ Close':'Open ›'}</span></button>
+        ${open?html`<div style=${{padding:'8px',borderTop:'1px solid #e7d6a7',background:'#fffdf7'}}>
+          <div style=${{display:'flex',justifyContent:'space-between',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:7}}><div style=${{fontSize:9,color:'#666'}}>${g.product?html`<span><b>Material:</b> ${g.product}${g.rate!==''&&g.rate!=null?' · '+g.rate+' '+(g.unit||''):''}</span>`:html`<span>${g.notes||'No additional task notes.'}</span>`}</div><div style=${{display:'flex',gap:5}}><button class="btn btn-sm btn-out" onClick=${()=>printFieldTaskMap(g)}>🖨 Print field map</button>${canEditFields?html`<button class="btn btn-sm" onClick=${()=>completeFieldTaskGroup(g,todayStr())}>✓ Complete all today</button>`:null}</div></div>
+          <div style=${{overflowX:'auto'}}><table style=${{width:'100%',borderCollapse:'collapse',fontSize:9,minWidth:620}}><thead><tr style=${{background:'#f5f2e8'}}><th style=${{textAlign:'left',padding:5}}>Field</th><th>Acres</th><th>Status</th><th>Completion date</th><th></th></tr></thead><tbody>${g.fields.slice().sort((a,b)=>a.field.name.localeCompare(b.field.name)).map(x=>{const k=x.field.id+'|'+x.op.id,d=fieldTaskCompleteDates[k]||x.op.completedDate||todayStr();return html`<tr style=${{borderTop:'1px solid #eee',background:x.op.status==='completed'?'#f2faf2':'#fff'}}><td style=${{padding:5,fontWeight:700}}>${x.field.name}</td><td style=${{textAlign:'center'}}>${fieldDisplayAcres(x.field).toFixed(1)}</td><td style=${{textAlign:'center',color:x.op.status==='completed'?'#2e7d32':'#8a6b00',fontWeight:800}}>${x.op.status==='completed'?'✓ Completed':'○ To do'}</td><td style=${{padding:4,textAlign:'center'}}><input type="date" class="ti" style=${{fontSize:9,padding:4,width:130}} value=${d} onInput=${e=>setFieldTaskCompleteDates(prev=>({...prev,[k]:e.target.value}))}/></td><td style=${{padding:4,textAlign:'right'}}>${canEditFields?(x.op.status==='completed'?html`<button class="btn btn-sm btn-out" onClick=${()=>updateMapFieldTask(x.field.id,x.op.id,'reopen')}>Reopen</button>`:html`<button class="btn btn-sm" onClick=${()=>updateMapFieldTask(x.field.id,x.op.id,'complete',d)}>✓ Complete</button>`):null}</td></tr>`;})}</tbody></table></div>
+          <div style=${{fontSize:8.5,color:'#777',marginTop:6}}>Opening a task filters the Farm Map below to only the fields assigned to this work order. The printout includes the highlighted satellite map, field names, acres, material/rate and completion status.</div>
+        </div>`:null}
+      </div>`;})}</div>`:null}
     </div>`:null}
 
     <div class="card" style=${{padding:'10px 11px',marginBottom:8,borderColor:'#c9d7e3'}}>
@@ -6883,7 +7132,7 @@ function FieldMapper({staffProfile}){
       <div class="field-map-sidebar">
         <div style=${{padding:'9px 9px 8px',borderBottom:'1px solid #eceee9'}}>
           <input class="field-map-search" type="text" placeholder="Search fields…" value=${fieldSearch} onInput=${e=>setFieldSearch(e.target.value)}/>
-          <div style=${{fontSize:9,color:showFieldTasks?'#9a6b00':'#999',marginTop:5}}>${showFieldTasks?'Field Task mode: click fields to select/unselect them':'Grouped by '+fieldYear+' crop · click a field to zoom and assign'}</div>
+          <div style=${{fontSize:9,color:showFieldTasks?'#9a6b00':'#999',marginTop:5}}>${activeFieldTaskGroup?'Viewing '+activeFieldTaskGroup.label+' assigned fields':(showFieldTasks?'Field Task mode: click fields to select/unselect them':'Grouped by '+fieldYear+' crop · click a field to zoom and assign')}</div>
         </div>
         <div class="field-map-sidebar-scroll">
           ${cropGroups.map(g=>{const c=FIELD_CROPS_CFG[g.key],co=c?.color||'#77828c',open=openCropGroups[g.key]!==false,visible=visibleCrops.includes(g.key);return html`
