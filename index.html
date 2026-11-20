@@ -1906,6 +1906,74 @@ function pumpkinPlanWeekStart(dateStr){
   const d=new Date(dateStr+'T12:00:00'),dow=d.getDay(),delta=dow===0?-6:1-dow;d.setDate(d.getDate()+delta);
   return d.toISOString().slice(0,10);
 }
+
+// Kratos size model from Heagy 2023, NC State.
+// Howe's 5 ft rows = 1.524 m, very close to the study's 1.5 m row treatment.
+// Study 1.5 m diameter regression: diameter(cm) = 36.82 - 0.00067 * plants/ha (R2=0.79).
+// Commercial reference bins: Medium 23.5–26.8 cm, Large 26.9–29.9,
+// Extra-Large 30.0–33.6, Jumbo >=33.7. The paper does NOT publish a
+// density-specific diameter SD, so the spread below is an explicit adjustable
+// planning assumption, not a reported NC State parameter.
+const KRATOS_RESEARCH={
+  rowWidthFt:5,
+  testedDensityHaMin:2691,
+  testedDensityHaMax:10764,
+  diameterIntercept:36.82,
+  diameterSlope:-0.00067,
+  defaultSdCm:1.8,
+  bins:[
+    {id:'small',label:'60/70+ residual',lo:-Infinity,hi:23.5,count:65},
+    {id:'5055',label:'50/55',lo:23.5,hi:26.85,count:52.5},
+    {id:'4045',label:'40/45',lo:26.85,hi:29.95,count:42.5},
+    {id:'3035',label:'30/35',lo:29.95,hi:33.65,count:32.5},
+    {id:'1820',label:'18/20',lo:33.65,hi:Infinity,count:19}
+  ]
+};
+function pumpkinErf(x){
+  const s=x<0?-1:1,a=Math.abs(x),t=1/(1+0.3275911*a);
+  const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-a*a);
+  return s*y;
+}
+function pumpkinNormCdf(x){return .5*(1+pumpkinErf(x/Math.SQRT2));}
+function kratosPlantsPerAcre(spacingIn){const s=Math.max(1,parseFloat(spacingIn)||36);return 43560/(KRATOS_RESEARCH.rowWidthFt*(s/12));}
+function kratosResearchModel(spacingIn,model={},binsPerAc=60){
+  const ppa=kratosPlantsPerAcre(spacingIn),plantsHa=ppa*2.4710538147;
+  const offset=parseFloat(model?.diameterOffsetCm)||0,sd=Math.max(.35,parseFloat(model?.diameterSdCm)||KRATOS_RESEARCH.defaultSdCm);
+  const meanDiameter=KRATOS_RESEARCH.diameterIntercept+KRATOS_RESEARCH.diameterSlope*plantsHa+offset;
+  const probs={};
+  KRATOS_RESEARCH.bins.forEach(b=>{
+    const lo=Number.isFinite(b.lo)?pumpkinNormCdf((b.lo-meanDiameter)/sd):0;
+    const hi=Number.isFinite(b.hi)?pumpkinNormCdf((b.hi-meanDiameter)/sd):1;
+    probs[b.id]=Math.max(0,hi-lo);
+  });
+  // Convert fruit proportions to packed-bin proportions: a 20-count bin consumes
+  // fewer fruit than a 55-count bin. Scale to Howe's local bins/acre target.
+  const weights={};let sumW=0;
+  KRATOS_RESEARCH.bins.forEach(b=>{weights[b.id]=(probs[b.id]||0)/b.count;sumW+=weights[b.id];});
+  const binShare={},binsAc={};
+  KRATOS_RESEARCH.bins.forEach(b=>{binShare[b.id]=sumW?weights[b.id]/sumW:0;binsAc[b.id]=(parseFloat(binsPerAc)||60)*binShare[b.id];});
+  return{spacingIn:parseFloat(spacingIn)||36,ppa,plantsHa,meanDiameter,sd,offset,probs,binShare,binsAc,inStudyRange:plantsHa>=KRATOS_RESEARCH.testedDensityHaMin&&plantsHa<=KRATOS_RESEARCH.testedDensityHaMax};
+}
+function normalizeKratosSpacingBlocks(v){
+  const a=Array.isArray(v)&&v.length?v:[{id:'ks_'+Date.now().toString(36),spacingIn:36,acres:''}];
+  return a.map((b,i)=>({id:b.id||('ks_'+Date.now().toString(36)+'_'+i),spacingIn:Math.max(18,Math.min(60,parseFloat(b.spacingIn)||36)),acres:b.acres===''||b.acres==null?'':Math.max(0,parseFloat(b.acres)||0)}));
+}
+function allocatedKratosSpacingBlocks(plan,totalAcres){
+  const blocks=normalizeKratosSpacingBlocks(plan?.kratosSpacingBlocks),target=Math.max(0,parseFloat(totalAcres)||0);
+  const explicit=blocks.reduce((s,b)=>s+(b.acres===''?0:(parseFloat(b.acres)||0)),0),firstBlank=blocks.findIndex(b=>b.acres==='');
+  return blocks.map((b,i)=>({...b,allocatedAcres:b.acres===''?(i===firstBlank?Math.max(0,target-explicit):0):(parseFloat(b.acres)||0)}));
+}
+function kratosSupplyProjection(plan,totalKratosAcres,binsPerAc){
+  const model=plan?.kratosModel||{},blocks=allocatedKratosSpacingBlocks(plan,totalKratosAcres);
+  const totals={small:0,5055:0,4045:0,3035:0,1820:0},detail=[];
+  blocks.forEach(b=>{
+    const r=kratosResearchModel(b.spacingIn,model,binsPerAc);
+    KRATOS_RESEARCH.bins.forEach(k=>totals[k.id]+=r.binsAc[k.id]*b.allocatedAcres);
+    detail.push({...b,...r});
+  });
+  return{totals,detail,totalAcres:blocks.reduce((s,b)=>s+b.allocatedAcres,0)};
+}
+
 function pumpkinPlanDefault(){
   const sourceYear=new Date().getFullYear(),planYear=sourceYear+1;
   return{
@@ -1914,6 +1982,8 @@ function pumpkinPlanDefault(){
     yieldTargets:Object.fromEntries(Object.entries(PUMPKIN_PLAN_TYPES).map(([k,v])=>[k,v.yieldBinsAc])),
     spacing:Object.fromEntries(Object.entries(PUMPKIN_PLAN_TYPES).map(([k,v])=>[k,v.spacingIn])),
     earlyPct:Object.fromEntries(Object.entries(PUMPKIN_PLAN_TYPES).map(([k,v])=>[k,v.earlyPct])),
+    kratosModel:{diameterOffsetCm:0,diameterSdCm:KRATOS_RESEARCH.defaultSdCm},
+    kratosSpacingBlocks:[{id:'ks36',spacingIn:36,acres:''}],
     skuAdjustments:{},lockedActuals:null,lockedAt:'',notes:''
   };
 }
@@ -1925,6 +1995,8 @@ function pumpkinPlanNormalize(p){
     yieldTargets:{...d.yieldTargets,...(x.yieldTargets||{})},
     spacing:{...d.spacing,...(x.spacing||{})},
     earlyPct:{...d.earlyPct,...(x.earlyPct||{})},
+    kratosModel:{...d.kratosModel,...(x.kratosModel||{})},
+    kratosSpacingBlocks:normalizeKratosSpacingBlocks(x.kratosSpacingBlocks||d.kratosSpacingBlocks),
     skuAdjustments:{...(x.skuAdjustments||{})},
     lockedActuals:x.lockedActuals||null
   };
@@ -2637,6 +2709,27 @@ function OrderBrain(){
     const locked={};PUMPKIN_PLAN_SKUS.forEach(r=>locked[r.id]=pumpkinPlanSkuActual(orders,pumpkinPlanner.sourceYear,r,null));
     patchPumpkinPlanner({lockedActuals:locked,lockedAt:new Date().toISOString()});
   }
+
+  function patchKratosSpacingBlock(id,patch){
+    setPumpkinPlanner(prev=>{
+      const blocks=normalizeKratosSpacingBlocks(prev.kratosSpacingBlocks).map(b=>b.id===id?{...b,...patch}:b);
+      const next=pumpkinPlanNormalize({...prev,kratosSpacingBlocks:blocks});LS.set('hff:ord:pumpkin_planner',next);return next;
+    });
+  }
+  function addKratosSpacingBlock(){
+    setPumpkinPlanner(prev=>{
+      const blocks=[...normalizeKratosSpacingBlocks(prev.kratosSpacingBlocks),{id:'ks_'+Date.now().toString(36),spacingIn:36,acres:''}];
+      const next=pumpkinPlanNormalize({...prev,kratosSpacingBlocks:blocks});LS.set('hff:ord:pumpkin_planner',next);return next;
+    });
+  }
+  function removeKratosSpacingBlock(id){
+    setPumpkinPlanner(prev=>{
+      let blocks=normalizeKratosSpacingBlocks(prev.kratosSpacingBlocks).filter(b=>b.id!==id);
+      if(!blocks.length)blocks=[{id:'ks_'+Date.now().toString(36),spacingIn:36,acres:''}];
+      const next=pumpkinPlanNormalize({...prev,kratosSpacingBlocks:blocks});LS.set('hff:ord:pumpkin_planner',next);return next;
+    });
+  }
+
   function pumpkinPlannerFields(){
     const fs=LS.get('hff:fields',[]),yr=String(pumpkinPlanner.planYear);
     return fs.map(f=>{const yp=f?.yearPlans?.[yr]||{};return{id:f.id,name:f.name||'Field',acres:fieldDisplayAcres(f),crop:yp.crop||''};}).sort((a,b)=>a.name.localeCompare(b.name));
@@ -2666,10 +2759,18 @@ function OrderBrain(){
     if(earlyId===lateId){setPumpkinApplySt('⚠ Early and Late fields must be different.');return;}
     if(!confirm(`Apply the ${pp.planYear} pumpkin acreage targets to the two Farm Map fields? This replaces the MAIN pumpkin planting blocks in those two fields, but keeps their boundaries, A–B lines and headland settings.`))return;
     const fs=LS.get('hff:fields',[]),now=new Date().toISOString(),changed=[];
-    const makeBlocks=(side)=>Object.keys(PUMPKIN_PLAN_TYPES).map((type,i)=>{
-      const meta=PUMPKIN_PLAN_TYPES[type],x=types[type],ac=side==='early'?x.earlyAcres:x.lateAcres;
-      return{id:'pb_plan_'+side+'_'+type,variety:meta.variety,targetAcres:+ac.toFixed(2),spacingIn:x.spacing};
-    }).filter(b=>b.targetAcres>.01);
+    const makeBlocks=(side)=>{
+      const out=[];
+      const kr=types.kratos,share=side==='early'?kr.earlyPct/100:(1-kr.earlyPct/100);
+      allocatedKratosSpacingBlocks(pp,kr.acres).forEach((b,i)=>{
+        const ac=b.allocatedAcres*share;if(ac>.01)out.push({id:'pb_plan_'+side+'_kratos_'+i,variety:'Kratos',targetAcres:+ac.toFixed(2),spacingIn:b.spacingIn});
+      });
+      ['mixed','mischief','white'].forEach(type=>{
+        const meta=PUMPKIN_PLAN_TYPES[type],x=types[type],ac=side==='early'?x.earlyAcres:x.lateAcres;
+        if(ac>.01)out.push({id:'pb_plan_'+side+'_'+type,variety:meta.variety,targetAcres:+ac.toFixed(2),spacingIn:x.spacing});
+      });
+      return out;
+    };
     const next=fs.map(raw=>{
       if(raw.id!==earlyId&&raw.id!==lateId)return raw;
       const yp={...(raw.yearPlans?.[String(pp.planYear)]||{})},oldP=normalizePumpkinPlan(yp.pumpkinPlan||newPumpkinPlan()),side=raw.id===earlyId?'early':'late';
@@ -3154,7 +3255,7 @@ function OrderBrain(){
         return html`
         <div class="card" style=${{padding:'11px 13px',marginBottom:9,border:'2px solid #e6a15a',background:'#fffaf4'}}>
           <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap'}}>
-            <div><div style=${{fontWeight:900,fontSize:16}}>🎃 Pumpkin Crop Planner <span style=${{fontSize:8,verticalAlign:'middle',background:'#7d3a08',color:'#fff',borderRadius:5,padding:'2px 5px'}}>v61</span></div><div style=${{fontSize:10,color:'#777',marginTop:2}}>Turn ${pp.sourceYear} customer demand into ${pp.planYear} acreage targets, correct for stockouts/crop failures, then push the accepted Early/Late plan into Fields.</div></div>
+            <div><div style=${{fontWeight:900,fontSize:16}}>🎃 Pumpkin Crop Planner <span style=${{fontSize:8,verticalAlign:'middle',background:'#7d3a08',color:'#fff',borderRadius:5,padding:'2px 5px'}}>v62</span></div><div style=${{fontSize:10,color:'#777',marginTop:2}}>Turn ${pp.sourceYear} customer demand into ${pp.planYear} acreage targets, correct for stockouts/crop failures, then push the accepted Early/Late plan into Fields.</div></div>
             <div style=${{display:'flex',gap:5,flexWrap:'wrap'}}><button class="btn btn-sm btn-out" onClick=${lockPumpkinDemand}>${pp.lockedActuals?'🔒 Sales snapshot locked':'🔓 Lock sales snapshot'}</button><button class=${'btn btn-sm '+(pumpkinPlannerSync==='ok'?'saved':'')} onClick=${savePumpkinPlanner}>${pumpkinPlannerSync==='saving'?'Saving…':pumpkinPlannerSync==='ok'?'✓ Saved & synced':'☁ Save & Sync Plan'}</button></div>
           </div>
           <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:6,marginTop:9}}>
@@ -3185,11 +3286,44 @@ function OrderBrain(){
         <div class="card" style=${{marginBottom:9}}>
           <div style=${{padding:'9px 11px',fontWeight:900,borderBottom:'1px solid #eee'}}>3 · Acreage + spacing targets</div>
           <div style=${{overflowX:'auto'}}><table style=${{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:800}}><thead><tr style=${{background:'#f4f1ec'}}><th style=${{textAlign:'left',padding:6}}>Pumpkin type</th><th>Planning bins</th><th>Yield target<br/>bins/ac</th><th>Total acres</th><th>Spacing</th><th>Early %</th><th>Early ac</th><th>Late ac</th></tr></thead><tbody>${Object.entries(typeRows).map(([k,x])=>html`<tr style=${{borderTop:'1px solid #eee'}}><td style=${{padding:6,fontWeight:800,color:PUMPKIN_PLAN_TYPES[k].color}}>${PUMPKIN_PLAN_TYPES[k].label}</td><td style=${{textAlign:'center'}}>${Math.round(x.demand).toLocaleString()}</td><td style=${{padding:4}}><input class="ti" type="number" min="1" step="1" value=${pp.yieldTargets[k]} onInput=${e=>patchPumpkinPlanner({yieldTargets:{...pp.yieldTargets,[k]:e.target.value}})} style=${{fontSize:10,padding:5,textAlign:'center',width:80}}/></td><td style=${{textAlign:'center',fontWeight:900}}>${x.acres.toFixed(1)}</td><td style=${{padding:4}}><div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:2}}><input class="ti" type="number" step="1" value=${pp.spacing[k]} onInput=${e=>patchPumpkinPlanner({spacing:{...pp.spacing,[k]:e.target.value}})} style=${{fontSize:10,padding:5,textAlign:'center',width:64}}/><span>"</span></div></td><td style=${{padding:4}}><div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:2}}><input class="ti" type="number" min="0" max="100" step="1" value=${pp.earlyPct[k]} onInput=${e=>patchPumpkinPlanner({earlyPct:{...pp.earlyPct,[k]:e.target.value}})} style=${{fontSize:10,padding:5,textAlign:'center',width:64}}/><span>%</span></div></td><td style=${{textAlign:'center',fontWeight:800}}>${x.earlyAcres.toFixed(1)}</td><td style=${{textAlign:'center',fontWeight:800}}>${x.lateAcres.toFixed(1)}</td></tr>`)}</tbody></table></div>
-          <div style=${{padding:'7px 10px',fontSize:9,color:'#777'}}>Spacing is pushed into the existing 3-row Monosem field-layout engine. The planner does not invent a precise Kratos size-distribution curve yet; your 2027 spacing + harvested SKU results can be used to calibrate that later.</div>
+          <div style=${{padding:'7px 10px',fontSize:9,color:'#777'}}>Mixed, Pie and White spacing is pushed directly into the existing 3-row Monosem field-layout engine. Kratos can now be split across several spacing blocks using the research-based size model below.</div>
         </div>
 
+        ${(()=>{
+          const kr=typeRows.kratos,krYield=parseFloat(pp.yieldTargets.kratos)||60,proj=kratosSupplyProjection(pp,kr.acres,krYield);
+          const researchDemand={1820:sourceRows.find(x=>x.id==='kr_1820')?.planning||0,3035:sourceRows.find(x=>x.id==='kr_3035')?.planning||0,4045:sourceRows.find(x=>x.id==='kr_4045')?.planning||0,5055:sourceRows.find(x=>x.id==='kr_5055')?.planning||0};
+          const modeled=['1820','3035','4045','5055'];
+          const firstModel=proj.detail[0]||kratosResearchModel(pp.spacing.kratos,pp.kratosModel,krYield);
+          return html`<div class="card" style=${{marginBottom:9,border:'2px solid #bf7a3d'}}>
+            <div style=${{padding:'9px 11px',borderBottom:'1px solid #ead7c5',background:'#fff8f0'}}>
+              <div style=${{fontWeight:900}}>4 · 🎯 Kratos population → bin-size model</div>
+              <div style=${{fontSize:9,color:'#6f6256',marginTop:3}}>Research baseline: Heagy, NC State (2023). Howe 5 ft rows are 1.524 m, almost identical to the study's 1.5 m row treatment. Diameter model used: <b>36.82 − 0.00067 × plants/ha</b> (R²=0.79). Study bin-diameter ranges are mapped approximately to Howe 50/55, 40/45, 30/35 and 18/20 bins.</div>
+            </div>
+            <div style=${{padding:'8px 10px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,background:'#fffdf9'}}>
+              <div><label class="fl">Howe diameter adjustment (cm)</label><input class="ti" type="number" step=".1" value=${pp.kratosModel?.diameterOffsetCm??0} onInput=${e=>patchPumpkinPlanner({kratosModel:{...pp.kratosModel,diameterOffsetCm:e.target.value}})}/><div style=${{fontSize:8,color:'#888',marginTop:2}}>Leave 0 for pure NC State prediction. Negative = Howe fruit run smaller; positive = larger. This is the best future calibration knob.</div></div>
+              <div><label class="fl">Fruit diameter spread / SD (cm)</label><input class="ti" type="number" min=".35" max="5" step=".1" value=${pp.kratosModel?.diameterSdCm??KRATOS_RESEARCH.defaultSdCm} onInput=${e=>patchPumpkinPlanner({kratosModel:{...pp.kratosModel,diameterSdCm:e.target.value}})}/><div style=${{fontSize:8,color:'#888',marginTop:2}}>The thesis reports that uniformity did not change with density, but does not publish a density-specific SD. <b>1.8 cm is a planning assumption</b> and should be calibrated from Howe harvest data.</div></div>
+            </div>
+
+            <div style=${{padding:'8px 10px'}}>
+              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:5}}><strong style=${{fontSize:10}}>Kratos spacing blocks — target ${kr.acres.toFixed(1)} ac</strong><button class="btn btn-sm btn-out" onClick=${addKratosSpacingBlock}>+ Spacing block</button></div>
+              <div style=${{overflowX:'auto'}}><table style=${{width:'100%',borderCollapse:'collapse',fontSize:9,minWidth:980}}><thead><tr style=${{background:'#f6f0e8'}}><th>Spacing</th><th>Allocated ac</th><th>Plants/ac</th><th>Plants/ha</th><th>Pred. avg diameter</th><th>50/55 bins/ac</th><th>40/45</th><th>30/35</th><th>18/20</th><th>60/70+ residual</th><th></th></tr></thead><tbody>
+                ${proj.detail.map((b,i)=>html`<tr style=${{borderTop:'1px solid #eee'}}><td style=${{padding:4,textAlign:'center'}}><div style=${{display:'flex',alignItems:'center',justifyContent:'center',gap:2}}><input class="ti" type="number" min="18" max="60" step="1" value=${b.spacingIn} onInput=${e=>patchKratosSpacingBlock(b.id,{spacingIn:e.target.value})} style=${{width:60,padding:4,textAlign:'center'}}/><span>"</span></div></td><td style=${{padding:4,textAlign:'center'}}><input class="ti" type="number" min="0" step=".1" placeholder=${i===0&&b.acres===''?`auto ${b.allocatedAcres.toFixed(1)}`:''} value=${b.acres} onInput=${e=>patchKratosSpacingBlock(b.id,{acres:e.target.value})} style=${{width:78,padding:4,textAlign:'center'}}/><div style=${{fontSize:7.5,color:'#888'}}>${b.acres===''?`auto ${b.allocatedAcres.toFixed(1)} ac`:''}</div></td><td style=${{textAlign:'center'}}>${Math.round(b.ppa).toLocaleString()}</td><td style=${{textAlign:'center',color:b.inStudyRange?'#2e7d32':'#b42318'}}>${Math.round(b.plantsHa).toLocaleString()}${b.inStudyRange?'':' ⚠'}</td><td style=${{textAlign:'center',fontWeight:800}}>${b.meanDiameter.toFixed(1)} cm</td><td style=${{textAlign:'center'}}>${b.binsAc['5055'].toFixed(1)}</td><td style=${{textAlign:'center'}}>${b.binsAc['4045'].toFixed(1)}</td><td style=${{textAlign:'center'}}>${b.binsAc['3035'].toFixed(1)}</td><td style=${{textAlign:'center'}}>${b.binsAc['1820'].toFixed(1)}</td><td style=${{textAlign:'center',color:'#888'}}>${b.binsAc.small.toFixed(1)}</td><td style=${{padding:4,textAlign:'right'}}>${proj.detail.length>1?html`<button class="btn btn-sm btn-danger" onClick=${()=>removeKratosSpacingBlock(b.id)}>×</button>`:null}</td></tr>`)}
+              </tbody></table></div>
+              <div style=${{fontSize:8.5,color:'#777',marginTop:5}}>Blank acreage on the first spacing row automatically receives the remaining calculated Kratos acreage. The four research-backed count groups are approximate mappings: NC State 55–65 → Howe 50/55; 40 → 40/45; 30 → 30/35; 20 → 18/20. The thesis has no direct 25-count category.</div>
+            </div>
+
+            <div style=${{padding:'8px 10px',borderTop:'1px solid #ead7c5',background:'#fffaf4'}}>
+              <strong style=${{fontSize:10}}>Projected Kratos supply vs adjusted ${pp.sourceYear} demand</strong>
+              <div style=${{overflowX:'auto',marginTop:5}}><table style=${{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:650}}><thead><tr style=${{background:'#f6f0e8'}}><th style=${{textAlign:'left',padding:5}}>SKU</th><th>Demand bins</th><th>Projected bins</th><th>Coverage</th><th>Difference</th></tr></thead><tbody>${modeled.map(k=>{const supply=proj.totals[k]||0,demand=researchDemand[k]||0,cov=demand?supply/demand*100:null,diff=supply-demand,label={1820:'18/20',3035:'30/35',4045:'40/45',5055:'50/55'}[k];return html`<tr style=${{borderTop:'1px solid #eee',background:demand&&supply<demand?'#fff1f1':'#fff'}}><td style=${{padding:5,fontWeight:800}}>${label}</td><td style=${{textAlign:'center'}}>${Math.round(demand).toLocaleString()}</td><td style=${{textAlign:'center',fontWeight:800}}>${Math.round(supply).toLocaleString()}</td><td style=${{textAlign:'center',fontWeight:900,color:cov==null?'#888':cov>=100?'#2e7d32':'#b42318'}}>${cov==null?'—':cov.toFixed(0)+'%'}</td><td style=${{textAlign:'center',fontWeight:800,color:diff>=0?'#2e7d32':'#b42318'}}>${diff>=0?'+':''}${Math.round(diff).toLocaleString()}</td></tr>`;})}</tbody></table></div>
+              <div style=${{fontSize:8.5,color:'#7a654f',marginTop:5}}>Projected absolute bins still use <b>your ${krYield} bins/ac Kratos target</b>; the NC State model is used for the <b>size mix</b>, not to replace your local yield expectation. This avoids importing North Carolina absolute yield into Howe conditions.</div>
+            </div>
+
+            <details style=${{margin:'0 10px 9px'}}><summary style=${{cursor:'pointer',fontSize:9,fontWeight:800}}>Research reference / standard spacing comparison</summary><div style=${{overflowX:'auto',paddingTop:5}}><table style=${{width:'100%',borderCollapse:'collapse',fontSize:9,minWidth:760}}><thead><tr style=${{background:'#f6f0e8'}}><th>Spacing</th><th>Plants/ac</th><th>Plants/ha</th><th>Avg diameter</th><th>50/55 % bins</th><th>40/45 %</th><th>30/35 %</th><th>18/20 %</th></tr></thead><tbody>${[28,32,36,40,44].map(s=>{const m=kratosResearchModel(s,pp.kratosModel,krYield);return html`<tr style=${{borderTop:'1px solid #eee'}}><td style=${{textAlign:'center',padding:4,fontWeight:800}}>${s}"</td><td style=${{textAlign:'center'}}>${Math.round(m.ppa).toLocaleString()}</td><td style=${{textAlign:'center'}}>${Math.round(m.plantsHa).toLocaleString()}</td><td style=${{textAlign:'center'}}>${m.meanDiameter.toFixed(1)} cm</td><td style=${{textAlign:'center'}}>${(m.binShare['5055']*100).toFixed(1)}%</td><td style=${{textAlign:'center'}}>${(m.binShare['4045']*100).toFixed(1)}%</td><td style=${{textAlign:'center'}}>${(m.binShare['3035']*100).toFixed(1)}%</td><td style=${{textAlign:'center'}}>${(m.binShare['1820']*100).toFixed(1)}%</td></tr>`;})}</tbody></table></div></details>
+          </div>`;
+        })()}
+
         <div class="card" style=${{padding:'10px 12px',marginBottom:9,border:'2px solid #9fb58d'}}>
-          <div style=${{fontWeight:900,marginBottom:7}}>4 · Assign the two ${pp.planYear} pumpkin fields</div>
+          <div style=${{fontWeight:900,marginBottom:7}}>5 · Assign the two ${pp.planYear} pumpkin fields</div>
           <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
             <div style=${{border:'1px solid #ddd',borderRadius:8,padding:8,background:'#f7fbf4'}}><strong>EARLY FIELD</strong><div style=${{fontSize:9,color:'#777',margin:'2px 0 6px'}}>Target planting May 22 — avoid going earlier while rye is still immature.</div><select class="ti" value=${pp.earlyFieldId} onChange=${e=>patchPumpkinPlanner({earlyFieldId:e.target.value})}><option value="">Choose field…</option>${fields.map(f=>html`<option value=${f.id}>${f.name} — ${f.acres.toFixed(1)} ac</option>`)}</select><label class="fl" style=${{marginTop:5}}>Planned planting date</label><input class="ti" type="date" value=${pp.earlyPlantDate} onInput=${e=>patchPumpkinPlanner({earlyPlantDate:e.target.value})}/><div style=${{marginTop:6,fontSize:10,fontWeight:800,color:ef&&earlyNeed>ef.acres?'#b42318':'#2e7d32'}}>Plan ${earlyNeed.toFixed(1)} ac ${ef?`/ ${ef.acres.toFixed(1)} field ac`:''}</div></div>
             <div style=${{border:'1px solid #ddd',borderRadius:8,padding:8,background:'#fff9f0'}}><strong>LATE FIELD</strong><div style=${{fontSize:9,color:'#777',margin:'2px 0 6px'}}>June 2 is the usual latest window; use this planting to stagger harvest while protecting maturity.</div><select class="ti" value=${pp.lateFieldId} onChange=${e=>patchPumpkinPlanner({lateFieldId:e.target.value})}><option value="">Choose field…</option>${fields.map(f=>html`<option value=${f.id}>${f.name} — ${f.acres.toFixed(1)} ac</option>`)}</select><label class="fl" style=${{marginTop:5}}>Planned planting date</label><input class="ti" type="date" value=${pp.latePlantDate} onInput=${e=>patchPumpkinPlanner({latePlantDate:e.target.value})}/><div style=${{marginTop:6,fontSize:10,fontWeight:800,color:lf&&lateNeed>lf.acres?'#b42318':'#2e7d32'}}>Plan ${lateNeed.toFixed(1)} ac ${lf?`/ ${lf.acres.toFixed(1)} field ac`:''}</div></div>
@@ -5000,7 +5134,7 @@ const FIELD_CROPS_CFG = {
     dripPerRow:true,
     dripLinesPerRow:1,    // default; editable per field in Watermelon Material Planner
     dripRollFt:7000,
-    varieties:['Crackerjack','Rio Grande','Sunstone','Sureness','Premium','Nun 800 Sangria','Nun 2800 Sangria'],
+    varieties:['Crackerjack','Rio Grande','Sunstone','Sureness','Premium','Nun 2700 Sangria','Nun 800 Sangria','Nun 2800 Sangria'],
   },
   pumpkin: {
     label:'Pumpkin', icon:'🎃', color:'#e65100', planner:'pumpkin',
@@ -5683,7 +5817,7 @@ function watermelonVarietySummary(materials,varieties=[]){
 }
 
 const WATERMELON_SEEDLESS=['Crackerjack','Rio Grande','Sunstone'];
-const WATERMELON_POLLINATORS=['Sureness','Premium','Nun 800 Sangria','Nun 2800 Sangria'];
+const WATERMELON_POLLINATORS=['Sureness','Premium','Nun 2700 Sangria','Nun 800 Sangria','Nun 2800 Sangria'];
 function canonicalWatermelonVarietyName(name){
   const raw=String(name||'').trim(),n=raw.toLowerCase().replace(/[^a-z0-9]/g,'');
   if(!raw)return'';
@@ -5692,9 +5826,50 @@ function canonicalWatermelonVarietyName(name){
   if(n==='sunstone')return'Sunstone';
   if(n==='sureness')return'Sureness';
   if(n.startsWith('premium'))return'Premium';
+  if(n.startsWith('nun2700'))return'Nun 2700 Sangria';
   if(n.startsWith('nun800'))return'Nun 800 Sangria';
   if(n.startsWith('nun2800'))return'Nun 2800 Sangria';
   return raw;
+}
+function watermelonStringHash(s){
+  let h=0;for(const ch of String(s||''))h=((h<<5)-h+ch.charCodeAt(0))|0;return Math.abs(h);
+}
+function watermelonSeedlessBaseHue(name){
+  const n=canonicalWatermelonVarietyName(name);
+  if(n==='Crackerjack')return 9;       // orange/red
+  if(n==='Sunstone')return 48;         // gold
+  if(n==='Rio Grande')return 190;      // teal/blue
+  return watermelonStringHash(n||'unassigned')%360;
+}
+function watermelonPollinatorStyle(name){
+  const n=canonicalWatermelonVarietyName(name);
+  if(n==='Premium')return{shift:0,sat:76,light:43};
+  if(n==='Sureness')return{shift:18,sat:78,light:51};
+  if(n==='Nun 2700 Sangria')return{shift:38,sat:72,light:44};
+  if(n==='Nun 800 Sangria')return{shift:-20,sat:70,light:48};
+  if(n==='Nun 2800 Sangria')return{shift:55,sat:68,light:42};
+  const h=watermelonStringHash(n||'none');
+  return{shift:(h%61)-30,sat:66+(h%12),light:43+(h%10)};
+}
+function watermelonCombinationColor(seedless,pollinator){
+  const s=canonicalWatermelonVarietyName(seedless),p=canonicalWatermelonVarietyName(pollinator);
+  if(!s&&!p)return'#9e9e9e';
+  const st=watermelonPollinatorStyle(p),h=(watermelonSeedlessBaseHue(s)+st.shift+360)%360;
+  return `hsl(${h} ${st.sat}% ${st.light}%)`;
+}
+function watermelonCombinationLabel(seedless,pollinator){
+  const s=canonicalWatermelonVarietyName(seedless)||'Seedless unassigned';
+  const p=canonicalWatermelonVarietyName(pollinator)||'Pollinator unassigned';
+  return s+' + '+p;
+}
+function watermelonConfigurationSummary(materials,varieties=[],sectionMeta=[]){
+  const groups={};
+  (materials?.sections||[]).forEach(sec=>{
+    const i=sec.section-1,seedless=canonicalWatermelonVarietyName(varieties?.[i]||''),pollinator=canonicalWatermelonVarietyName(sectionMetaAt(sectionMeta,i).pollinatorVariety||'');
+    const key=seedless+'|'+pollinator,g=groups[key]||(groups[key]={key,seedless,pollinator,label:watermelonCombinationLabel(seedless,pollinator),color:watermelonCombinationColor(seedless,pollinator),sections:0,acres:0,rowFt:0});
+    g.sections++;g.acres+=sec.acres||0;g.rowFt+=sec.rowFt||0;
+  });
+  return Object.values(groups).sort((a,b)=>a.seedless.localeCompare(b.seedless)||a.pollinator.localeCompare(b.pollinator));
 }
 function watermelonVarietyRole(name){
   const c=canonicalWatermelonVarietyName(name);
@@ -6075,8 +6250,20 @@ function FieldMapper({staffProfile}){
       raw={...raw,watermelon:[...WATERMELON_SEEDLESS,...WATERMELON_POLLINATORS]};
       LS.set('hff:field_varieties',raw);LS.set('hff:variety_migration_v50',true);
     }
+    if(!LS.get('hff:variety_migration_v64',false)){
+      // Add the 2027 pollinator without resetting or resurrecting any other
+      // watermelon varieties the farm has intentionally removed.
+      const wm=Array.isArray(raw.watermelon)?raw.watermelon.map(canonicalWatermelonVarietyName):[];
+      if(!wm.includes('Nun 2700 Sangria'))wm.push('Nun 2700 Sangria');
+      raw={...raw,watermelon:Array.from(new Set(wm))};
+      LS.set('hff:field_varieties',raw);LS.set('hff:variety_migration_v64',true);LS.set('hff:variety_migration_v64_pending',true);
+    }
     return normalizeFieldVarietyLibrary(raw);
   });
+  useEffect(()=>{
+    if(!LS.get('hff:variety_migration_v64_pending',false))return;
+    sbFieldVarietiesPush(varietyLib).then(r=>{if(r?.ok)LS.set('hff:variety_migration_v64_pending',false);}).catch(()=>{});
+  },[]);
   const[newVariety,setNewVariety]=useState('');
   const[bulkSeedlessVariety,setBulkSeedlessVariety]=useState('');
   const[customCrops,setCustomCrops]=useState(()=>{const x=normalizeCustomCropLibrary(LS.get('hff:field_custom_crops',[]));registerCustomCrops(x);return x;});
@@ -6356,12 +6543,14 @@ function FieldMapper({staffProfile}){
     }else if(pts.length>=3&&cropCfg){
       const plan=buildPolygonFieldPlan(cropCfg,pts,d.orientation,d.bearingDeg,d.startSide,d.pumpkinPlan);
       if(plan){
-        const isPumpkin=isPumpkinPlanningCrop(d.crop),alloc=isPumpkin?calcPumpkinVarietyPlan(plan,d.pumpkinPlan):null;
+        const isPumpkin=isPumpkinPlanningCrop(d.crop),isWatermelon=isWatermelonPlanningCrop(d.crop),alloc=isPumpkin?calcPumpkinVarietyPlan(plan,d.pumpkinPlan):null;
         plan.rows.forEach(row=>row.segments.forEach(seg=>{
           const a=plan.projection.toLatLng(seg[0].x,seg[0].y),b=plan.projection.toLatLng(seg[1].x,seg[1].y);
           const bi=alloc?.assignmentBySection?.[row.section];
-          const co=isPumpkin&&Number.isInteger(bi)?pumpkinBlockColor(bi):c.color;
-          layers.push(L.polyline([a,b],{color:co,weight:isPumpkin?2.1:(row.section===1?2.6:1.35),opacity:Number.isInteger(bi)?.98:.78}));
+          const wi=row.section-1,wmMeta=sectionMetaAt(d.sectionMeta,wi),wmSeed=(d.varieties||[])[wi]||'',wmPoll=wmMeta.pollinatorVariety||'';
+          const co=isPumpkin&&Number.isInteger(bi)?pumpkinBlockColor(bi):(isWatermelon?watermelonCombinationColor(wmSeed,wmPoll):c.color);
+          if(isWatermelon)layers.push(L.polyline([a,b],{color:co,weight:8,opacity:.16,interactive:false}));
+          layers.push(L.polyline([a,b],{color:co,weight:isPumpkin?2.1:(isWatermelon?2.5:(row.section===1?2.6:1.35)),opacity:isWatermelon?.96:(Number.isInteger(bi)?.98:.78)}));
         }));
         (plan.headlandRows||[]).forEach(row=>row.segments.forEach(seg=>{
           const a=plan.projection.toLatLng(seg[0].x,seg[0].y),b=plan.projection.toLatLng(seg[1].x,seg[1].y);
@@ -6393,7 +6582,12 @@ function FieldMapper({staffProfile}){
             const seg=rr[Math.floor(rr.length/2)].segments[0];if(!seg)continue;
             const mid={x:(seg[0].x+seg[1].x)/2,y:(seg[0].y+seg[1].y)/2};
             const ll=plan.projection.toLatLng(mid.x,mid.y);
-            layers.push(L.marker([ll.lat,ll.lng],{interactive:false,icon:L.divIcon({className:'',html:'<div style="background:rgba(255,255,255,.9);border:1px solid '+c.color+';color:'+c.color+';font:bold 10px system-ui;border-radius:10px;padding:1px 5px;white-space:nowrap">S'+sec+'</div>',iconSize:[28,18],iconAnchor:[14,9]})}));
+            const wi=sec-1,wmMeta=sectionMetaAt(d.sectionMeta,wi),wmSeed=(d.varieties||[])[wi]||'',wmPoll=wmMeta.pollinatorVariety||'';
+            const secColor=isWatermelon?watermelonCombinationColor(wmSeed,wmPoll):c.color;
+            const secTitle=isWatermelon?watermelonCombinationLabel(wmSeed,wmPoll):('Section '+sec);
+            const mk=L.marker([ll.lat,ll.lng],{interactive:isWatermelon,icon:L.divIcon({className:'',html:'<div style="background:rgba(255,255,255,.94);border:2px solid '+secColor+';color:'+secColor+';font:bold 10px system-ui;border-radius:10px;padding:1px 5px;white-space:nowrap">S'+sec+'</div>',iconSize:[30,19],iconAnchor:[15,9]})});
+            if(isWatermelon)mk.bindTooltip('S'+sec+' · '+secTitle,{sticky:true,direction:'top'});
+            layers.push(mk);
           }
         }
       }
@@ -6721,7 +6915,7 @@ function FieldMapper({staffProfile}){
   useEffect(()=>{
     recalcCurrent(draft);
     if(leafletRef.current&&!useManual&&draft.latlngs?.length>=3)renderPlanOnMap(draft,mode==='edit');
-  },[draft.crop,draft.orientation,draft.bearingDeg,draft.startSide,draft.latlngs,draft.pumpkinPlan,draft.watermelonPlan,draft.tunnelStrawberryPlan,manualLen,manualWid,useManual,boundaryEdit,selectedVertex,tunnelAssignZone]);
+  },[draft.crop,draft.orientation,draft.bearingDeg,draft.startSide,draft.latlngs,draft.varieties,draft.sectionMeta,draft.pumpkinPlan,draft.watermelonPlan,draft.tunnelStrawberryPlan,manualLen,manualWid,useManual,boundaryEdit,selectedVertex,tunnelAssignZone]);
 
   function clearDraw(){
     const nd={...draftRef.current,latlngs:[],startEdgePoint:null};applyDraft(nd,false);setStats(null);setSelectedVertex(null);setBoundaryEdit(false);setMapTool(null);clearMapLayers();
@@ -6941,6 +7135,7 @@ function FieldMapper({staffProfile}){
   const watermelonPP=normalizeWatermelonPlan(draft.watermelonPlan);
   const watermelonMaterials=isWatermelonPlanningCrop(draft.crop)&&stats?calcWatermelonMaterials(polygonPlan,watermelonPP,useManual?stats:null):null;
   const watermelonVarieties=watermelonVarietySummary(watermelonMaterials,draft.varieties||[]);
+  const watermelonConfigLegend=watermelonConfigurationSummary(watermelonMaterials,draft.varieties||[],draft.sectionMeta||[]);
   const watermelonFieldCounts=(watermelonMaterials?.sections||[]).reduce((a,sec)=>{const i=sec.section-1,c=watermelonSectionSeedCounts(sec,sectionMetaAt(draft.sectionMeta,i),watermelonPP);a.seedless+=c.seedless;a.pollinator+=c.pollinator;a.total+=c.total;return a;},{seedless:0,pollinator:0,total:0});
   const tunnelStrawberryPP=normalizeTunnelStrawberryPlan(draft.tunnelStrawberryPlan);
   const tunnelStrawberryStats=tunnelStrawberrySummary(tunnelStrawberryPP);
@@ -7291,6 +7486,7 @@ function FieldMapper({staffProfile}){
       ${toolHint?html`<div style=${{padding:'6px 12px',background:'#fff8e1',color:'#8a6100',fontSize:11,fontWeight:700}}>👉 ${toolHint}</div>`:null}
       <div ref=${mapRef} style=${{height:isTunnelStrawberryPlanningCrop(draft.crop)?500:360,background:'#e0e8e0',position:'relative'}}>${!mapLoaded?html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#888',fontSize:12}}>${mapError||'Loading satellite map…'}</div>`:null}</div>
       ${draft.latlngs?.length?html`<div style=${{padding:'5px 12px',fontSize:11,color:'#2e7d32',background:'#f0faf4'}}>${draft.latlngs.length} boundary corners · ${(polyAreaSqFt(draft.latlngs)/43560).toFixed(2)} actual acres · ${bearingLabel(draft)}${isTunnelStrawberryPlanningCrop(draft.crop)?` · ${tunnelStrawberryPP.tunnelsPerSide} north + ${tunnelStrawberryPP.tunnelsPerSide} south tunnels`:''}</div>`:null}
+      ${isWatermelonPlanningCrop(draft.crop)&&watermelonConfigLegend.length?html`<div style=${{padding:'7px 10px',borderTop:'1px solid #eee',background:'#fff',display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}><span style=${{fontSize:9,fontWeight:900,color:'#666',marginRight:2}}>VARIETY CONFIGURATIONS</span>${watermelonConfigLegend.map(g=>html`<span style=${{display:'inline-flex',alignItems:'center',gap:5,border:'1px solid #ddd',borderRadius:12,padding:'3px 7px',fontSize:9,background:'#fafafa'}}><span style=${{width:12,height:12,borderRadius:3,background:g.color,border:'1px solid rgba(0,0,0,.15)'}}></span><strong>${g.label}</strong><span style=${{color:'#888'}}>${g.sections} sec · ${g.acres.toFixed(2)} ac</span></span>`)}</div>`:null}
       ${importMsg?html`<div style=${{padding:'5px 12px',fontSize:10,color:importMsg.startsWith('⚠')?'#c62828':'#2e7d32',background:'#fafafa'}}>${importMsg}</div>`:null}
     </div>
 
@@ -7346,7 +7542,7 @@ function FieldMapper({staffProfile}){
       ${stats.numSections>0&&!isPumpkinPlanningCrop(draft.crop)?html`<div class="card" style=${{padding:'10px 14px',marginBottom:8}}>
       <div style=${{fontWeight:700,fontSize:12,marginBottom:3}}>${isWatermelonPlanningCrop(draft.crop)?'🍉 Watermelon Section + Greenhouse Plan':isSweetCornPlanningCrop(draft.crop)?'🌽 Sweet Corn Staging Plan':'Variety Assignment by Section'}</div>
       ${isWatermelonPlanningCrop(draft.crop)?html`<div style=${{fontSize:10,color:'#777',marginBottom:7}}>Each 65 ft section carries both a triploid seedless variety and a diploid pollinator. Seedless can be applied to every section at once; pollinator stays section-by-section. Spacing can be set for the whole field and overridden by section.</div><div style=${{display:'grid',gridTemplateColumns:'1fr auto auto',gap:6,alignItems:'end',padding:'8px',background:'#fff7f6',border:'1px solid #efd4d1',borderRadius:8,marginBottom:8}}><label class="fl">Seedless variety — all sections<select class="ti" value=${bulkSeedlessVariety||''} onChange=${e=>setBulkSeedlessVariety(e.target.value)}><option value="">Choose…</option>${wmSeedlessOptions.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><button class="btn btn-sm" onClick=${applyWatermelonSeedlessAll} disabled=${!(bulkSeedlessVariety||wmSeedlessOptions[0])}>Apply seedless to all</button><button class="btn btn-sm btn-out" onClick=${applyWatermelonSpacingAll}>Apply field spacing to all</button></div>`:isSweetCornPlanningCrop(draft.crop)?html`<div style=${{fontSize:10,color:'#777',marginBottom:8}}>Plan by week, then check off the actual planting. Grouping sections into roughly 2–5 acres per week helps stage market supply.</div>`:null}
-      <div style=${{display:'grid',gap:7}}>${Array.from({length:stats.numSections},(_,i)=>{const wm=watermelonMaterials?.sections?.find(x=>x.section===i+1),meta=sectionMetaAt(draft.sectionMeta,i),cnt=wm?watermelonSectionSeedCounts(wm,meta,watermelonPP):null;return html`<div key=${i} style=${{background:'#f8f8f5',border:'1px solid #e8e8e4',borderRadius:8,padding:'7px 8px'}}><div style=${{fontSize:10,fontWeight:800,marginBottom:5}}>Section ${i+1}${wm?` · ${wm.acres.toFixed(2)} ac · ${Math.round(wm.rowFt).toLocaleString()} row ft`:''}</div>
+      <div style=${{display:'grid',gap:7}}>${Array.from({length:stats.numSections},(_,i)=>{const wm=watermelonMaterials?.sections?.find(x=>x.section===i+1),meta=sectionMetaAt(draft.sectionMeta,i),cnt=wm?watermelonSectionSeedCounts(wm,meta,watermelonPP):null,wmSeed=canonicalWatermelonVarietyName((draft.varieties||[])[i]||''),wmPoll=canonicalWatermelonVarietyName(meta.pollinatorVariety||''),wmColor=isWatermelonPlanningCrop(draft.crop)?watermelonCombinationColor(wmSeed,wmPoll):'#e8e8e4';return html`<div key=${i} style=${{background:'#f8f8f5',border:'1px solid #e8e8e4',borderLeft:'5px solid '+wmColor,borderRadius:8,padding:'7px 8px'}}><div style=${{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',marginBottom:5}}><div style=${{fontSize:10,fontWeight:800}}>Section ${i+1}${wm?` · ${wm.acres.toFixed(2)} ac · ${Math.round(wm.rowFt).toLocaleString()} row ft`:''}</div>${isWatermelonPlanningCrop(draft.crop)?html`<span style=${{fontSize:8.5,color:wmColor,fontWeight:900}}>${wmSeed||'—'} + ${wmPoll||'—'}</span>`:null}</div>
         ${isWatermelonPlanningCrop(draft.crop)?html`<div style=${{display:'grid',gridTemplateColumns:'1.2fr 1.2fr .65fr .65fr',gap:5,alignItems:'end'}}><label class="fl">Seedless<select class="ti" value=${canonicalWatermelonVarietyName((draft.varieties||[])[i]||'')} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${wmSeedlessOptions.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Pollinator<select class="ti" value=${canonicalWatermelonVarietyName(meta.pollinatorVariety||'')} onChange=${e=>patchSectionMeta(i,{pollinatorVariety:e.target.value})}><option value="">Choose…</option>${wmPollinatorOptions.map(v=>html`<option value=${v}>${v}</option>`)}</select></label><label class="fl">Seedless spacing<div style=${{display:'flex',alignItems:'center',gap:2}}><input class="ti" type="number" min="6" step="1" value=${meta.seedlessSpacingIn||watermelonPP.seedlessSpacingIn} onInput=${e=>patchSectionMeta(i,{seedlessSpacingIn:e.target.value})}/><span>&quot;</span></div></label><label class="fl">Pollinator spacing<div style=${{display:'flex',alignItems:'center',gap:2}}><input class="ti" type="number" min="6" step="1" value=${meta.pollinatorSpacingIn||watermelonPP.pollinatorSpacingIn} onInput=${e=>patchSectionMeta(i,{pollinatorSpacingIn:e.target.value})}/><span>&quot;</span></div></label></div><div style=${{fontSize:9,color:cnt&&cnt.ratio&&Math.abs(cnt.ratio-3)>.15?'#a05a00':'#666',margin:'4px 0'}}>${cnt?`${cnt.seedless.toLocaleString()} seedless @ ${cnt.seedlessSpacingIn}" + ${cnt.pollinator.toLocaleString()} pollinator @ ${cnt.pollinatorSpacingIn}" · 1 pollinator : ${cnt.ratio?.toFixed(2)||'—'} seedless${cnt.ratio&&Math.abs(cnt.ratio-3)>.15?' ⚠ target 1:3':''}`:''}</div><div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:5}}><label class="fl">Seedless tray<select class="ti" value=${meta.seedlessTraySize||98} onChange=${e=>patchSectionMeta(i,{seedlessTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Pollinator tray<select class="ti" value=${meta.pollinatorTraySize||128} onChange=${e=>patchSectionMeta(i,{pollinatorTraySize:+e.target.value})}>${PROP_TRAY_SIZES.map(n=>html`<option value=${n}>${n} cell</option>`)}</select></label><label class="fl">Planned seed date<input class="ti" type="date" value=${meta.plannedSeedDate||''} onInput=${e=>patchSectionMeta(i,{plannedSeedDate:e.target.value})}/></label><label class="fl">Plant week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label></div><div style=${{display:'flex',gap:5,marginTop:5,flexWrap:'wrap'}}><button onClick=${()=>markSectionDate(i,'seededDate')} class="btn btn-sm btn-out" style=${{padding:'4px 7px',fontSize:9}}>${meta.seededDate?'✓ Seeded '+meta.seededDate:'Mark seeded today'}</button><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm" style=${{padding:'4px 7px',fontSize:9}}>${meta.fieldPlantedDate?'✓ Field planted '+meta.fieldPlantedDate:'Mark field planted today'}</button></div>`:html`<div style=${{display:'grid',gridTemplateColumns:'1.2fr .9fr .9fr 1.3fr',gap:5,alignItems:'end'}}><label class="fl">Variety<select class="ti" value=${(draft.varieties||[])[i]||''} onChange=${e=>{const v=[...(draftRef.current.varieties||[])];v[i]=e.target.value;const nd={...draftRef.current,varieties:v};draftRef.current=nd;setDraft(nd);}}><option value="">Choose…</option>${cropVarieties.map(v=>html`<option value=${v}>${v}</option>`)}</select></label>${isSweetCornPlanningCrop(draft.crop)?html`<label class="fl">Planned week<input class="ti" type="week" value=${meta.plannedPlantWeek||''} onInput=${e=>patchSectionMeta(i,{plannedPlantWeek:e.target.value})}/></label><button onClick=${()=>markSectionDate(i,'fieldPlantedDate')} class="btn btn-sm btn-out" style=${{height:31,padding:'4px 6px',fontSize:9}}>${meta.fieldPlantedDate?'✓ '+meta.fieldPlantedDate:'Mark planted'}</button><label class="fl">Harvest result<select class="ti" value=${meta.harvestAssessment||''} onChange=${e=>patchSectionMeta(i,{harvestAssessment:e.target.value})}><option value="">Not rated</option><option value="perfect">Perfect amount staged</option><option value="too_much">Too much came on at once</option><option value="too_little">Planted too little</option></select></label>`:null}</div>`}
       </div>`;})}</div></div>`:null}`:null}
 
@@ -7744,34 +7940,61 @@ function SprayBrain(){
     const vp=bProds.filter(p=>p.name&&parseFloat(p.amt)>0);
     if(!vp.length){alert('Add at least one product with a quantity');return;}
     const certNote=appCertNote(bApplicator);
-    const lines=['Julio,'];
+    const lines=[bApplicator?bApplicator+',':'Spray mix,'];
     const rF=[],rI=[],rN=[],ff=new Set(),fi=new Set();
     if(isTunnels&&bZones.length<TUNNEL_ZONES.length){
       lines.push('Zones: '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', ')+' ('+acres.toFixed(2)+' ac)');
     }
+
+    const totalTanks=(acres/apt);
+    const fullT=Math.floor(totalTanks+1e-9);
+    const partT=Math.max(0,totalTanks-fullT);
+    const carrierTotalGal=acres*gpa;
+    const partialCarrierGal=partT*tvol;
+    const fmtNorm=(v,d)=>{
+      if(!isFinite(v))return'—';
+      if(d==='mL')return v>=1000?(v/1000).toFixed(v>=10000?1:2)+' L':Math.round(v)+' mL';
+      if(d==='g')return v>=1000?(v/1000).toFixed(v>=10000?1:2)+' kg':Math.round(v)+' g';
+      return (Math.round(v*10)/10)+' '+d;
+    };
+
     vp.forEach(p=>{
-      // Use the label-rate calculation at the current GPA/tank size for Julio text,
-      // even if React has not finished updating the visible input value yet.
-      // Example: 160 gal ÷ 50 GPA = 3.2 ac/tank, then rate/ac × 3.2 = product/tank.
+      // Determine the full-tank quantity from the registered rate when available.
       const fill=tankAmountFromRateLabelForApt(p.name, apt);
       const tankAmt=fill?fill.amt:p.amt;
       const tankUnit=fill?fill.unit:p.unit;
-      lines.push(p.name+' — '+tankAmt+tankUnit+' per tank');
-      const n=nm(parseFloat(tankAmt),tankUnit);const d=du(tankUnit);    // Snap to label rate if within 5% (avoids 300.3 vs 300 compliance artefacts)
-    const rt=(n/apt).toFixed(1);
-    const info=sprayInfo(p.name)||{type:'N'};
+      const n=nm(parseFloat(tankAmt),tankUnit);   // normalize L->mL and kg->g
+      const d=du(tankUnit);
+      const rateNorm=n/apt;
+      const jobNorm=rateNorm*acres;
+      const partialNorm=rateNorm*(partT*apt);
+
+      // For a job that fits in one partial tank, give the actual amount to load.
+      // For multi-tank jobs, give full-tank mix, last partial mix, and job total.
+      if(totalTanks<0.999){
+        lines.push(p.name+' — '+fmtNorm(jobNorm,d)+' total ('+rateNorm.toFixed(1)+' '+d+'/ac)');
+      }else if(partT>0.01){
+        lines.push(p.name+' — '+fmtNorm(n,d)+'/full '+tvol+' gal tank; last '+partialCarrierGal.toFixed(0)+' gal tank: '+fmtNorm(partialNorm,d)+'; job total '+fmtNorm(jobNorm,d));
+      }else{
+        lines.push(p.name+' — '+fmtNorm(n,d)+'/full '+tvol+' gal tank; job total '+fmtNorm(jobNorm,d));
+      }
+
+      const rt=rateNorm.toFixed(1);
+      const info=sprayInfo(p.name)||{type:'N'};
       const entry=p.name+' '+rt+d+'/ac';
       if(info.type==='F'){rF.push(entry);if(info.frac)ff.add(info.frac);}
       else if(info.type==='I'){rI.push(entry);if(info.irac)fi.add(info.irac);}
       else rN.push(entry);
     });
+
+    if(totalTanks<0.999){
+      lines.push('Mix '+carrierTotalGal.toFixed(0)+' gal total for '+acres.toFixed(2)+' ac at '+gpa+' GPA');
+    }else{
+      const tanksStr=partT>0.01?totalTanks.toFixed(2)+' tanks ('+fullT+' full + '+Math.round(partT*100)+'% of a tank)':fullT+' full tank'+(fullT===1?'':'s');
+      lines.push('Tanks needed: '+tanksStr+' · '+carrierTotalGal.toFixed(0)+' gal total for '+acres.toFixed(2)+' ac at '+gpa+' GPA');
+    }
     if(certNote)lines.push('Applicator: '+bApplicator+' — '+certNote);
     else lines.push('Applicator: '+bApplicator);
-    const totalTanks=(acres/apt);
-    const fullT=Math.floor(totalTanks);
-    const partT=totalTanks-fullT;
-    const tanksStr=partT>0.05?totalTanks.toFixed(1)+' tanks ('+fullT+' full + '+Math.round(partT*100)+'% of a tank)':fullT+' full tanks';
-    lines.push('Tanks needed: '+tanksStr+' for '+acres.toFixed(2)+' ac at '+gpa+' GPA');
     setBJ(lines.join('\n'));
     const safeApt=isFinite(apt)&&apt>0?apt:0;const safeTot=isFinite(totalTanks)&&totalTanks>0?totalTanks:0;setBR(bDate+'\t'+(rF.join(', ')||'—')+'\t'+([...ff].join(', ')||'—')+'\t'+([...rI,...rN].join(', ')||'—')+'\t'+([...fi].join(', ')||'—')+'\t'+gpa+' GPA · '+tvol+'gal · '+safeApt.toFixed(2)+'ac/tank · '+safeTot.toFixed(1)+' tanks · '+acres.toFixed(2)+'ac');
     const locLabel=isTunnels?(bZones.length<TUNNEL_ZONES.length?'Tunnels — '+TUNNEL_ZONES.filter(z=>bZones.includes(z.id)).map(z=>z.label).join(', '):'Tunnels — All'):mappedFieldLabel;
@@ -8114,7 +8337,8 @@ function SprayBrain(){
           <input type="text" class="sp-sel" value=${bApplicator} onInput=${e=>setBAp(e.target.value)} placeholder="e.g. Julio"/></div>
         <div></div>
       </div>
-      <div class="sp-sec" style=${{marginTop:0}}>Products (quantities per tank)</div>
+      <div class="sp-sec" style=${{marginTop:0}}>Products (full-tank quantities)</div>
+      <div style=${{fontSize:9,color:'#777',margin:'-3px 0 7px'}}>The generated applicator text automatically scales product and carrier volume down for a partial final tank.</div>
       ${bProds.map(p=>html`<${SprayProdRow} key=${p.id} p=${p} apt=${apt} acres=${acres}
         isTunnels=${isTunnels} bZones=${bZones}
         onUpdate=${updP} onRemove=${remP}/>`)}
